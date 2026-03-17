@@ -22,7 +22,8 @@ Included from prelude:
 - `defstruct`, `defclass`, `defmethod` — types
 - `match` — pattern matching
 - `try`, `catch` — exception handling
-- `hash`, `hash-ref`, `hash-get`, `hash-set!`, `hash-for-each`, `hash->list`
+- `hash`, `hash-ref`, `hash-get`, `hash-put!`, `hash-remove!`, `hash-key?`,
+  `hash-for-each`, `hash->list`, `hash-merge`, `hash-length`
 - `sort`, `sort!`
 - `format` — string formatting
 - `string-split`, `string-join`, `string-contains`, `string-prefix?`,
@@ -83,95 +84,114 @@ The macro layer without I/O helpers. Use when you want `def`, `defstruct`,
 (vector-sort! < #(3 1 4 1 5))
 ```
 
-### `(std misc hash)` — Additional Hash Operations
+### Hash Operations — in `(jerboa runtime)`, re-exported by prelude
+
+Hash operations are in `(jerboa runtime)` and re-exported by `(jerboa prelude)`.
+There is no separate `(std misc hash)` module.
 
 ```scheme
-(import (std misc hash))
+(import (jerboa prelude))
 
-;; Merge two hash tables (second wins on conflict)
-(hash-merge h1 h2)
+;; Create
+(def h (hash 'a 1 'b 2 'c 3))
+(make-hash-table)            ;; empty, equal?-based
+(make-hash-table-eq)         ;; empty, eq?-based
 
-;; Map over values
-(hash-map (lambda (k v) (* v 2)) h)
+;; Access
+(hash-get h 'a)              ;; => 1 (macro, returns #f if missing)
+(hash-ref h 'a)              ;; => 1 (error if missing with 2 args)
+(hash-ref h 'z "default")   ;; => "default" (3 args: with default)
 
-;; Filter entries
-(hash-filter (lambda (k v) (> v 0)) h)
+;; Mutate
+(hash-put! h 'new 99)        ;; NOT hash-set!
+(hash-remove! h 'a)          ;; NOT hash-delete!
+(hash-update! h 'b (lambda (v) (+ v 1)) 0)
 
-;; Update a key with a function
-(hash-update! h "count" (lambda (v) (+ v 1)) 0)
+;; Query
+(hash-key? h 'b)             ;; NOT hash-contains?
+(hash-length h)              ;; count of entries
 
-;; Construct from two lists
-(alist->hash '((a . 1) (b . 2)))
-(zip->hash keys values)
+;; Merge and copy
+(hash-merge h1 h2)           ;; new table, h2 wins on conflict
+(hash-copy h)                ;; shallow copy
+
+;; Convert
+(hash->list h)               ;; => ((key . val) ...)
+(hash-keys h)                ;; => (key ...)
+(hash-values h)              ;; => (val ...)
+(list->hash-table alist)     ;; from ((k . v) ...) pairs
+(plist->hash-table plist)    ;; from (k1 v1 k2 v2 ...)
 ```
 
 ### `(std misc list)` — Extended List Operations
 
+Exports 10 functions, all re-exported by `(jerboa prelude)`.
+
 ```scheme
-(import (std misc list))
+(import (std misc list))  ;; or just (import (jerboa prelude))
 
 ;; Flatten nested lists
-(list-flatten '(1 (2 (3 4) 5) 6))
-; => (1 2 3 4 5 6)
+(flatten '(1 (2 (3 4) 5) 6))     ; => (1 2 3 4 5 6)
 
 ;; Take/drop
-(list-take '(a b c d e) 3)    ; => (a b c)
-(list-drop '(a b c d e) 3)    ; => (d e)
+(take '(a b c d e) 3)             ; => (a b c)
+(drop '(a b c d e) 3)             ; => (d e)
+
+;; Append to end (opposite of cons)
+(snoc '(1 2) 3)                   ; => (1 2 3)
 
 ;; Zip multiple lists
-(list-zip '(1 2 3) '(a b c))
-; => ((1 a) (2 b) (3 c))
+(zip '(1 2 3) '(a b c))          ; => ((1 a) (2 b) (3 c))
 
 ;; Group by key function
-(list-group-by even? '(1 2 3 4 5 6))
-; => ((#t 2 4 6) (#f 1 3 5))
+(group-by car '((a 1) (b 2) (a 3)))
+; => ((a (a 1) (a 3)) (b (b 2)))
 
 ;; Remove duplicates
-(list-unique '(1 2 1 3 2 4))  ; => (1 2 3 4)
+(unique '(1 2 1 3 2 4))          ; => (1 2 3 4)
+(unique '(a b a) eq?)             ; custom comparator
 
-;; Find first matching
-(list-find odd? '(2 4 5 6))   ; => 5
+;; Universal/existential quantifiers
+(every number? '(1 2 3))          ; => #t
+(any string? '(1 "a" 3))         ; => #t
 
-;; Partition
-(list-partition odd? '(1 2 3 4 5))
-; => (values '(1 3 5) '(2 4))
-
-;; Last element
-(list-last '(1 2 3))          ; => 3
+;; Filter + map in one pass
+(filter-map (lambda (x) (and (> x 2) (* x x))) '(1 2 3 4))
+; => (9 16)
 ```
 
 ### `(std misc string)` — String Utilities
 
+Exports 7 functions (not 14+), all re-exported by `(jerboa prelude)`.
+
 ```scheme
-(import (std misc string))
+(import (std misc string))  ;; or just (import (jerboa prelude))
 
 ;; Split / join
 (string-split "hello world foo" " ")   ; => ("hello" "world" "foo")
+(string-split "hello world")           ; => ("hello" "world") — default space
 (string-join '("a" "b" "c") "-")      ; => "a-b-c"
+(string-join '("a" "b" "c"))          ; => "a b c" — default space
 
-;; Trim whitespace
+;; Trim whitespace (BOTH sides — not just leading!)
 (string-trim "  hello  ")             ; => "hello"
-(string-trim-left "  hello  ")        ; => "hello  "
-(string-trim-right "  hello  ")       ; => "  hello"
 
-;; Prefix/suffix
+;; Search
+(string-contains "hello world" "world") ; => 6 (INDEX, not boolean!)
+(string-contains "hello" "xyz")         ; => #f
+(string-index "hello" #\l)             ; => 2 (takes a CHAR, not predicate)
+
+;; Predicates
 (string-prefix? "hel" "hello")        ; => #t
 (string-suffix? "rld" "world")        ; => #t
-
-;; Replace
-(string-replace "hello world" "world" "there")
-; => "hello there"
-
-;; Pad
-(string-pad-left "42" 5)              ; => "   42"
-(string-pad-right "hi" 5 #\.)        ; => "hi..."
-
-;; Case conversion
-(string-capitalize "hello world")     ; => "Hello World"
-
-;; Repeat
-(string-repeat "ab" 3)                ; => "ababab"
+(string-empty? "")                    ; => #t
 ```
+
+**Important:** The module exports exactly 7 functions: `string-split`,
+`string-join`, `string-trim`, `string-prefix?`, `string-suffix?`,
+`string-contains`, `string-index`, `string-empty?`. Functions like
+`string-replace`, `string-pad-left`, `string-capitalize`, `string-repeat` are
+NOT in this module — use Chez builtins or implement manually.
 
 ---
 
@@ -179,27 +199,29 @@ The macro layer without I/O helpers. Use when you want `def`, `defstruct`,
 
 ### `(std misc ports)` — Port Utilities
 
+Exports 7 functions, all re-exported by `(jerboa prelude)`.
+
 ```scheme
-(import (std misc ports))
+(import (std misc ports))  ;; or just (import (jerboa prelude))
 
-;; Read entire file as string
-(read-all-text "file.txt")
+;; Read from filename
+(read-file-string "file.txt")        ; => string
+(read-file-lines "file.txt")        ; => list of strings
 
-;; Read entire file as lines
-(read-all-lines "file.txt")   ; => list of strings
+;; Read from port
+(read-all-as-string port)           ; => string
+(read-all-as-lines port)            ; => list of strings
 
-;; Write string to file
-(write-all-text "out.txt" "content here")
+;; Write to filename
+(write-file-string "out.txt" "content here")
 
-;; Read all bytes
-(read-all-bytes "binary.bin")  ; => bytevector
-
-;; Port predicate helpers
-(input-port? p)
-(output-port? p)
-(binary-port? p)
-(textual-port? p)
+;; String I/O helpers
+(with-output-to-string (lambda () (display "hello")))  ; => "hello"
+(with-input-from-string "42" (lambda () (read)))       ; => 42
 ```
+
+**Note:** Function names are `read-file-string` (NOT `read-all-text`) and
+`write-file-string` (NOT `write-all-text`).
 
 ### `(std os path)` — Path Manipulation
 
@@ -253,23 +275,24 @@ The macro layer without I/O helpers. Use when you want `def`, `defstruct`,
 
 ### `(std text json)` — JSON Parse/Generate
 
+JSON functions are re-exported by `(jerboa prelude)`.
+
 ```scheme
-(import (std text json))
+(import (jerboa prelude))  ;; or (import (std text json))
 
 ;; Parse JSON string -> Scheme value
-(json-read-string "{\"name\": \"Alice\", \"age\": 30}")
+(string->json-object "{\"name\": \"Alice\", \"age\": 30}")
 ; => hash table: {"name" => "Alice", "age" => 30}
 
 ;; Parse from port
-(call-with-input-file "data.json"
-  (lambda (p) (json-read p)))
+(read-json (open-input-string "{\"x\": 1}"))
 
 ;; Generate JSON string from Scheme value
-(json-write-string (hash "name" "Alice" "age" 30))
+(json-object->string (hash "name" "Alice" "age" 30))
 ; => "{\"age\":30,\"name\":\"Alice\"}"
 
-;; Pretty JSON
-(json-write-string value #t)  ; #t = pretty print
+;; Write JSON to port
+(write-json (hash "key" "value") (current-output-port))
 
 ;; Type mapping:
 ;;   JSON object  -> hash table
@@ -375,48 +398,59 @@ The macro layer without I/O helpers. Use when you want `def`, `defstruct`,
 ```scheme
 (import (std misc channel))
 
-;; Create a buffered or unbuffered channel
-(def ch  (make-channel))        ; unbuffered (synchronous)
-(def bch (make-channel 10))     ; buffered (capacity 10)
+;; Create a channel
+(def ch (make-channel))
 
-;; Send (blocks if full)
-(channel-send! ch value)
-
-;; Receive (blocks until available)
-(def val (channel-receive! ch))
+;; Send and receive (blocking)
+(channel-put ch value)
+(def val (channel-get ch))
 
 ;; Non-blocking variants
-(channel-try-send! ch value)    ; => #t or #f
-(channel-try-receive! ch)       ; => value or #f
+(channel-try-put ch value)    ; => #t or #f
+(channel-try-get ch)          ; => value or #f
 
-;; Close channel (receivers get #!eof after drain)
-(channel-close! ch)
+;; Close channel
+(channel-close ch)
 
 ;; Check state
 (channel-empty? ch)
-(channel-full? ch)
-(channel-closed? ch)
 ```
 
-### `(std misc threads)` — Thread Management
+### `(std misc thread)` — Thread Management (SRFI-18)
+
+**Note:** Module name is `thread` (singular), NOT `threads`.
+Re-exported by `(jerboa prelude)`.
 
 ```scheme
-(import (std misc threads))
+(import (std misc thread))  ;; or just (import (jerboa prelude))
 
-;; Spawn a thread
-(def t (thread-spawn (lambda () (+ 1 2))))
+;; Create and start
+(def t (make-thread (lambda () (+ 1 2))))
+(thread-start! t)
+(thread-join! t)       ; => 3
 
-;; Wait for result
-(thread-join t)    ; => 3
+;; spawn shorthand (starts immediately)
+(def t2 (spawn (lambda () (* 6 7))))
+(thread-join! t2)      ; => 42
 
-;; Detached thread (fire and forget)
-(thread-spawn/detach (lambda () (do-background-work)))
+;; Thread utilities
+(thread-yield!)
+(thread-sleep! 0.5)    ; 500ms
+(current-thread)
 
-;; Thread pool
-(def pool (make-thread-pool 4))   ; 4 worker threads
-(thread-pool-submit! pool thunk)
-(thread-pool-wait! pool)          ; wait for all pending
-(thread-pool-shutdown! pool)
+;; Mutexes
+(def m (make-mutex))
+(mutex-lock! m)
+(mutex-unlock! m)
+
+;; Condition variables
+(def cv (make-condition-variable))
+(condition-variable-signal! cv)
+(condition-variable-broadcast! cv)
+
+;; Message passing
+(thread-send t "hello")
+(thread-receive)        ; blocks until message arrives
 ```
 
 ### `(std misc process)` — Process Spawning
@@ -424,22 +458,25 @@ The macro layer without I/O helpers. Use when you want `def`, `defstruct`,
 ```scheme
 (import (std misc process))
 
-;; Run a command, capture output
-(def result (run-process '("ls" "-la" "/tmp")))
-(process-stdout result)   ; => string
-(process-stderr result)   ; => string
-(process-exit-code result) ; => integer
+;; Run a command, capture stdout as string
+(def output (run-process '("ls" "-la" "/tmp")))
+; => stdout as string
 
-;; Pipeline (chain stdout to next stdin)
-(run-pipeline
-  '("echo" "hello world")
-  '("tr" "a-z" "A-Z"))
-; => "HELLO WORLD\n"
+;; Run command, get exit status only
+(def status (run-process/batch '("touch" "file.txt")))
+; => 0 (success)
 
-;; Async process
-(def proc (spawn-process '("long-running" "command")))
-(process-wait proc)       ; block until done
-(process-kill proc)       ; send SIGTERM
+;; With working directory
+(run-process '("ls") directory: "/tmp")
+
+;; Open process as readable port
+(def port (open-input-process '("cat" "data.txt")))
+
+;; Open process as writable port
+(def out (open-output-process '("sort")))
+
+;; Bidirectional process (returns process-port-rec)
+(def proc (open-process '("grep" "pattern")))
 ```
 
 ---
@@ -623,23 +660,23 @@ The macro layer without I/O helpers. Use when you want `def`, `defstruct`,
 (jerboa reader)       ← {...} and [...] reader extensions
 
 (std sort)            ← sorting
-(std misc hash)       ← extra hash ops
-(std misc list)       ← flatten, take, drop, zip, group-by
-(std misc string)     ← split, join, trim, pad, replace
+(jerboa runtime)      ← hash ops (hash-put!, hash-remove!, hash-key?)
+(std misc list)       ← flatten, take, drop, zip, group-by, unique
+(std misc string)     ← split, join, trim, contains, prefix?, suffix?
 
-(std misc ports)      ← read-all-text, write-all-text
+(std misc ports)      ← read-file-string, write-file-string
 (std os path)         ← path-join, path-dirname, directory-list
 (std os env)          ← getenv, setenv!
 
-(std text json)       ← JSON parse/generate
+(std text json)       ← read-json, write-json, string->json-object
 (std text csv)        ← CSV parse/write
 (std text yaml)       ← YAML (optional)
 
 (std net httpd)       ← HTTP server
 (std net http)        ← HTTP client
 
-(std misc channel)    ← channel send/receive
-(std misc threads)    ← thread-spawn, thread-join, thread-pool
+(std misc channel)    ← channel-put, channel-get
+(std misc thread)     ← spawn, thread-start!, thread-join!, mutexes
 (std misc process)    ← run-process, spawn-process
 
 (std db sqlite)       ← SQLite

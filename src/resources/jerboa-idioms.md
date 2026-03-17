@@ -212,21 +212,23 @@ See also: `jerboa-pattern-matching.md` for the comprehensive guide.
 ;; Literal construction
 (def h (hash "key" "value" "n" 42))
 
-;; Lookup — returns #f if missing
+;; hash-get: MACRO, always returns #f if missing
 (hash-get h "key")     ; => "value"
 (hash-get h "missing") ; => #f
 
-;; Lookup with default
-(hash-ref h "key" "default")     ; => "value"
+;; hash-ref: 2-arg raises error if missing, 3-arg provides default
+(hash-ref h "key")              ; => "value"
+(hash-ref h "key" "default")   ; => "value"
 (hash-ref h "missing" "default") ; => "default"
+;; (hash-ref h "missing")       ; ERROR: key not found
 
 ;; Mutation
-(hash-set! h "new-key" 99)
-(hash-delete! h "key")
+(hash-put! h "new-key" 99)     ; NOT hash-set!
+(hash-remove! h "key")         ; NOT hash-delete!
 
 ;; Predicates
-(hash? h)              ; => #t
-(hash-contains? h "n") ; => #t
+(hash-table? h)        ; => #t
+(hash-key? h "n")      ; => #t (NOT hash-contains?)
 
 ;; Iteration
 (hash-for-each h (lambda (k v) (format #t "~a => ~a\n" k v)))
@@ -237,10 +239,13 @@ See also: `jerboa-pattern-matching.md` for the comprehensive guide.
 (hash-values h)        ; => list of values
 
 ;; Size
-(hash-size h)          ; => number of entries
+(hash-length h)        ; => number of entries
 
 ;; Build from association list
-(def h2 (list->hash '(("a" . 1) ("b" . 2))))
+(def h2 (list->hash-table '(("a" . 1) ("b" . 2))))
+
+;; Merge
+(hash-merge h1 h2)    ; => new merged table (h2 wins on conflict)
 ```
 
 ### Equal-based vs EQ-based
@@ -250,9 +255,9 @@ See also: `jerboa-pattern-matching.md` for the comprehensive guide.
 (make-hash-table)
 
 ;; EQ hash (faster, pointer identity only)
-(make-eq-hashtable)
+(make-hash-table-eq)
 
-;; EQV hash
+;; Chez native EQV hash
 (make-eqv-hashtable)
 ```
 
@@ -383,9 +388,10 @@ See also: `jerboa-pattern-matching.md` for the comprehensive guide.
   (lambda (port)
     (display "content" port)))
 
-;; Read all text (from (std misc ports))
+;; Read all text (from (std misc ports), re-exported by prelude)
 (import (std misc ports))
-(read-all-text "file.txt")      ; => string
+(read-file-string "file.txt")   ; => string (from filename)
+(read-all-as-string port)       ; => string (from port)
 
 ;; String ports
 (open-input-string "hello world")   ; string -> input port
@@ -440,7 +446,7 @@ See also: `jerboa-pattern-matching.md` for the comprehensive guide.
 
 ```scheme
 ;; Import only specific names
-(import (only (std misc list) list-flatten list-take))
+(import (only (std misc list) flatten take))
 
 ;; Import and rename
 (import (rename (std misc string) (string-split split)))

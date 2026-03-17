@@ -37,11 +37,11 @@
     "pattern": "import conflict|Bad binding.*import",
     "type": "Import Conflict",
     "message": "Same symbol imported from multiple modules",
-    "explanation": "Two modules export the same symbol, causing a conflict. Use except-in or only-in to resolve.",
-    "fix": "Use (except-in (std module1) conflicting-sym) or rename with (rename-in ...)",
-    "code_example": "(import (except-in (std module1) conflicting-sym))\n(import (std module2))",
+    "explanation": "Two modules export the same symbol, causing a conflict. Use except or only to resolve.",
+    "fix": "Use (except (module) conflicting-sym) or (only (module) wanted-sym) or (rename (module) (old new))",
+    "code_example": "(import (except (std module1) conflicting-sym))\n(import (std module2))",
     "imports": [],
-    "related_recipes": []
+    "related_recipes": ["jerboa-library-definition"]
   },
   {
     "id": "file-not-found",
@@ -85,16 +85,16 @@
     "fix": "Check what assertion is being violated. Use jerboa_describe to inspect the value.",
     "code_example": "(assert (list? x))  ; fails if x is not a list",
     "imports": [],
-    "related_recipes": []
+    "related_recipes": ["jerboa-sugar-assert"]
   },
   {
-    "id": "hash-ref-void",
-    "pattern": "hash-ref.*void|#!void from hash",
-    "type": "Hash-Ref Returns Void",
-    "message": "hash-ref returned void (key not found)",
-    "explanation": "In Jerboa, hash-ref returns #!void when key not found (not an error). Use hash-get for safe access with default.",
-    "fix": "Use (hash-get table key default) to get a default value when key is missing.",
-    "code_example": "; Wrong: (hash-ref table 'key) may return void\n; Right:\n(define val (hash-get table 'key #f))\n(when val (process val))",
+    "id": "hash-ref-missing-key",
+    "pattern": "hash-ref.*not found|hashtable-ref.*not found|not found in table",
+    "type": "Hash Key Not Found",
+    "message": "hash-ref called with missing key (2-arg form raises error)",
+    "explanation": "In Jerboa, hash-ref with 2 args raises an error if the key is missing. hash-ref with 3 args returns a default. hash-get always returns #f for missing keys (it's a macro).",
+    "fix": "Use (hash-get table key) for safe access (returns #f), or (hash-ref table key default) with a default value, or check with (hash-key? table key) first.",
+    "code_example": "; Wrong: (hash-ref table 'key) — error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
     "imports": ["(jerboa prelude)"],
     "related_recipes": ["jerboa-hash-create"]
   },
@@ -111,25 +111,25 @@
   },
   {
     "id": "reader-bracket-error",
-    "pattern": "\\[.*unexpected|bracket.*syntax|unexpected.*\\[",
+    "pattern": "\\[.*unexpected|bracket.*syntax|unexpected.*\\[|invalid character.*\\[",
     "type": "Reader Extension Error",
     "message": "Bracket syntax not recognized",
     "explanation": "Jerboa's [...] and {...} reader extensions aren't active. This happens when using plain scheme without the jerboa reader.",
-    "fix": "Import the jerboa reader: (import (jerboa reader)). Use jerboa-read instead of read for user input.",
-    "code_example": "(import (jerboa reader))\n; Now [...] and {...} work:\n(jerboa-read-string \"[1 2 3]\")",
+    "fix": "Import the jerboa reader: (import (jerboa reader)). Use jerboa-read instead of read for user input. Or use (jerboa prelude) which includes the reader.",
+    "code_example": "(import (jerboa reader))\n; Now [...] and {...} work via jerboa-read",
     "imports": [],
-    "related_recipes": []
+    "related_recipes": ["jerboa-import-prelude"]
   },
   {
     "id": "foreign-procedure-error",
-    "pattern": "foreign-procedure|foreign procedure|FFI error",
+    "pattern": "foreign-procedure|foreign procedure|FFI error|foreign-entry",
     "type": "FFI Error",
     "message": "Foreign procedure call failed",
-    "explanation": "A foreign-procedure (FFI) call failed. Common causes: wrong types, null pointer, shared library not loaded.",
-    "fix": "Check argument types match the foreign-procedure declaration. Ensure shared library is loaded.",
-    "code_example": "(load-shared-object \"libfoo.so\")\n(define foo (foreign-procedure \"c_foo\" (integer-32) integer-32))\n(foo 42)",
+    "explanation": "A foreign-procedure (FFI) call failed. Common causes: wrong types, null pointer, shared library not loaded, or function name not found.",
+    "fix": "Check argument types match the foreign-procedure declaration. Ensure shared library is loaded with load-shared-object.",
+    "code_example": "(load-shared-object \"libfoo.so\")\n(define foo (foreign-procedure \"c_foo\" (int) int))\n(foo 42)",
     "imports": [],
-    "related_recipes": []
+    "related_recipes": ["jerboa-ffi-foreign-procedure"]
   },
   {
     "id": "condition-handler",
@@ -137,10 +137,10 @@
     "type": "Unhandled Condition",
     "message": "A condition was raised without a handler",
     "explanation": "An exception was raised (via raise or error) with no guard or with-exception-handler in scope.",
-    "fix": "Wrap code in guard: (guard (e [else (condition/message e)]) ...). Or use try/catch from jerboa prelude.",
-    "code_example": "(import (jerboa prelude))\n(try\n  (risky-operation)\n  (catch e (display (condition/message e))))",
+    "fix": "Wrap code in try/catch from jerboa prelude, or guard (R6RS), or with-catch from (std sugar).",
+    "code_example": "(import (jerboa prelude))\n(try\n  (risky-operation)\n  (catch e (display (error-message e))))",
     "imports": ["(jerboa prelude)"],
-    "related_recipes": ["jerboa-try-catch"]
+    "related_recipes": ["jerboa-try-catch", "jerboa-with-catch"]
   },
   {
     "id": "duplicate-definition",
@@ -155,13 +155,90 @@
   },
   {
     "id": "incompatible-record-type",
-    "pattern": "incompatible record type|record type.*mismatch",
+    "pattern": "incompatible record type|record type.*mismatch|not of type",
     "type": "Record Type Mismatch",
     "message": "Wrong record type passed to accessor/predicate",
     "explanation": "A record accessor was called with a value of a different record type than expected.",
     "fix": "Check that you're using the right accessor for the right type. Use type predicates to validate.",
-    "code_example": "(define-record-type point (make-point x y) point? (x point-x) (y point-y))\n(when (point? val) (point-x val))  ; safe access",
+    "code_example": "(defstruct point (x y))\n(when (point? val) (point-x val))  ; safe access",
+    "imports": ["(jerboa prelude)"],
+    "related_recipes": ["jerboa-defstruct"]
+  },
+  {
+    "id": "module-phase-error",
+    "pattern": "attempt to reference identifier.*before its definition|identifier out of context|out of phase",
+    "type": "Phase Ordering Error",
+    "message": "Identifier referenced before its definition or across phases",
+    "explanation": "R6RS enforces strict phase separation. A macro tried to use a runtime binding, or a definition was referenced before it was defined in the module body.",
+    "fix": "Reorder definitions so that the referenced binding comes before its use. For cross-phase references, use (for (module) expand) imports.",
+    "code_example": "; Wrong order:\n; (def y (+ x 1))\n; (def x 42)\n\n; Correct order:\n(def x 42)\n(def y (+ x 1))",
+    "imports": [],
+    "related_recipes": ["jerboa-library-definition"]
+  },
+  {
+    "id": "immutable-field",
+    "pattern": "immutable.*field|immutable.*variable|set!.*immutable|cannot assign",
+    "type": "Immutable Field/Variable",
+    "message": "Attempted to mutate an immutable field or binding",
+    "explanation": "Chez Scheme R6RS records have immutable fields by default. You tried to use set! on an immutable record field or a module-level import.",
+    "fix": "Declare fields as mutable in the record definition, or use a hash table for mutable storage.",
+    "code_example": "; defstruct fields are mutable by default\n(defstruct counter (n))\n(def c (make-counter 0))\n(counter-n-set! c 1)  ; works with defstruct\n\n; R6RS records need explicit mutable:\n(define-record-type point\n  (fields (mutable x) (mutable y)))",
     "imports": [],
     "related_recipes": ["jerboa-defstruct"]
+  },
+  {
+    "id": "chez-ffi-type-mismatch",
+    "pattern": "foreign-procedure.*type|invalid foreign-procedure type|expected.*got.*foreign",
+    "type": "FFI Type Mismatch",
+    "message": "C type in foreign-procedure doesn't match actual value",
+    "explanation": "The Chez foreign-procedure type annotation doesn't match the C function's actual parameter or return type.",
+    "fix": "Check C function signature. Common Chez FFI types: int, unsigned, long, double, float, string, u8*, void*, boolean, size_t. Use void for no-return functions.",
+    "code_example": "; C: int strlen(const char* s)\n(define c-strlen\n  (foreign-procedure \"strlen\" (string) size_t))\n\n; C: void exit(int status)\n(define c-exit\n  (foreign-procedure \"_exit\" (int) void))",
+    "imports": [],
+    "related_recipes": ["jerboa-ffi-foreign-procedure"]
+  },
+  {
+    "id": "missing-libdirs",
+    "pattern": "Exception: library.*not found|cannot locate|--libdirs",
+    "type": "Missing --libdirs",
+    "message": "Library search path not configured",
+    "explanation": "Chez Scheme can't find Jerboa libraries because --libdirs isn't pointing to the Jerboa lib directory.",
+    "fix": "Run with: scheme --libdirs $JERBOA_HOME/lib --script your-file.ss. Or set CHEZSCHEMELIBDIRS environment variable.",
+    "code_example": "# Method 1: command line flag\nscheme --libdirs ~/mine/jerboa/lib --script my-script.ss\n\n# Method 2: environment variable\nexport CHEZSCHEMELIBDIRS=~/mine/jerboa/lib\nscheme --script my-script.ss",
+    "imports": [],
+    "related_recipes": ["jerboa-run-script"]
+  },
+  {
+    "id": "string-port-type-mismatch",
+    "pattern": "not a binary port|not a textual port|port is not",
+    "type": "Port Type Mismatch",
+    "message": "Used binary operation on textual port or vice versa",
+    "explanation": "Chez Scheme strictly separates binary and textual ports. You can't use get-u8/put-u8 on a textual port, or get-char/read-line on a binary port.",
+    "fix": "Use the correct port type: open-input-file for textual, open-file-input-port for binary. Or use transcoded-port to convert.",
+    "code_example": "; Textual port (default):\n(call-with-input-file \"text.txt\"\n  (lambda (p) (read-line p)))  ; OK\n\n; Binary port:\n(let ([p (open-file-input-port \"data.bin\")])\n  (get-u8 p))  ; OK\n\n; Convert binary to textual:\n(transcoded-port binary-port (native-transcoder))",
+    "imports": [],
+    "related_recipes": ["jerboa-port-utils"]
+  },
+  {
+    "id": "tail-form-expression-error",
+    "pattern": "expression.*following.*definition|body.*contains.*definition.*after.*expression",
+    "type": "Definition After Expression",
+    "message": "Definition appears after an expression in a body",
+    "explanation": "R6RS requires all definitions to come before expressions in a body (begin, lambda, let, etc.). You have an expression followed by a definition.",
+    "fix": "Move all definitions to the top of the body, before any expressions. Use set! if you need to assign after computation.",
+    "code_example": "; Wrong:\n(let ()\n  (display \"hello\")    ; expression\n  (def x 42)           ; ERROR: definition after expression\n  x)\n\n; Right:\n(let ()\n  (def x 42)           ; definition first\n  (display \"hello\")    ; then expressions\n  x)",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "wrong-hash-api-name",
+    "pattern": "hash-set!|hash-delete!|hash-contains\\?",
+    "type": "Wrong Hash API Name",
+    "message": "Using Gerbil hash API names instead of Jerboa names",
+    "explanation": "Common mistake when porting from Gerbil: hash-set! should be hash-put!, hash-delete! should be hash-remove!, hash-contains? should be hash-key?.",
+    "fix": "Use Jerboa hash API names: hash-put! (not hash-set!), hash-remove! (not hash-delete!), hash-key? (not hash-contains?).",
+    "code_example": "; Wrong (Gerbil names):\n; (hash-set! h 'key val)\n; (hash-delete! h 'key)\n; (hash-contains? h 'key)\n\n; Right (Jerboa names):\n(hash-put! h 'key val)\n(hash-remove! h 'key)\n(hash-key? h 'key)",
+    "imports": ["(jerboa prelude)"],
+    "related_recipes": ["jerboa-hash-create", "gerbil-to-jerboa-imports"]
   }
 ]

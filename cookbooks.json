@@ -12,16 +12,16 @@
     "title": "Define and Use Structs",
     "tags": ["defstruct", "struct", "record", "define-record"],
     "imports": ["(jerboa prelude)"],
-    "code": "(import (jerboa prelude))\n\n(defstruct Point (x y))\n\n(def p (make-Point 3 4))\n(display (Point-x p))  ; => 3\n(display (Point? p))   ; => #t\n\n; With default values (if supported)\n(defstruct Config\n  (host \"localhost\")\n  (port 8080))\n\n(def cfg (make-Config))\n(display (Config-port cfg))  ; => 8080",
-    "notes": "defstruct generates make-NAME, NAME?, and NAME-FIELD accessors."
+    "code": "(import (jerboa prelude))\n\n(defstruct Point (x y))\n\n(def p (make-Point 3 4))\n(display (Point-x p))  ; => 3\n(display (Point? p))   ; => #t\n\n; With default values\n(defstruct Config\n  (host \"localhost\")\n  (port 8080))\n\n(def cfg (make-Config))\n(display (Config-port cfg))  ; => 8080",
+    "notes": "defstruct generates make-NAME, NAME?, and NAME-FIELD accessors. Maps to Chez define-record-type for native speed."
   },
   {
     "id": "jerboa-hash-create",
     "title": "Hash Table Creation and Access",
-    "tags": ["hash", "hashtable", "dict", "map"],
+    "tags": ["hash", "hashtable", "dict", "map", "hash-ref", "hash-get", "hash-put"],
     "imports": ["(jerboa prelude)"],
-    "code": "(import (jerboa prelude))\n\n; Create hash table\n(def h (hash 'name \"Alice\" 'age 30))\n\n; Access (returns #!void if not found)\n(hash-ref h 'name)     ; => \"Alice\"\n\n; Safe access with default\n(hash-get h 'email #f)  ; => #f (key not found)\n\n; Modify (hash tables are mutable)\n(hash-set! h 'email \"alice@example.com\")\n\n; Iterate\n(hash-for-each h\n  (lambda (k v)\n    (format #t \"~a: ~a\\n\" k v)))\n\n; Check membership\n(hash-ref? h 'name)  ; => #t",
-    "notes": "Use hash-get instead of hash-ref when key may be missing. hash-ref returns #!void for missing keys."
+    "code": "(import (jerboa prelude))\n\n; Create hash table with alternating key/value pairs\n(def h (hash 'name \"Alice\" 'age 30))\n\n; hash-ref: 2 args raises error if missing, 3 args provides default\n(hash-ref h 'name)          ; => \"Alice\"\n(hash-ref h 'email \"none\") ; => \"none\" (default)\n\n; hash-get: always returns #f if key missing (macro)\n(hash-get h 'email)  ; => #f\n\n; Modify (hash tables are mutable)\n(hash-put! h 'email \"alice@example.com\")\n\n; Remove a key\n(hash-remove! h 'email)\n\n; Iterate\n(hash-for-each h\n  (lambda (k v)\n    (format #t \"~a: ~a\\n\" k v)))\n\n; Check membership\n(hash-key? h 'name)  ; => #t\n\n; Other operations\n(hash-keys h)     ; => list of keys\n(hash-values h)   ; => list of values\n(hash->list h)    ; => list of (key . value) pairs\n(hash-length h)   ; => number of entries\n(hash-merge h (hash 'x 1))  ; => new merged table",
+    "notes": "hash-get is a MACRO that expands to (hashtable-ref ht key #f) — always returns #f for missing keys. hash-ref with 2 args raises an error for missing keys. Use hash-put! (not hash-set!) to add entries. Use hash-remove! (not hash-delete!) to remove. Use hash-key? (not hash-contains?) to check membership."
   },
   {
     "id": "jerboa-match",
@@ -29,39 +29,39 @@
     "tags": ["match", "pattern", "case", "cond"],
     "imports": ["(jerboa prelude)"],
     "code": "(import (jerboa prelude))\n\n; Basic match\n(def (describe x)\n  (match x\n    [0 \"zero\"]\n    [(? number? n) (format \"number ~a\" n)]\n    [(? string? s) (format \"string: ~a\" s)]\n    [(a b) (format \"pair: ~a ~a\" a b)]\n    [(a . rest) (format \"list starting with ~a\" a)]\n    [_ \"other\"]))\n\n(display (describe 42))    ; => \"number 42\"\n(display (describe \"hi\"))  ; => \"string: hi\"\n(display (describe '(1 2 3))) ; => \"list starting with 1\"",
-    "notes": "match is from the jerboa prelude. Patterns include literals, predicates with ?, list patterns, and wildcards _."
+    "notes": "match is from the jerboa prelude. Patterns include literals, predicates with ?, list patterns, and wildcards _. Also supports (and pat ...), (or pat ...), (not pat) combinators."
   },
   {
     "id": "jerboa-try-catch",
     "title": "Error Handling with try/catch",
-    "tags": ["try", "catch", "error", "exception", "guard"],
+    "tags": ["try", "catch", "error", "exception", "guard", "finally"],
     "imports": ["(jerboa prelude)"],
-    "code": "(import (jerboa prelude))\n\n; try/catch style (from jerboa prelude)\n(try\n  (error \"something went wrong\" 42)\n  (catch e\n    (display (condition/message e))\n    (newline)))\n\n; guard style (R6RS/Chez)\n(guard (e\n        [(&error? e) (condition/message e)]\n        [else \"unknown error\"])\n  (error \"test error\"))\n\n; Re-raise\n(guard (e\n        [(string-prefix? \"expected\" (condition/message e))\n         (raise e)]   ; re-raise\n        [else #f])   ; suppress others\n  ...)",
-    "notes": "Both try/catch (jerboa prelude) and guard (R6RS) work. guard is more flexible for matching condition types."
+    "code": "(import (jerboa prelude))\n\n; try/catch style (from jerboa prelude)\n(try\n  (error \"something went wrong\" 42)\n  (catch e\n    (display (error-message e))\n    (newline)))\n\n; try/catch/finally\n(try\n  (error \"oops\")\n  (catch e\n    (display (error-message e)))\n  (finally\n    (display \"cleanup done\")))\n\n; guard style (R6RS/Chez)\n(guard (e\n        [else (error-message e)])\n  (error \"test error\"))",
+    "notes": "Both try/catch (jerboa prelude) and guard (R6RS) work. Use error-message (not condition/message) to extract the message string. try/catch/finally implemented via guard + dynamic-wind."
   },
   {
     "id": "jerboa-json-parse",
-    "title": "JSON Parsing",
-    "tags": ["json", "parse", "decode", "std text json"],
-    "imports": ["(jerboa prelude)", "(std text json)"],
-    "code": "(import (jerboa prelude))\n(import (std text json))\n\n; Parse JSON string\n(def data (json-read (open-string-input-port \"{\\\"name\\\": \\\"Alice\\\", \\\"age\\\": 30}\")))\n\n; Access fields (returns hash table)\n(hash-ref data \"name\")  ; => \"Alice\"\n(hash-ref data \"age\")   ; => 30\n\n; Parse JSON array\n(def arr (json-read (open-string-input-port \"[1, 2, 3]\")))\n; arr is a vector: #(1 2 3)\n\n; Read from file\n(call-with-input-file \"data.json\"\n  (lambda (port)\n    (json-read port)))",
-    "notes": "json-read returns hash tables for objects, vectors for arrays. Strings use Scheme strings."
+    "title": "JSON Parsing and Generation",
+    "tags": ["json", "parse", "decode", "encode", "write", "std text json"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Parse JSON string (read-json and write-json are in prelude)\n(def data (string->json-object \"{\\\"name\\\": \\\"Alice\\\", \\\"age\\\": 30}\"))\n\n; Access fields (returns hash table)\n(hash-ref data \"name\")  ; => \"Alice\"\n(hash-ref data \"age\")   ; => 30\n\n; Generate JSON string\n(def output (json-object->string (hash \"name\" \"Bob\" \"age\" 25)))\n; => \"{\\\"name\\\":\\\"Bob\\\",\\\"age\\\":25}\"\n\n; Read JSON from port\n(def data2 (read-json (open-input-string \"{\\\"x\\\": 1}\")))\n\n; Write JSON to port\n(write-json (hash \"x\" 1) (current-output-port))",
+    "notes": "The prelude exports read-json, write-json, json-object->string, string->json-object. JSON objects become hash tables, arrays become vectors, strings/numbers/booleans map directly."
   },
   {
     "id": "jerboa-sort",
     "title": "Sorting Lists",
     "tags": ["sort", "list", "order", "compare", "std sort"],
     "imports": ["(jerboa prelude)"],
-    "code": "(import (jerboa prelude))\n\n; Basic sort (sort is in prelude)\n(sort '(3 1 4 1 5 9 2 6) <)  ; => (1 1 2 3 4 5 6 9)\n\n; Sort strings\n(sort '(\"banana\" \"apple\" \"cherry\") string<?)\n\n; Sort by key\n(def people '((alice 30) (bob 25) (carol 35)))\n(sort people (lambda (a b) (< (cadr a) (cadr b))))\n; => ((bob 25) (alice 30) (carol 35))\n\n; Sort with std sort module (more options)\n(import (std sort))\n(sort! '(3 1 2) <)  ; destructive sort",
-    "notes": "sort is included in the jerboa prelude. For destructive sort!, use (import (std sort))."
+    "code": "(import (jerboa prelude))\n\n; Basic sort (sort is in prelude)\n(sort '(3 1 4 1 5 9 2 6) <)  ; => (1 1 2 3 4 5 6 9)\n\n; Sort strings\n(sort '(\"banana\" \"apple\" \"cherry\") string<?)\n\n; Sort by key\n(def people '((alice 30) (bob 25) (carol 35)))\n(sort people (lambda (a b) (< (cadr a) (cadr b))))\n; => ((bob 25) (alice 30) (carol 35))\n\n; Stable sort preserves order of equal elements\n(stable-sort '(3 1 2) <)\n\n; Destructive sort (mutates list)\n(sort! '(3 1 2) <)",
+    "notes": "sort, sort!, stable-sort, stable-sort! are all in the prelude (re-exported from (std sort))."
   },
   {
     "id": "jerboa-file-read",
     "title": "File I/O",
     "tags": ["file", "read", "write", "port", "io"],
     "imports": ["(jerboa prelude)"],
-    "code": "(import (jerboa prelude))\n\n; Read entire file\n(def contents\n  (call-with-input-file \"data.txt\"\n    (lambda (port)\n      (let loop ([lines '()])\n        (def line (read-line port))\n        (if (eof-object? line)\n            (reverse lines)\n            (loop (cons line lines)))))))\n\n; Write to file\n(call-with-output-file \"output.txt\"\n  (lambda (port)\n    (display \"hello\" port)\n    (newline port)))\n\n; Read entire file as string (with std module)\n(import (std misc ports))\n(def text (read-all-text \"data.txt\"))",
-    "notes": "Chez file I/O uses call-with-input-file/call-with-output-file. std misc ports provides read-all-text."
+    "code": "(import (jerboa prelude))\n\n; Read entire file as string (prelude re-exports from std misc ports)\n(def text (read-file-string \"data.txt\"))\n\n; Read file as list of lines\n(def lines (read-file-lines \"data.txt\"))\n\n; Write string to file\n(write-file-string \"output.txt\" \"hello world\")\n\n; Read from a port\n(def contents\n  (call-with-input-file \"data.txt\"\n    (lambda (port)\n      (read-all-as-string port))))\n\n; Manual line-by-line reading\n(call-with-input-file \"data.txt\"\n  (lambda (port)\n    (let loop ([lines '()])\n      (def line (read-line port))\n      (if (eof-object? line)\n          (reverse lines)\n          (loop (cons line lines))))))\n\n; Capture output to string\n(with-output-to-string\n  (lambda () (display \"captured\")))",
+    "notes": "The prelude re-exports from (std misc ports): read-file-string, read-file-lines, write-file-string, read-all-as-string, read-all-as-lines, with-output-to-string, with-input-from-string."
   },
   {
     "id": "jerboa-test-suite",
@@ -91,32 +91,224 @@
     "id": "jerboa-path-ops",
     "title": "Path Manipulation",
     "tags": ["path", "file", "directory", "os", "std os path"],
-    "imports": ["(jerboa prelude)", "(std os path)"],
-    "code": "(import (jerboa prelude))\n(import (std os path))\n\n; Basic path ops\n(path-join \"/home\" \"user\" \"file.txt\")  ; => \"/home/user/file.txt\"\n(path-basename \"/home/user/file.txt\")  ; => \"file.txt\"\n(path-dirname \"/home/user/file.txt\")   ; => \"/home/user\"\n(path-extension \"file.txt\")            ; => \".txt\"\n\n; Check existence\n(file-exists? \"/etc/hosts\")   ; => #t\n(directory? \"/tmp\")           ; => #t\n\n; List directory\n(directory-list \"/tmp\")       ; list of filenames\n\n; Expand ~\n(path-expand \"~/mine/jerboa\") ; expands ~",
-    "notes": "Path operations from (std os path). Use path-join for portable path construction."
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Path ops are re-exported by prelude from (std os path)\n(path-join \"/home\" \"user\" \"file.txt\")        ; => \"/home/user/file.txt\"\n(path-strip-directory \"/home/user/file.txt\")  ; => \"file.txt\"\n(path-directory \"/home/user/file.txt\")        ; => \"/home/user\"\n(path-extension \"file.txt\")                   ; => \".txt\"\n(path-strip-extension \"file.txt\")             ; => \"file\"\n(path-absolute? \"/etc\")                       ; => #t\n\n; Expand ~ and resolve\n(path-expand \"~/mine/jerboa\")\n(path-normalize \"./foo/../bar\")\n\n; Check existence (Chez builtins)\n(file-exists? \"/etc/hosts\")\n\n; List directory (re-exported from core)\n(directory-files \"/tmp\")",
+    "notes": "Prelude re-exports path-join, path-directory, path-strip-directory, path-extension, path-strip-extension, path-expand, path-normalize, path-absolute? from (std os path). directory-files and file-info are Chez compatibility wrappers."
   },
   {
     "id": "jerboa-channel-thread",
     "title": "Channel-Based Concurrency",
-    "tags": ["channel", "thread", "concurrency", "parallel", "actor"],
-    "imports": ["(std misc channel)", "(std misc threads)"],
-    "code": "(import (std misc channel))\n(import (std misc threads))\n\n; Worker thread pattern\n(def work-ch (make-channel))\n(def result-ch (make-channel))\n\n(def worker\n  (thread-start!\n    (make-thread\n      (lambda ()\n        (let loop ()\n          (def job (channel-receive work-ch))\n          (if (eq? job 'done)\n              (channel-send result-ch 'finished)\n              (begin\n                (channel-send result-ch (* job job)) ; square it\n                (loop))))))))\n\n; Send work\n(channel-send work-ch 5)     ; => result-ch gets 25\n(def result (channel-receive result-ch))\n(display result)  ; => 25\n\n(channel-send work-ch 'done)\n(thread-join! worker)",
-    "notes": "Use channels for safe communication between threads. channel-send blocks until receiver is ready."
+    "tags": ["channel", "thread", "concurrency", "parallel", "spawn"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; Threading is re-exported by core/prelude from (std misc thread)\n\n; Spawn a thread (spawn = thread-start! + make-thread)\n(def worker\n  (spawn\n    (lambda ()\n      (thread-sleep! 0.1)\n      42)))\n\n; Wait for result\n(def result (thread-join! worker))  ; => 42\n\n; Channel-based communication\n(import (std misc channel))\n\n(def ch (make-channel))\n\n(spawn\n  (lambda ()\n    (channel-put ch (* 5 5))))\n\n(def val (channel-get ch))  ; => 25\n(display val)",
+    "notes": "The prelude re-exports spawn, make-thread, thread-start!, thread-join!, thread-sleep!, thread-yield!, make-mutex, mutex-lock!, mutex-unlock!, make-condition-variable, condition-variable-signal!, thread-send, thread-receive from (std misc thread). Channel ops (make-channel, channel-put, channel-get, channel-try-put, channel-try-get, channel-close) are in (std misc channel)."
   },
   {
     "id": "gerbil-to-jerboa-imports",
-    "title": "Gerbil to Jerboa Import Translation",
+    "title": "Gerbil to Jerboa Import and API Translation",
     "tags": ["migration", "gerbil", "import", "porting", "translation"],
     "imports": [],
-    "code": "; Gerbil imports -> Jerboa equivalents\n\n; Gerbil:              Jerboa:\n; (import :std/sort)   (import (std sort))\n; (import :std/text/json) (import (std text json))\n; (import :gerbil/gambit) [NOT AVAILABLE - use Chez builtins]\n\n; Gerbil syntax:       Jerboa equivalent:\n; (import :std/misc/hash) -- hash ops are in (jerboa prelude)\n; with-catch           -- use guard or try/catch from prelude\n; (##...) primitives   -- NOT available, use Chez R6RS equivalents\n; (export #t)          -- must enumerate exports explicitly\n\n; Common mappings:\n; Gerbil              -> Jerboa\n; hash-table-ref      -> hash-ref\n; hash-table-set!     -> hash-set!\n; hash-table-for-each -> hash-for-each\n; make-hash-table     -> (hash) or make-equal-hashtable",
-    "notes": "When porting from Gerbil, the biggest changes are import paths (: prefix -> parens), no (export #t), and no ## Gambit primitives."
+    "code": "; Gerbil imports -> Jerboa equivalents\n\n; Gerbil:                  Jerboa:\n; (import :std/sort)       (import (std sort))\n; (import :std/text/json)  (import (std text json))\n; (import :gerbil/gambit)  [NOT AVAILABLE - use Chez builtins]\n\n; API name changes:\n; Gerbil              -> Jerboa\n; hash-table-ref      -> hash-ref\n; hash-table-set!     -> hash-put!  (NOT hash-set!)\n; hash-table-delete!  -> hash-remove!  (NOT hash-delete!)\n; hash-table-count    -> hash-length\n; hash-key?           -> hash-key?  (same)\n; hash-table-for-each -> hash-for-each\n; make-hash-table     -> make-hash-table  (same)\n\n; Syntax differences:\n; (export #t)          -> must enumerate exports explicitly\n; (##...) primitives   -> NOT available, use Chez R6RS equivalents\n; with-catch           -> try/catch or guard\n; spawn                -> spawn  (same, re-exported from prelude)",
+    "notes": "Key gotcha: hash-put! not hash-set!, hash-remove! not hash-delete!, hash-key? not hash-contains?. No (export #t) — must list exports. No ## Gambit primitives."
   },
   {
     "id": "jerboa-defrule",
     "title": "Custom Syntax with defrule",
     "tags": ["defrule", "macro", "syntax", "define-syntax", "syntax-rules"],
     "imports": ["(jerboa prelude)"],
-    "code": "(import (jerboa prelude))\n\n; Simple defrule macro\n(defrule (swap! a b)\n  (let ([tmp a])\n    (set! a b)\n    (set! b tmp)))\n\n; Usage\n(define x 1)\n(define y 2)\n(swap! x y)\n; x = 2, y = 1\n\n; More complex pattern\n(defrule (while condition body ...)\n  (let loop ()\n    (when condition\n      body ...\n      (loop))))\n\n; Usage\n(define i 0)\n(while (< i 5)\n  (display i)\n  (set! i (+ i 1)))",
-    "notes": "defrule is from (jerboa prelude) and is sugar over define-syntax + syntax-rules. It's hygienic by default."
+    "code": "(import (jerboa prelude))\n\n; Simple defrule macro\n(defrule (swap! a b)\n  (let ([tmp a])\n    (set! a b)\n    (set! b tmp)))\n\n; Usage\n(define x 1)\n(define y 2)\n(swap! x y)\n; x = 2, y = 1\n\n; More complex pattern with rest args\n(defrule (when-debug body ...)\n  (when (getenv \"DEBUG\" #f)\n    body ...))",
+    "notes": "defrule is from (jerboa prelude) and is sugar over define-syntax + syntax-rules. It's hygienic by default. For multiple clauses, use defrules instead."
+  },
+  {
+    "id": "jerboa-def-star",
+    "title": "Multi-Arity Functions with def*",
+    "tags": ["def*", "case-lambda", "multi-arity", "overload", "dispatch"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; def* creates case-lambda with multiple arities\n(def* describe\n  [(x) (list 'one x)]\n  [(x y) (list 'two x y)]\n  [(x y z) (list 'three x y z)])\n\n(describe 1)       ; => (one 1)\n(describe 1 2)     ; => (two 1 2)\n(describe 1 2 3)   ; => (three 1 2 3)\n\n; Useful for optional arguments without keywords\n(def* connect\n  [(db) (connect \"localhost\" 5432 db)]\n  [(host db) (connect host 5432 db)]\n  [(host port db)\n   (format \"~a:~a/~a\" host port db)])\n\n(connect \"mydb\")                ; => \"localhost:5432/mydb\"\n(connect \"db.local\" \"mydb\")     ; => \"db.local:5432/mydb\"\n(connect \"db.local\" 3306 \"mydb\"); => \"db.local:3306/mydb\"",
+    "notes": "def* expands to case-lambda. Each clause is [args body ...]. Cannot mix fixed and rest args in the same def*."
+  },
+  {
+    "id": "jerboa-defclass-defmethod",
+    "title": "Classes, Methods, and Dispatch",
+    "tags": ["defclass", "defmethod", "class", "method", "dispatch", "oop", "inheritance"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Define a class with fields\n(defclass Animal (name sound))\n\n; Define a method using defmethod\n(defmethod (speak (self Animal))\n  (format #t \"~a says ~a\\n\" (Animal-name self) (Animal-sound self)))\n\n; Create instances and call methods\n(def dog (make-Animal \"Rex\" \"woof\"))\n(speak dog)  ; prints: Rex says woof\n\n; Method dispatch with ~ (tilde operator)\n; {method obj} in reader syntax, or:\n(~ dog 'speak)  ; equivalent to (speak dog)\n\n; bind-method! for dynamic method binding\n(bind-method! Animal 'greet\n  (lambda (self)\n    (format #t \"Hi, I'm ~a!\\n\" (Animal-name self))))\n\n(~ dog 'greet)  ; prints: Hi, I'm Rex!",
+    "notes": "defclass generates make-NAME, NAME?, NAME-field accessors like defstruct. defmethod registers a method in the MOP dispatch table. ~ (tilde) dispatches: (~ obj 'method args...). bind-method! adds methods dynamically."
+  },
+  {
+    "id": "jerboa-let-hash",
+    "title": "Hash Table Destructuring with let-hash",
+    "tags": ["let-hash", "hash", "destructure", "extract", "sugar"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n(def user (hash 'name \"Alice\" 'age 30 'email \"alice@example.com\"))\n\n; let-hash binds dotted names to hash lookups\n(let-hash user\n  (displayln .name)    ; uses hash-ref (error if missing)\n  (displayln .age))\n\n; .?key uses hash-get (returns #f if missing)\n(let-hash user\n  (displayln .?phone))  ; => #f, no error\n\n; Useful for processing JSON/config data\n(def config (hash 'host \"localhost\" 'port 8080))\n(let-hash config\n  (format #t \"Server at ~a:~a\\n\" .host .port))",
+    "notes": "let-hash is a macro from (std sugar), re-exported by prelude. .key expands to hash-ref (error on missing). .?key expands to hash-get (returns #f on missing)."
+  },
+  {
+    "id": "jerboa-defrules",
+    "title": "Multi-Clause Macros with defrules",
+    "tags": ["defrules", "macro", "syntax", "multi-clause", "keywords"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; defrules: multiple pattern clauses with auxiliary keywords\n(defrules my-cond (=> else)\n  [(_ test => expr)\n   (let ([t test]) (if t (expr t) (void)))]\n  [(_ test => expr else alt)\n   (let ([t test]) (if t (expr t) alt))]\n  [(_ test body ...)\n   (when test body ...)])\n\n; Usage\n(my-cond (assq 'x '((x . 1) (y . 2))) => cdr)  ; => 1\n(my-cond #f => identity else \"nope\")             ; => \"nope\"\n(my-cond #t (displayln \"yes\"))                   ; prints yes",
+    "notes": "defrules is like defrule but supports multiple clauses. The second argument lists auxiliary keywords that won't be treated as pattern variables. Expands to define-syntax + syntax-rules."
+  },
+  {
+    "id": "jerboa-sugar-awhen-aif",
+    "title": "Anaphoric Macros: awhen and aif",
+    "tags": ["awhen", "aif", "anaphoric", "sugar", "it", "conditional"],
+    "imports": ["(jerboa prelude)", "(std sugar)"],
+    "code": "(import (jerboa prelude))\n(import (std sugar))\n\n; awhen: when + bind result to 'it'\n(awhen (assq 'name '((name . \"Alice\") (age . 30)))\n  (displayln (cdr it)))  ; => \"Alice\"\n\n; aif: if + bind test result to 'it'\n(aif (hash-get users 'alice)\n  (format \"Found: ~a\" it)\n  \"Not found\")\n\n; Common pattern: check and use result\n(awhen (string-contains \"hello world\" \"world\")\n  (format #t \"Found at index ~a\\n\" it))  ; => Found at index 6",
+    "notes": "awhen and aif are from (std sugar). They bind the test result to the variable 'it' in the body. awhen only executes body if test is truthy. aif has both then and else branches."
+  },
+  {
+    "id": "jerboa-sugar-when-let",
+    "title": "Conditional Binding: when-let and if-let",
+    "tags": ["when-let", "if-let", "binding", "conditional", "sugar"],
+    "imports": ["(jerboa prelude)", "(std sugar)"],
+    "code": "(import (jerboa prelude))\n(import (std sugar))\n\n; when-let: bind + conditional execution\n(when-let (user (hash-get users 'alice))\n  (displayln user))\n; body only runs if user is truthy\n\n; if-let: bind + if/else\n(if-let (val (hash-get config 'timeout))\n  (format \"timeout is ~a\" val)\n  \"no timeout set\")",
+    "notes": "when-let and if-let are from (std sugar). The binding only happens if the value is truthy. Unlike awhen/aif, you choose the variable name."
+  },
+  {
+    "id": "jerboa-sugar-chain",
+    "title": "Value Threading with chain and chain-and",
+    "tags": ["chain", "chain-and", "threading", "pipe", "sugar", "compose"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; chain and chain-and are re-exported by prelude from (std sugar)\n\n; chain: thread a value through expressions using _ as placeholder\n(chain 5\n  (+ _ 10)     ; => 15\n  (* 2 _)      ; => 30\n  (- _ 5))     ; => 25\n\n; chain-and: short-circuits on #f\n(chain-and \"hello world\"\n  (string-contains _ \"world\")  ; => 6 (index)\n  (> _ 3)                      ; => #t\n  (and _ \"found it!\"))         ; => \"found it!\"\n\n; chain-and stops early if any step returns #f\n(chain-and \"hello\"\n  (string-contains _ \"xyz\")  ; => #f, stops here\n  (display _))               ; never runs",
+    "notes": "chain is re-exported by the prelude. _ is the placeholder for the threaded value. chain-and short-circuits on #f, similar to Clojure's some->."
+  },
+  {
+    "id": "jerboa-sugar-cut-cute",
+    "title": "Partial Application with cut and cute (SRFI-26)",
+    "tags": ["cut", "cute", "partial", "curry", "srfi-26", "sugar"],
+    "imports": ["(std sugar)"],
+    "code": "(import (std sugar))\n\n; cut: partial application with <> as slot placeholder\n(def add-five (cut + <> 5))\n(add-five 10)  ; => 15\n\n; Multiple slots\n(def between? (cut < <> <> <>))\n; equivalent to (lambda (a b c) (< a b c))\n\n; <...> for rest args\n(def my-list (cut list 'prefix <>))\n(my-list \"a\")  ; => (prefix \"a\")\n\n; cute: like cut but evaluates non-slot expressions once\n(def apply-to-range (cute map <> (iota 5)))\n; (iota 5) evaluated once at definition time\n(apply-to-range (lambda (x) (* x x)))  ; => (0 1 4 9 16)",
+    "notes": "cut and cute are SRFI-26 from (std sugar). <> marks a parameter slot, <...> marks rest parameters. cut evaluates non-slot args at each call; cute evaluates them once at definition time."
+  },
+  {
+    "id": "jerboa-sugar-unwind-protect",
+    "title": "Guaranteed Cleanup with unwind-protect and with-lock",
+    "tags": ["unwind-protect", "with-lock", "cleanup", "finally", "mutex", "sugar"],
+    "imports": ["(std sugar)"],
+    "code": "(import (std sugar))\n\n; unwind-protect: cleanup runs even on exception\n(def port (open-output-file \"log.txt\"))\n(unwind-protect\n  (begin\n    (display \"data\" port)\n    (error \"oops\"))  ; exception!\n  (close-port port))  ; cleanup always runs\n\n; with-lock: mutex acquire/release with guaranteed release\n(import (jerboa prelude))  ; for make-mutex, mutex-lock!, mutex-unlock!\n(def m (make-mutex))\n(with-lock m\n  (display \"critical section\"))\n; mutex released even if body throws",
+    "notes": "unwind-protect uses dynamic-wind internally. Cleanup runs on normal exit, exception, or continuation escape. with-lock acquires a mutex, runs body, releases even on exception."
+  },
+  {
+    "id": "jerboa-sugar-dotimes",
+    "title": "Counter Loop with dotimes",
+    "tags": ["dotimes", "loop", "counter", "repeat", "sugar", "iteration"],
+    "imports": ["(std sugar)"],
+    "code": "(import (std sugar))\n\n; dotimes: loop N times with counter variable\n(dotimes (i 5)\n  (display i)\n  (display \" \"))\n; prints: 0 1 2 3 4\n\n; Useful for simple repetition\n(dotimes (_ 3)\n  (displayln \"hello\"))\n; prints hello 3 times",
+    "notes": "dotimes is from (std sugar). Counter starts at 0, limit is exclusive (0 to n-1). Use _ as counter name if you don't need the value."
+  },
+  {
+    "id": "jerboa-sugar-assert",
+    "title": "Runtime Assertions with assert!",
+    "tags": ["assert", "assert!", "validation", "check", "sugar"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; assert! is re-exported by prelude from (std sugar)\n\n; Basic assertion\n(assert! (> x 0))\n\n; With custom error message\n(assert! (string? name) \"name must be a string\")\n\n; In function contracts\n(def (divide a b)\n  (assert! (not (zero? b)) \"division by zero\")\n  (/ a b))",
+    "notes": "assert! is re-exported by the prelude from (std sugar). Expands to (unless condition (error 'assert! message expr)). Use for precondition validation."
+  },
+  {
+    "id": "jerboa-with-catch",
+    "title": "Simple Exception Handling with with-catch",
+    "tags": ["with-catch", "exception", "catch", "error", "sugar"],
+    "imports": ["(std sugar)"],
+    "code": "(import (std sugar))\n\n; with-catch: 2-arg shorthand for exception handling\n(with-catch\n  (lambda (e) (format \"Error: ~a\" (error-message e)))\n  (lambda () (error \"something broke\")))\n; => \"Error: something broke\"\n\n; Common pattern: provide fallback value\n(def result\n  (with-catch\n    (lambda (e) #f)  ; return #f on any error\n    (lambda () (string->number \"not-a-number\"))))",
+    "notes": "with-catch is from (std sugar). First arg is error handler (lambda (e) ...), second is thunk to protect. Simpler than try/catch when you just need a fallback."
+  },
+  {
+    "id": "jerboa-string-ops",
+    "title": "String Operations (std misc string)",
+    "tags": ["string", "split", "join", "trim", "contains", "prefix", "suffix", "index", "empty"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; String ops are re-exported by prelude from (std misc string)\n\n; Split and join\n(string-split \"a,b,c\" \",\")      ; => (\"a\" \"b\" \"c\")\n(string-split \"hello world\")     ; => (\"hello\" \"world\") — default space\n(string-join '(\"a\" \"b\" \"c\") \"-\") ; => \"a-b-c\"\n(string-join '(\"a\" \"b\" \"c\"))     ; => \"a b c\" — default space\n\n; Trim (trims BOTH sides)\n(string-trim \"  hello  \")        ; => \"hello\"\n\n; Search\n(string-contains \"hello world\" \"world\")  ; => 6 (index, not boolean!)\n(string-contains \"hello\" \"xyz\")          ; => #f\n(string-index \"hello\" #\\l)               ; => 2 (takes a char)\n\n; Predicates\n(string-prefix? \"hel\" \"hello\")   ; => #t\n(string-suffix? \"rld\" \"world\")   ; => #t\n(string-empty? \"\")               ; => #t",
+    "notes": "GOTCHAS: string-trim trims BOTH sides (unlike some SRFI-13 implementations). string-contains returns an INDEX (not boolean), or #f. string-index takes a CHAR (not a predicate). All 7 functions are: string-split, string-join, string-trim, string-prefix?, string-suffix?, string-contains, string-index, string-empty?."
+  },
+  {
+    "id": "jerboa-list-ops",
+    "title": "List Operations (std misc list)",
+    "tags": ["list", "flatten", "unique", "take", "drop", "zip", "filter-map", "group-by", "every", "any"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; List ops are re-exported by prelude from (std misc list)\n\n; Flatten nested lists\n(flatten '(1 (2 (3 4)) 5))     ; => (1 2 3 4 5)\n\n; Remove duplicates\n(unique '(1 2 1 3 2))          ; => (1 2 3) — uses equal? by default\n(unique '(a b a) eq?)           ; => (a b) — custom comparator\n\n; Take and drop\n(take '(1 2 3 4 5) 3)          ; => (1 2 3)\n(drop '(1 2 3 4 5) 2)          ; => (3 4 5)\n\n; Append to end (opposite of cons)\n(snoc '(1 2) 3)                ; => (1 2 3)\n\n; Filter + map in one pass\n(filter-map (lambda (x) (and (> x 2) (* x x)))\n            '(1 2 3 4))        ; => (9 16)\n\n; Zip lists together\n(zip '(1 2 3) '(a b c))        ; => ((1 a) (2 b) (3 c))\n\n; Group by key function\n(group-by car '((a 1) (b 2) (a 3)))  ; => ((a (a 1) (a 3)) (b (b 2)))\n\n; Universal/existential quantifiers\n(every number? '(1 2 3))       ; => #t\n(any string? '(1 \"a\" 3))       ; => #t",
+    "notes": "All 10 exports: flatten, unique, snoc, take, drop, every, any, filter-map, group-by, zip. unique takes optional comparator (default equal?). filter-map returns only truthy results from the mapping function."
+  },
+  {
+    "id": "jerboa-alist-ops",
+    "title": "Association List and Plist Operations",
+    "tags": ["alist", "plist", "association", "lookup", "agetq", "pgetq", "key-value"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; Alist ops are re-exported by prelude from (std misc alist)\n\n; Alist: list of (key . value) pairs\n(def alist '((name . \"Alice\") (age . 30) (city . \"NYC\")))\n\n; Lookup with different equality\n(agetq 'name alist)            ; => \"Alice\" (eq? — fast for symbols)\n(agetv 'age alist)             ; => 30      (eqv? — for numbers/chars)\n(aget \"key\" alist)             ; => value   (equal? — for strings)\n\n; With default value\n(agetq 'phone alist #f)        ; => #f (key not found)\n\n; Mutate alist (updates in-place if key exists, else cons new pair)\n(asetq! 'age 31 alist)\n\n; Plist: flat key1 val1 key2 val2 ... format\n(def plist '(name \"Bob\" age 25 city \"LA\"))\n(pgetq 'name plist)            ; => \"Bob\"\n(pgetq 'phone plist \"unknown\") ; => \"unknown\"\n\n; Convert alist to hash table\n(def h (alist->hash-table alist))",
+    "notes": "agetq/agetv/aget use assq/assv/assoc internally. All have optional default (defaults to #f). asetq!/asetv!/aset! MUTATE the pair's cdr in place if key exists, else cons new pair. Plist functions (pgetq/pgetv/pget) search flat key-value lists."
+  },
+  {
+    "id": "jerboa-port-utils",
+    "title": "Port and File Utilities (std misc ports)",
+    "tags": ["port", "file", "read-file", "write-file", "string-port", "capture", "std misc ports"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; Port ops are re-exported by prelude from (std misc ports)\n\n; Read entire file\n(def text (read-file-string \"data.txt\"))    ; => string\n(def lines (read-file-lines \"data.txt\"))   ; => list of strings\n\n; Write to file\n(write-file-string \"output.txt\" \"content\")\n\n; Read from port\n(def s (read-all-as-string (current-input-port)))\n(def ls (read-all-as-lines port))\n\n; String I/O\n(with-output-to-string\n  (lambda ()\n    (display \"hello \")\n    (display \"world\")))  ; => \"hello world\"\n\n(with-input-from-string \"42\"\n  (lambda () (read)))  ; => 42",
+    "notes": "Exports: read-all-as-string, read-all-as-lines (from port), read-file-string, read-file-lines (from filename), write-file-string, with-input-from-string, with-output-to-string. Note: function names use read-file-string NOT read-all-text, and read-all-as-string NOT read-all-text."
+  },
+  {
+    "id": "jerboa-process-run",
+    "title": "Running External Processes",
+    "tags": ["process", "run", "command", "shell", "exec", "spawn", "std misc process"],
+    "imports": ["(std misc process)"],
+    "code": "(import (std misc process))\n\n; Run command, capture stdout as string\n(def output (run-process '(\"echo\" \"hello world\")))\n; => \"hello world\\n\"\n\n; Run command, get exit status only\n(def status (run-process/batch '(\"touch\" \"file.txt\")))\n; => 0 (success)\n\n; With working directory\n(run-process '(\"ls\") directory: \"/tmp\")\n\n; Open process as port (read stdout)\n(def port (open-input-process '(\"cat\" \"data.txt\")))\n(def contents (read-all-as-string port))\n\n; Open process for writing (to stdin)\n(def out (open-output-process '(\"sort\")))\n(display \"banana\\napple\\ncherry\" out)\n(close-port out)\n\n; Bidirectional process\n(def proc (open-process '(\"grep\" \"pattern\")))\n; proc is a process-port-rec with stdin/stdout/stderr ports",
+    "notes": "run-process returns stdout as string. run-process/batch returns exit status. open-input-process returns stdout port. open-output-process returns stdin port. open-process returns process-port-rec with all three ports."
+  },
+  {
+    "id": "jerboa-env-vars",
+    "title": "Environment Variable Access",
+    "tags": ["env", "environment", "getenv", "setenv", "variable", "std os env"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; getenv is re-exported by core from Chez\n\n; Read environment variable (with optional default)\n(getenv \"HOME\")              ; => \"/home/user\"\n(getenv \"MISSING\" #f)        ; => #f\n\n; Set and unset (from std os env if not in prelude)\n(import (std os env))\n(setenv \"MY_VAR\" \"value\")\n(unsetenv \"MY_VAR\")",
+    "notes": "getenv in jerboa core is a variadic wrapper: (getenv name) or (getenv name default). It's re-exported by core/prelude. setenv/unsetenv are in (std os env)."
+  },
+  {
+    "id": "jerboa-transducers",
+    "title": "Transducers for Composable Data Processing",
+    "tags": ["transducer", "sequence", "filter", "map", "compose", "pipeline", "stream"],
+    "imports": ["(std transducer)"],
+    "code": "(import (std transducer))\n\n; sequence: apply transducer chain to a list, return list\n(sequence (mapping (lambda (x) (* x x))) '(1 2 3 4 5))\n; => (1 4 9 16 25)\n\n; Compose multiple transducers (left-to-right data flow)\n(sequence\n  (compose-transducers\n    (filtering odd?)\n    (mapping (lambda (x) (* x x)))\n    (taking 3))\n  '(1 2 3 4 5 6 7 8 9))\n; => (1 9 25)\n\n; Deduplication\n(sequence (deduplicate) '(1 2 1 3 2 4))\n; => (1 2 3 4)\n\n; Sliding window\n(sequence (windowing 3) '(1 2 3 4 5))\n; => ((1 2 3) (2 3 4) (3 4 5))\n\n; Flat mapping\n(sequence (flat-mapping (lambda (x) (list x (* x x)))) '(1 2 3))\n; => (1 1 2 4 3 9)\n\n; transduce with custom reducer\n(transduce (filtering odd?) rf-sum 0 '(1 2 3 4 5))\n; => 9  (1 + 3 + 5)\n\n; into different collection types\n(into '() (mapping 1+) '(1 2 3))    ; => (2 3 4)\n(into #() (filtering odd?) '(1 2 3 4)) ; => #(1 3)",
+    "notes": "Transducers: mapping, filtering, taking, dropping, taking-while, dropping-while, flat-mapping, deduplicate, partitioning-by, windowing, indexing, enumerating, cat. Reducers: rf-cons, rf-append!, rf-count, rf-sum, rf-into-vector. sequence returns a list. transduce folds with a custom reducer. into supports list, vector, and string targets."
+  },
+  {
+    "id": "jerboa-threading",
+    "title": "Threading, Mutexes, and Condition Variables",
+    "tags": ["thread", "mutex", "lock", "condition-variable", "spawn", "concurrent", "std misc thread"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; Threading is re-exported by prelude from (std misc thread)\n\n; Create and start a thread\n(def t (make-thread (lambda () (+ 1 2))))\n(thread-start! t)\n(def result (thread-join! t))  ; => 3\n\n; spawn shorthand (start immediately)\n(def t2 (spawn (lambda () (* 6 7))))\n(thread-join! t2)  ; => 42\n\n; Thread utilities\n(thread-yield!)           ; yield to other threads\n(thread-sleep! 0.5)       ; sleep 500ms\n(current-thread)          ; current thread object\n\n; Mutex for mutual exclusion\n(def m (make-mutex))\n(mutex-lock! m)\n; ... critical section ...\n(mutex-unlock! m)\n\n; Condition variables for signaling\n(def cv (make-condition-variable))\n; Thread 1: (mutex-lock! m) ... (condition-variable-signal! cv) ... (mutex-unlock! m)\n; Thread 2: (mutex-lock! m) ... wait ... (mutex-unlock! m)\n\n; Message passing between threads\n(def t3 (spawn (lambda () (thread-receive))))  ; blocks waiting\n(thread-send t3 \"hello\")  ; send message\n(thread-join! t3)  ; => \"hello\"",
+    "notes": "Prelude re-exports SRFI-18 threading from (std misc thread): spawn, make-thread, thread-start!, thread-join!, thread-yield!, thread-sleep!, make-mutex, mutex-lock!, mutex-unlock!, make-condition-variable, condition-variable-signal!, condition-variable-broadcast!, thread-send, thread-receive, thread-mailbox-next."
+  },
+  {
+    "id": "jerboa-ffi-foreign-procedure",
+    "title": "Chez FFI with foreign-procedure",
+    "tags": ["ffi", "foreign", "c", "native", "shared-object", "foreign-procedure"],
+    "imports": ["(chezscheme)"],
+    "code": "(import (chezscheme))\n\n; Load a shared library\n(load-shared-object \"libc.so.6\")\n\n; Bind a C function\n(def c-getpid (foreign-procedure \"getpid\" () int))\n(c-getpid)  ; => process ID\n\n; With arguments\n(def c-strlen (foreign-procedure \"strlen\" (string) size_t))\n(c-strlen \"hello\")  ; => 5\n\n; Common C types for foreign-procedure:\n; int, unsigned, long, unsigned-long, size_t\n; double, float\n; string (char*), u8* (unsigned char*)\n; void* (opaque pointer)\n; void (return type only)\n\n; Using Jerboa's FFI macros (Gerbil-compatible syntax)\n(import (jerboa prelude))\n\n(begin-ffi\n  (c-declare \"\n    #include <math.h>\n  \")\n  (define-c-lambda c-sqrt (double) double \"sqrt\"))\n\n(c-sqrt 16.0)  ; => 4.0",
+    "notes": "Chez FFI uses foreign-procedure for direct C function binding. load-shared-object loads .so files. Jerboa adds begin-ffi, c-declare, define-c-lambda, c-lambda for Gerbil-compatible FFI syntax that expands to Chez foreign-procedure calls."
+  },
+  {
+    "id": "jerboa-json-write",
+    "title": "JSON Generation and Serialization",
+    "tags": ["json", "write", "encode", "serialize", "generate", "output"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Convert Scheme value to JSON string\n(json-object->string (hash \"name\" \"Alice\" \"age\" 30))\n; => \"{\\\"name\\\":\\\"Alice\\\",\\\"age\\\":30}\"\n\n; Write JSON to port\n(write-json (hash \"key\" \"value\") (current-output-port))\n\n; Scheme -> JSON type mapping:\n; hash table  -> JSON object\n; vector      -> JSON array\n; string      -> JSON string\n; number      -> JSON number\n; #t          -> true\n; #f          -> false\n; 'null or () -> null\n\n; Building complex JSON\n(def response\n  (hash \"status\" \"ok\"\n        \"data\" (vector\n                 (hash \"id\" 1 \"name\" \"Alice\")\n                 (hash \"id\" 2 \"name\" \"Bob\"))))\n(displayln (json-object->string response))",
+    "notes": "The prelude exports: read-json (from port), write-json (to port), string->json-object (parse string), json-object->string (serialize to string). Vectors become JSON arrays, hash tables become JSON objects."
+  },
+  {
+    "id": "jerboa-format-directives",
+    "title": "Format String Directives",
+    "tags": ["format", "printf", "string", "output", "directive", "std format"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n; format, printf, fprintf, eprintf are re-exported by prelude\n\n; format returns string when first arg is #f\n(format #f \"Hello ~a, you are ~d years old\" \"Alice\" 30)\n; => \"Hello Alice, you are 30 years old\"\n\n; format prints when first arg is #t (stdout) or a port\n(format #t \"~a\\n\" \"printed to stdout\")\n(fprintf (current-error-port) \"error: ~a\\n\" \"oops\")\n\n; Common directives:\n; ~a  display (human-readable, no quotes)\n; ~s  write (machine-readable, with quotes)\n; ~d  decimal integer\n; ~b  binary\n; ~o  octal\n; ~x  hexadecimal\n; ~%  newline\n; ~~  literal tilde\n\n; Shortcuts\n(printf \"~a ~a\\n\" \"hello\" \"world\")  ; print to stdout\n(eprintf \"error: ~a\\n\" \"oops\")      ; print to stderr",
+    "notes": "format is from (std format), re-exported by prelude. printf = (format #t ...), eprintf = (format (current-error-port) ...). Use ~a for display, ~s for write (quoted), ~d for decimal."
+  },
+  {
+    "id": "jerboa-library-definition",
+    "title": "Defining R6RS Library Modules",
+    "tags": ["library", "module", "export", "import", "define", "sls"],
+    "imports": [],
+    "code": "; File: lib/my-project/utils.sls\n(library (my-project utils)\n  (export helper square greet)\n  (import (jerboa prelude))\n\n  (def (helper x) (* x 2))\n  (def (square x) (* x x))\n  (def (greet name) (format \"Hello, ~a!\" name)))\n\n; File: main.ss (script)\n(import (my-project utils))\n\n(displayln (greet \"World\"))  ; => Hello, World!\n(displayln (square 5))       ; => 25\n\n; Run with:\n; scheme --libdirs lib --script main.ss\n\n; Selective import in another module\n(import (only (my-project utils) square))\n(import (except (my-project utils) greet))\n(import (rename (my-project utils) (helper h)))",
+    "notes": "Jerboa uses R6RS library system. Files use .sls extension. Module path matches directory structure: (my-project utils) -> lib/my-project/utils.sls. Must explicitly list exports (no export-all). Use --libdirs to point to the lib/ directory."
   }
 ]
