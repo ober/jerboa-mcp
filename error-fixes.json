@@ -1,0 +1,167 @@
+[
+  {
+    "id": "unbound-variable",
+    "pattern": "variable .* is not bound|unbound identifier",
+    "type": "Unbound Variable",
+    "message": "Symbol not bound in current scope",
+    "explanation": "A symbol was used that isn't imported or defined. Usually means a missing import, misspelled name, or wrong module.",
+    "fix": "Add the missing import: (import (std MODULE)) or check the symbol spelling with jerboa_module_exports",
+    "code_example": "(import (std sort))\n(sort '(3 1 2) <) ; now sort is bound",
+    "imports": [],
+    "related_recipes": ["jerboa-import-prelude", "jerboa-sort"]
+  },
+  {
+    "id": "wrong-argument-count",
+    "pattern": "incorrect argument count|wrong number of arguments|Exception: wrong number",
+    "type": "Arity Error",
+    "message": "Wrong number of arguments to a function",
+    "explanation": "Function called with wrong number of args. Jerboa functions can have required and optional params.",
+    "fix": "Use jerboa_function_signature to check the correct arity. Check optional vs required parameters.",
+    "code_example": "; Check signature:\n; (sort lst pred) takes 2 args\n(sort '(3 1 2) <)",
+    "imports": [],
+    "related_recipes": ["jerboa-sort", "jerboa-keyword-args"]
+  },
+  {
+    "id": "not-a-procedure",
+    "pattern": "attempt to apply non-procedure|not a procedure",
+    "type": "Non-Procedure Application",
+    "message": "Tried to call something that isn't a function",
+    "explanation": "A value was used as if it were a function. Common causes: wrong variable name, function returned non-procedure, missing quotes.",
+    "fix": "Use jerboa_describe to inspect the value. Check variable names and ensure the binding is a procedure.",
+    "code_example": "(define my-func (lambda (x) (* x 2)))\n(my-func 5) ; correct call",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "import-conflict",
+    "pattern": "import conflict|Bad binding.*import",
+    "type": "Import Conflict",
+    "message": "Same symbol imported from multiple modules",
+    "explanation": "Two modules export the same symbol, causing a conflict. Use except-in or only-in to resolve.",
+    "fix": "Use (except-in (std module1) conflicting-sym) or rename with (rename-in ...)",
+    "code_example": "(import (except-in (std module1) conflicting-sym))\n(import (std module2))",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "file-not-found",
+    "pattern": "cannot open file|no such file|file not found|ENOENT",
+    "type": "File Not Found",
+    "message": "File or module not found",
+    "explanation": "A file or library path could not be resolved. Check JERBOA_HOME and libdirs.",
+    "fix": "Set JERBOA_HOME correctly. Use --libdirs when running: scheme --libdirs $JERBOA_HOME/lib --script file.ss",
+    "code_example": "# Run with explicit libdirs:\nscheme --libdirs ~/mine/jerboa/lib --script my-script.ss",
+    "imports": [],
+    "related_recipes": ["jerboa-run-script"]
+  },
+  {
+    "id": "library-not-found",
+    "pattern": "cannot find library|library .* not found|no library",
+    "type": "Library Not Found",
+    "message": "A library module could not be found in libdirs",
+    "explanation": "Jerboa can't find the requested library. The JERBOA_HOME/lib directory isn't in the search path.",
+    "fix": "Ensure JERBOA_HOME/lib is in --libdirs. Check module path spelling (use (std sort) not :std/sort).",
+    "code_example": "(import (jerboa prelude))\n(import (std sort))\n; Run: scheme --libdirs $JERBOA_HOME/lib --script ...",
+    "imports": [],
+    "related_recipes": ["jerboa-run-script", "jerboa-import-prelude"]
+  },
+  {
+    "id": "syntax-violation",
+    "pattern": "syntax violation|invalid syntax|ill-formed",
+    "type": "Syntax Error",
+    "message": "Invalid syntax form",
+    "explanation": "A macro or special form was used incorrectly. Check the number and structure of sub-forms.",
+    "fix": "Use jerboa_check_syntax to validate. Use jerboa_expand_macro to see what the macro expects.",
+    "code_example": "; match requires at least one clause\n(match x\n  [(a b) (+ a b)]\n  [_ 0])",
+    "imports": [],
+    "related_recipes": ["jerboa-match"]
+  },
+  {
+    "id": "assertion-violation",
+    "pattern": "assertion violation|assertion failed",
+    "type": "Assertion Violation",
+    "message": "An assertion check failed",
+    "explanation": "A (assert ...) form or precondition check failed. The value didn't meet expected constraints.",
+    "fix": "Check what assertion is being violated. Use jerboa_describe to inspect the value.",
+    "code_example": "(assert (list? x))  ; fails if x is not a list",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "hash-ref-void",
+    "pattern": "hash-ref.*void|#!void from hash",
+    "type": "Hash-Ref Returns Void",
+    "message": "hash-ref returned void (key not found)",
+    "explanation": "In Jerboa, hash-ref returns #!void when key not found (not an error). Use hash-get for safe access with default.",
+    "fix": "Use (hash-get table key default) to get a default value when key is missing.",
+    "code_example": "; Wrong: (hash-ref table 'key) may return void\n; Right:\n(define val (hash-get table 'key #f))\n(when val (process val))",
+    "imports": ["(jerboa prelude)"],
+    "related_recipes": ["jerboa-hash-create"]
+  },
+  {
+    "id": "keyword-mismatch",
+    "pattern": "keyword.*argument|missing keyword|unknown keyword",
+    "type": "Keyword Argument Error",
+    "message": "Wrong keyword arguments passed to function",
+    "explanation": "Function uses keyword arguments but they were passed positionally, or the keyword name is wrong.",
+    "fix": "Use jerboa_function_signature to see keyword parameter names. Pass as name: value syntax.",
+    "code_example": "; Check signature: (my-func x: 1 y: 2)\n(my-func x: 10 y: 20)  ; keyword style",
+    "imports": [],
+    "related_recipes": ["jerboa-keyword-args"]
+  },
+  {
+    "id": "reader-bracket-error",
+    "pattern": "\\[.*unexpected|bracket.*syntax|unexpected.*\\[",
+    "type": "Reader Extension Error",
+    "message": "Bracket syntax not recognized",
+    "explanation": "Jerboa's [...] and {...} reader extensions aren't active. This happens when using plain scheme without the jerboa reader.",
+    "fix": "Import the jerboa reader: (import (jerboa reader)). Use jerboa-read instead of read for user input.",
+    "code_example": "(import (jerboa reader))\n; Now [...] and {...} work:\n(jerboa-read-string \"[1 2 3]\")",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "foreign-procedure-error",
+    "pattern": "foreign-procedure|foreign procedure|FFI error",
+    "type": "FFI Error",
+    "message": "Foreign procedure call failed",
+    "explanation": "A foreign-procedure (FFI) call failed. Common causes: wrong types, null pointer, shared library not loaded.",
+    "fix": "Check argument types match the foreign-procedure declaration. Ensure shared library is loaded.",
+    "code_example": "(load-shared-object \"libfoo.so\")\n(define foo (foreign-procedure \"c_foo\" (integer-32) integer-32))\n(foo 42)",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "condition-handler",
+    "pattern": "condition.*handler|raise.*no handler|unhandled.*condition",
+    "type": "Unhandled Condition",
+    "message": "A condition was raised without a handler",
+    "explanation": "An exception was raised (via raise or error) with no guard or with-exception-handler in scope.",
+    "fix": "Wrap code in guard: (guard (e [else (condition/message e)]) ...). Or use try/catch from jerboa prelude.",
+    "code_example": "(import (jerboa prelude))\n(try\n  (risky-operation)\n  (catch e (display (condition/message e))))",
+    "imports": ["(jerboa prelude)"],
+    "related_recipes": ["jerboa-try-catch"]
+  },
+  {
+    "id": "duplicate-definition",
+    "pattern": "duplicate definition|rebind.*conflict|already defined",
+    "type": "Duplicate Definition",
+    "message": "A name is defined more than once",
+    "explanation": "The same symbol is being defined twice in the same module or scope.",
+    "fix": "Remove the duplicate. Use jerboa_check_duplicates to find all duplicates in a file.",
+    "code_example": "; Remove one of:\n; (define foo 1)  ; first definition\n; (define foo 2)  ; ERROR: duplicate",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "incompatible-record-type",
+    "pattern": "incompatible record type|record type.*mismatch",
+    "type": "Record Type Mismatch",
+    "message": "Wrong record type passed to accessor/predicate",
+    "explanation": "A record accessor was called with a value of a different record type than expected.",
+    "fix": "Check that you're using the right accessor for the right type. Use type predicates to validate.",
+    "code_example": "(define-record-type point (make-point x y) point? (x point-x) (y point-y))\n(when (point? val) (point-x val))  ; safe access",
+    "imports": [],
+    "related_recipes": ["jerboa-defstruct"]
+  }
+]

@@ -1,0 +1,155 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { z } from 'zod';
+import type { Recipe } from './howto.js';
+import { REPO_COOKBOOK_PATH, invalidateCookbookCache } from './howto.js';
+
+export function registerHowtoAddTool(server: McpServer): void {
+  server.registerTool(
+    'jerboa_howto_add',
+    {
+      title: 'Add Jerboa Cookbook Recipe',
+      description:
+        'Append a new Jerboa/Chez Scheme recipe to the jerboa-mcp cookbook. ' +
+        'If a recipe with the same id already exists, it is replaced (update semantics). ' +
+        'By default writes to the jerboa-mcp repo cookbook. ' +
+        'Optionally specify cookbook_path to write to a different file.',
+      annotations: {
+        readOnlyHint: false,
+        idempotentHint: true,
+      },
+      inputSchema: {
+        cookbook_path: z
+          .string()
+          .optional()
+          .describe(
+            'Absolute path to a JSON cookbook file. If omitted, writes to the jerboa-mcp repo cookbook.',
+          ),
+        id: z
+          .string()
+          .describe('Unique recipe identifier in kebab-case (e.g. "read-csv-file")'),
+        title: z.string().describe('Human-readable title (e.g. "Read a CSV file")'),
+        tags: z
+          .array(z.string())
+          .describe('Search keywords (e.g. ["csv", "file", "read", "parse"])'),
+        imports: z
+          .array(z.string())
+          .describe('Chez/Jerboa module imports (e.g. ["(std text json)"]). Use [] if none needed.'),
+        code: z.string().describe('Code example'),
+        notes: z.string().optional().describe('Usage notes'),
+        related: z
+          .array(z.string())
+          .optional()
+          .describe('Related recipe IDs'),
+        supersedes: z
+          .string()
+          .optional()
+          .describe(
+            'If provided, marks the recipe with this ID as deprecated and sets its superseded_by to the new recipe ID.',
+          ),
+        valid_for: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'List of Jerboa/Chez version strings where this recipe is confirmed working. ' +
+            'Typically set by automated testing.',
+          ),
+      },
+    },
+    async ({ cookbook_path: explicitPath, id, title, tags, imports, code, notes, related, supersedes, valid_for }) => {
+      const cookbook_path = explicitPath || REPO_COOKBOOK_PATH;
+      // Read existing file or start fresh
+      let recipes: Recipe[] = [];
+      try {
+        const raw = readFileSync(cookbook_path, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Error: ${cookbook_path} does not contain a JSON array.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        recipes = parsed;
+      } catch (e: unknown) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+          // File doesn't exist yet — start with empty array
+          recipes = [];
+        } else {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Error reading ${cookbook_path}: ${e instanceof Error ? e.message : String(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+
+      // Build the new recipe
+      const recipe: Recipe = { id, title, tags, imports, code };
+      if (notes) recipe.notes = notes;
+      if (related && related.length > 0) recipe.related = related;
+      if (valid_for && valid_for.length > 0) recipe.valid_for = valid_for;
+
+      // Replace existing recipe with same id, or append
+      const existingIdx = recipes.findIndex((r) => r.id === id);
+      if (existingIdx >= 0) {
+        // Preserve existing valid_for if the new call doesn't provide one
+        if (!valid_for && recipes[existingIdx].valid_for) {
+          recipe.valid_for = recipes[existingIdx].valid_for;
+        }
+        recipes[existingIdx] = recipe;
+      } else {
+        recipes.push(recipe);
+      }
+
+      // Mark superseded recipe as deprecated
+      if (supersedes) {
+        const supersededIdx = recipes.findIndex((r) => r.id === supersedes);
+        if (supersededIdx >= 0) {
+          recipes[supersededIdx] = {
+            ...recipes[supersededIdx],
+            deprecated: true,
+            superseded_by: id,
+          };
+        }
+      }
+
+      // Write back
+      try {
+        mkdirSync(dirname(cookbook_path), { recursive: true });
+        writeFileSync(cookbook_path, JSON.stringify(recipes, null, 2) + '\n');
+        // Invalidate the cookbook cache so subsequent reads pick up the new data
+        invalidateCookbookCache(cookbook_path);
+      } catch (e: unknown) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error writing ${cookbook_path}: ${e instanceof Error ? e.message : String(e)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const action = existingIdx >= 0 ? 'Updated' : 'Added';
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `${action} recipe "${id}" in ${cookbook_path} (${recipes.length} total recipes).`,
+          },
+        ],
+      };
+    },
+  );
+}

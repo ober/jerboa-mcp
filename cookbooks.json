@@ -1,0 +1,122 @@
+[
+  {
+    "id": "jerboa-import-prelude",
+    "title": "Import Jerboa Prelude (Basic Pattern)",
+    "tags": ["import", "prelude", "basic", "setup"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Now you have: def, defstruct, defclass, defmethod, match, try/catch,\n; hash, sort, format, JSON, path, string, list, alist operations\n(def (greet name)\n  (format \"Hello, ~a!\" name))\n\n(display (greet \"World\"))\n(newline)",
+    "notes": "The jerboa prelude provides Gerbil-style syntax on top of Chez Scheme. Import it first in any Jerboa file."
+  },
+  {
+    "id": "jerboa-defstruct",
+    "title": "Define and Use Structs",
+    "tags": ["defstruct", "struct", "record", "define-record"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n(defstruct Point (x y))\n\n(def p (make-Point 3 4))\n(display (Point-x p))  ; => 3\n(display (Point? p))   ; => #t\n\n; With default values (if supported)\n(defstruct Config\n  (host \"localhost\")\n  (port 8080))\n\n(def cfg (make-Config))\n(display (Config-port cfg))  ; => 8080",
+    "notes": "defstruct generates make-NAME, NAME?, and NAME-FIELD accessors."
+  },
+  {
+    "id": "jerboa-hash-create",
+    "title": "Hash Table Creation and Access",
+    "tags": ["hash", "hashtable", "dict", "map"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Create hash table\n(def h (hash 'name \"Alice\" 'age 30))\n\n; Access (returns #!void if not found)\n(hash-ref h 'name)     ; => \"Alice\"\n\n; Safe access with default\n(hash-get h 'email #f)  ; => #f (key not found)\n\n; Modify (hash tables are mutable)\n(hash-set! h 'email \"alice@example.com\")\n\n; Iterate\n(hash-for-each h\n  (lambda (k v)\n    (format #t \"~a: ~a\\n\" k v)))\n\n; Check membership\n(hash-ref? h 'name)  ; => #t",
+    "notes": "Use hash-get instead of hash-ref when key may be missing. hash-ref returns #!void for missing keys."
+  },
+  {
+    "id": "jerboa-match",
+    "title": "Pattern Matching",
+    "tags": ["match", "pattern", "case", "cond"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Basic match\n(def (describe x)\n  (match x\n    [0 \"zero\"]\n    [(? number? n) (format \"number ~a\" n)]\n    [(? string? s) (format \"string: ~a\" s)]\n    [(a b) (format \"pair: ~a ~a\" a b)]\n    [(a . rest) (format \"list starting with ~a\" a)]\n    [_ \"other\"]))\n\n(display (describe 42))    ; => \"number 42\"\n(display (describe \"hi\"))  ; => \"string: hi\"\n(display (describe '(1 2 3))) ; => \"list starting with 1\"",
+    "notes": "match is from the jerboa prelude. Patterns include literals, predicates with ?, list patterns, and wildcards _."
+  },
+  {
+    "id": "jerboa-try-catch",
+    "title": "Error Handling with try/catch",
+    "tags": ["try", "catch", "error", "exception", "guard"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; try/catch style (from jerboa prelude)\n(try\n  (error \"something went wrong\" 42)\n  (catch e\n    (display (condition/message e))\n    (newline)))\n\n; guard style (R6RS/Chez)\n(guard (e\n        [(&error? e) (condition/message e)]\n        [else \"unknown error\"])\n  (error \"test error\"))\n\n; Re-raise\n(guard (e\n        [(string-prefix? \"expected\" (condition/message e))\n         (raise e)]   ; re-raise\n        [else #f])   ; suppress others\n  ...)",
+    "notes": "Both try/catch (jerboa prelude) and guard (R6RS) work. guard is more flexible for matching condition types."
+  },
+  {
+    "id": "jerboa-json-parse",
+    "title": "JSON Parsing",
+    "tags": ["json", "parse", "decode", "std text json"],
+    "imports": ["(jerboa prelude)", "(std text json)"],
+    "code": "(import (jerboa prelude))\n(import (std text json))\n\n; Parse JSON string\n(def data (json-read (open-string-input-port \"{\\\"name\\\": \\\"Alice\\\", \\\"age\\\": 30}\")))\n\n; Access fields (returns hash table)\n(hash-ref data \"name\")  ; => \"Alice\"\n(hash-ref data \"age\")   ; => 30\n\n; Parse JSON array\n(def arr (json-read (open-string-input-port \"[1, 2, 3]\")))\n; arr is a vector: #(1 2 3)\n\n; Read from file\n(call-with-input-file \"data.json\"\n  (lambda (port)\n    (json-read port)))",
+    "notes": "json-read returns hash tables for objects, vectors for arrays. Strings use Scheme strings."
+  },
+  {
+    "id": "jerboa-sort",
+    "title": "Sorting Lists",
+    "tags": ["sort", "list", "order", "compare", "std sort"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Basic sort (sort is in prelude)\n(sort '(3 1 4 1 5 9 2 6) <)  ; => (1 1 2 3 4 5 6 9)\n\n; Sort strings\n(sort '(\"banana\" \"apple\" \"cherry\") string<?)\n\n; Sort by key\n(def people '((alice 30) (bob 25) (carol 35)))\n(sort people (lambda (a b) (< (cadr a) (cadr b))))\n; => ((bob 25) (alice 30) (carol 35))\n\n; Sort with std sort module (more options)\n(import (std sort))\n(sort! '(3 1 2) <)  ; destructive sort",
+    "notes": "sort is included in the jerboa prelude. For destructive sort!, use (import (std sort))."
+  },
+  {
+    "id": "jerboa-file-read",
+    "title": "File I/O",
+    "tags": ["file", "read", "write", "port", "io"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Read entire file\n(def contents\n  (call-with-input-file \"data.txt\"\n    (lambda (port)\n      (let loop ([lines '()])\n        (def line (read-line port))\n        (if (eof-object? line)\n            (reverse lines)\n            (loop (cons line lines)))))))\n\n; Write to file\n(call-with-output-file \"output.txt\"\n  (lambda (port)\n    (display \"hello\" port)\n    (newline port)))\n\n; Read entire file as string (with std module)\n(import (std misc ports))\n(def text (read-all-text \"data.txt\"))",
+    "notes": "Chez file I/O uses call-with-input-file/call-with-output-file. std misc ports provides read-all-text."
+  },
+  {
+    "id": "jerboa-test-suite",
+    "title": "Writing Tests",
+    "tags": ["test", "check", "test-suite", "unit test", "std test"],
+    "imports": ["(std test)"],
+    "code": "(import (std test))\n\n; Define a test suite\n(test-suite \"my-module tests\"\n  \n  (test \"basic arithmetic\"\n    (check (+ 1 2) => 3)\n    (check (- 10 3) => 7))\n  \n  (test \"string operations\"\n    (check (string-length \"hello\") => 5)\n    (check (string-append \"foo\" \"bar\") => \"foobar\"))\n  \n  (test \"list operations\"\n    (check (length '(1 2 3)) => 3)\n    (check (car '(1 2 3)) => 1)))\n\n; Run with: scheme --libdirs $JERBOA_HOME/lib --script test.ss",
+    "notes": "Tests use (std test) module. check compares with =>, string= for strings, equal? for structures."
+  },
+  {
+    "id": "jerboa-run-script",
+    "title": "Running a Jerboa Script",
+    "tags": ["run", "script", "scheme", "command line", "execute"],
+    "imports": [],
+    "code": "#!/usr/bin/env scheme --libdirs ${JERBOA_HOME:-~/mine/jerboa}/lib --script\n\n; Or run manually:\n; scheme --libdirs $JERBOA_HOME/lib --script myscript.ss\n\n; Compile imported libraries for speed:\n; scheme --compile-imported-libraries --libdirs $JERBOA_HOME/lib --script myscript.ss\n\n(import (jerboa prelude))\n\n; Command-line args\n(def args (cdr (command-line)))\n\n(display \"Hello from Jerboa!\")\n(newline)",
+    "notes": "Set JERBOA_HOME to point to your Jerboa installation. The --compile-imported-libraries flag pre-compiles .sls to .so for faster startup."
+  },
+  {
+    "id": "jerboa-keyword-args",
+    "title": "Keyword Argument Functions",
+    "tags": ["keyword", "arguments", "named", "optional", "def"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Function with keyword arguments\n(def (connect host: (host \"localhost\")\n              port: (port 5432)\n              db: db)\n  (format \"connecting to ~a:~a/~a\" host port db))\n\n; Call with keyword args\n(connect db: \"mydb\")              ; uses defaults\n(connect host: \"db.example.com\"\n         port: 5433\n         db: \"prod\")\n\n; Mixed positional and keyword\n(def (process items limit: (limit 100))\n  (take items limit))\n\n(process '(1 2 3 4 5) limit: 3)   ; => (1 2 3)",
+    "notes": "Keyword args use the keyword: (default) syntax from jerboa prelude. Caller uses name: value."
+  },
+  {
+    "id": "jerboa-path-ops",
+    "title": "Path Manipulation",
+    "tags": ["path", "file", "directory", "os", "std os path"],
+    "imports": ["(jerboa prelude)", "(std os path)"],
+    "code": "(import (jerboa prelude))\n(import (std os path))\n\n; Basic path ops\n(path-join \"/home\" \"user\" \"file.txt\")  ; => \"/home/user/file.txt\"\n(path-basename \"/home/user/file.txt\")  ; => \"file.txt\"\n(path-dirname \"/home/user/file.txt\")   ; => \"/home/user\"\n(path-extension \"file.txt\")            ; => \".txt\"\n\n; Check existence\n(file-exists? \"/etc/hosts\")   ; => #t\n(directory? \"/tmp\")           ; => #t\n\n; List directory\n(directory-list \"/tmp\")       ; list of filenames\n\n; Expand ~\n(path-expand \"~/mine/jerboa\") ; expands ~",
+    "notes": "Path operations from (std os path). Use path-join for portable path construction."
+  },
+  {
+    "id": "jerboa-channel-thread",
+    "title": "Channel-Based Concurrency",
+    "tags": ["channel", "thread", "concurrency", "parallel", "actor"],
+    "imports": ["(std misc channel)", "(std misc threads)"],
+    "code": "(import (std misc channel))\n(import (std misc threads))\n\n; Worker thread pattern\n(def work-ch (make-channel))\n(def result-ch (make-channel))\n\n(def worker\n  (thread-start!\n    (make-thread\n      (lambda ()\n        (let loop ()\n          (def job (channel-receive work-ch))\n          (if (eq? job 'done)\n              (channel-send result-ch 'finished)\n              (begin\n                (channel-send result-ch (* job job)) ; square it\n                (loop))))))))\n\n; Send work\n(channel-send work-ch 5)     ; => result-ch gets 25\n(def result (channel-receive result-ch))\n(display result)  ; => 25\n\n(channel-send work-ch 'done)\n(thread-join! worker)",
+    "notes": "Use channels for safe communication between threads. channel-send blocks until receiver is ready."
+  },
+  {
+    "id": "gerbil-to-jerboa-imports",
+    "title": "Gerbil to Jerboa Import Translation",
+    "tags": ["migration", "gerbil", "import", "porting", "translation"],
+    "imports": [],
+    "code": "; Gerbil imports -> Jerboa equivalents\n\n; Gerbil:              Jerboa:\n; (import :std/sort)   (import (std sort))\n; (import :std/text/json) (import (std text json))\n; (import :gerbil/gambit) [NOT AVAILABLE - use Chez builtins]\n\n; Gerbil syntax:       Jerboa equivalent:\n; (import :std/misc/hash) -- hash ops are in (jerboa prelude)\n; with-catch           -- use guard or try/catch from prelude\n; (##...) primitives   -- NOT available, use Chez R6RS equivalents\n; (export #t)          -- must enumerate exports explicitly\n\n; Common mappings:\n; Gerbil              -> Jerboa\n; hash-table-ref      -> hash-ref\n; hash-table-set!     -> hash-set!\n; hash-table-for-each -> hash-for-each\n; make-hash-table     -> (hash) or make-equal-hashtable",
+    "notes": "When porting from Gerbil, the biggest changes are import paths (: prefix -> parens), no (export #t), and no ## Gambit primitives."
+  },
+  {
+    "id": "jerboa-defrule",
+    "title": "Custom Syntax with defrule",
+    "tags": ["defrule", "macro", "syntax", "define-syntax", "syntax-rules"],
+    "imports": ["(jerboa prelude)"],
+    "code": "(import (jerboa prelude))\n\n; Simple defrule macro\n(defrule (swap! a b)\n  (let ([tmp a])\n    (set! a b)\n    (set! b tmp)))\n\n; Usage\n(define x 1)\n(define y 2)\n(swap! x y)\n; x = 2, y = 1\n\n; More complex pattern\n(defrule (while condition body ...)\n  (let loop ()\n    (when condition\n      body ...\n      (loop))))\n\n; Usage\n(define i 0)\n(while (< i 5)\n  (display i)\n  (set! i (+ i 1)))",
+    "notes": "defrule is from (jerboa prelude) and is sugar over define-syntax + syntax-rules. It's hygienic by default."
+  }
+]
