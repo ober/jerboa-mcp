@@ -8,7 +8,10 @@
     "fix": "Add the missing import: (import (std MODULE)) or check the symbol spelling with jerboa_module_exports",
     "code_example": "(import (std sort))\n(sort '(3 1 2) <) ; now sort is bound",
     "imports": [],
-    "related_recipes": ["jerboa-import-prelude", "jerboa-sort"]
+    "related_recipes": [
+      "jerboa-import-prelude",
+      "jerboa-sort"
+    ]
   },
   {
     "id": "wrong-argument-count",
@@ -19,7 +22,10 @@
     "fix": "Use jerboa_function_signature to check the correct arity. Check optional vs required parameters.",
     "code_example": "; Check signature:\n; (sort lst pred) takes 2 args\n(sort '(3 1 2) <)",
     "imports": [],
-    "related_recipes": ["jerboa-sort", "jerboa-keyword-args"]
+    "related_recipes": [
+      "jerboa-sort",
+      "jerboa-keyword-args"
+    ]
   },
   {
     "id": "not-a-procedure",
@@ -41,7 +47,9 @@
     "fix": "Use (except (module) conflicting-sym) or (only (module) wanted-sym) or (rename (module) (old new))",
     "code_example": "(import (except (std module1) conflicting-sym))\n(import (std module2))",
     "imports": [],
-    "related_recipes": ["jerboa-library-definition"]
+    "related_recipes": [
+      "jerboa-library-definition"
+    ]
   },
   {
     "id": "file-not-found",
@@ -52,7 +60,9 @@
     "fix": "Set JERBOA_HOME correctly. Use --libdirs when running: scheme --libdirs $JERBOA_HOME/lib --script file.ss",
     "code_example": "# Run with explicit libdirs:\nscheme --libdirs ~/mine/jerboa/lib --script my-script.ss",
     "imports": [],
-    "related_recipes": ["jerboa-run-script"]
+    "related_recipes": [
+      "jerboa-run-script"
+    ]
   },
   {
     "id": "library-not-found",
@@ -63,7 +73,10 @@
     "fix": "Ensure JERBOA_HOME/lib is in --libdirs. Check module path spelling (use (std sort) not :std/sort).",
     "code_example": "(import (jerboa prelude))\n(import (std sort))\n; Run: scheme --libdirs $JERBOA_HOME/lib --script ...",
     "imports": [],
-    "related_recipes": ["jerboa-run-script", "jerboa-import-prelude"]
+    "related_recipes": [
+      "jerboa-run-script",
+      "jerboa-import-prelude"
+    ]
   },
   {
     "id": "syntax-violation",
@@ -74,7 +87,9 @@
     "fix": "Use jerboa_check_syntax to validate. Use jerboa_expand_macro to see what the macro expects.",
     "code_example": "; match requires at least one clause\n(match x\n  [(a b) (+ a b)]\n  [_ 0])",
     "imports": [],
-    "related_recipes": ["jerboa-match"]
+    "related_recipes": [
+      "jerboa-match"
+    ]
   },
   {
     "id": "assertion-violation",
@@ -85,7 +100,9 @@
     "fix": "Check what assertion is being violated. Use jerboa_describe to inspect the value.",
     "code_example": "(assert (list? x))  ; fails if x is not a list",
     "imports": [],
-    "related_recipes": ["jerboa-sugar-assert"]
+    "related_recipes": [
+      "jerboa-sugar-assert"
+    ]
   },
   {
     "id": "hash-ref-missing-key",
@@ -94,9 +111,13 @@
     "message": "hash-ref called with missing key (2-arg form raises error)",
     "explanation": "In Jerboa, hash-ref with 2 args raises an error if the key is missing. hash-ref with 3 args returns a default. hash-get always returns #f for missing keys (it's a macro).",
     "fix": "Use (hash-get table key) for safe access (returns #f), or (hash-ref table key default) with a default value, or check with (hash-key? table key) first.",
-    "code_example": "; Wrong: (hash-ref table 'key) — error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
-    "imports": ["(jerboa prelude)"],
-    "related_recipes": ["jerboa-hash-create"]
+    "code_example": "; Wrong: (hash-ref table 'key) \u2014 error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "related_recipes": [
+      "jerboa-hash-create"
+    ]
   },
   {
     "id": "keyword-mismatch",
@@ -107,7 +128,9 @@
     "fix": "Use jerboa_function_signature to see keyword parameter names. Pass as name: value syntax.",
     "code_example": "; Check signature: (my-func x: 1 y: 2)\n(my-func x: 10 y: 20)  ; keyword style",
     "imports": [],
-    "related_recipes": ["jerboa-keyword-args"]
+    "related_recipes": [
+      "jerboa-keyword-args"
+    ]
   },
   {
     "id": "reader-bracket-error",
@@ -118,7 +141,9 @@
     "fix": "Import the jerboa reader: (import (jerboa reader)). Use jerboa-read instead of read for user input. Or use (jerboa prelude) which includes the reader.",
     "code_example": "(import (jerboa reader))\n; Now [...] and {...} work via jerboa-read",
     "imports": [],
-    "related_recipes": ["jerboa-import-prelude"]
+    "related_recipes": [
+      "jerboa-import-prelude"
+    ]
   },
   {
     "id": "foreign-procedure-error",
@@ -129,7 +154,9 @@
     "fix": "Check argument types match the foreign-procedure declaration. Ensure shared library is loaded with load-shared-object.",
     "code_example": "(load-shared-object \"libfoo.so\")\n(define foo (foreign-procedure \"c_foo\" (int) int))\n(foo 42)",
     "imports": [],
-    "related_recipes": ["jerboa-ffi-foreign-procedure"]
+    "related_recipes": [
+      "jerboa-ffi-foreign-procedure"
+    ]
   },
   {
     "id": "condition-handler",
@@ -139,8 +166,13 @@
     "explanation": "An exception was raised (via raise or error) with no guard or with-exception-handler in scope.",
     "fix": "Wrap code in try/catch from jerboa prelude, or guard (R6RS), or with-catch from (std sugar).",
     "code_example": "(import (jerboa prelude))\n(try\n  (risky-operation)\n  (catch e (display (error-message e))))",
-    "imports": ["(jerboa prelude)"],
-    "related_recipes": ["jerboa-try-catch", "jerboa-with-catch"]
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "related_recipes": [
+      "jerboa-try-catch",
+      "jerboa-with-catch"
+    ]
   },
   {
     "id": "duplicate-definition",
@@ -161,8 +193,12 @@
     "explanation": "A record accessor was called with a value of a different record type than expected.",
     "fix": "Check that you're using the right accessor for the right type. Use type predicates to validate.",
     "code_example": "(defstruct point (x y))\n(when (point? val) (point-x val))  ; safe access",
-    "imports": ["(jerboa prelude)"],
-    "related_recipes": ["jerboa-defstruct"]
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "related_recipes": [
+      "jerboa-defstruct"
+    ]
   },
   {
     "id": "module-phase-error",
@@ -173,7 +209,9 @@
     "fix": "Reorder definitions so that the referenced binding comes before its use. For cross-phase references, use (for (module) expand) imports.",
     "code_example": "; Wrong order:\n; (def y (+ x 1))\n; (def x 42)\n\n; Correct order:\n(def x 42)\n(def y (+ x 1))",
     "imports": [],
-    "related_recipes": ["jerboa-library-definition"]
+    "related_recipes": [
+      "jerboa-library-definition"
+    ]
   },
   {
     "id": "immutable-field",
@@ -184,7 +222,9 @@
     "fix": "Declare fields as mutable in the record definition, or use a hash table for mutable storage.",
     "code_example": "; defstruct fields are mutable by default\n(defstruct counter (n))\n(def c (make-counter 0))\n(counter-n-set! c 1)  ; works with defstruct\n\n; R6RS records need explicit mutable:\n(define-record-type point\n  (fields (mutable x) (mutable y)))",
     "imports": [],
-    "related_recipes": ["jerboa-defstruct"]
+    "related_recipes": [
+      "jerboa-defstruct"
+    ]
   },
   {
     "id": "chez-ffi-type-mismatch",
@@ -195,7 +235,9 @@
     "fix": "Check C function signature. Common Chez FFI types: int, unsigned, long, double, float, string, u8*, void*, boolean, size_t. Use void for no-return functions.",
     "code_example": "; C: int strlen(const char* s)\n(define c-strlen\n  (foreign-procedure \"strlen\" (string) size_t))\n\n; C: void exit(int status)\n(define c-exit\n  (foreign-procedure \"_exit\" (int) void))",
     "imports": [],
-    "related_recipes": ["jerboa-ffi-foreign-procedure"]
+    "related_recipes": [
+      "jerboa-ffi-foreign-procedure"
+    ]
   },
   {
     "id": "missing-libdirs",
@@ -206,7 +248,9 @@
     "fix": "Run with: scheme --libdirs $JERBOA_HOME/lib --script your-file.ss. Or set CHEZSCHEMELIBDIRS environment variable.",
     "code_example": "# Method 1: command line flag\nscheme --libdirs ~/mine/jerboa/lib --script my-script.ss\n\n# Method 2: environment variable\nexport CHEZSCHEMELIBDIRS=~/mine/jerboa/lib\nscheme --script my-script.ss",
     "imports": [],
-    "related_recipes": ["jerboa-run-script"]
+    "related_recipes": [
+      "jerboa-run-script"
+    ]
   },
   {
     "id": "string-port-type-mismatch",
@@ -217,7 +261,9 @@
     "fix": "Use the correct port type: open-input-file for textual, open-file-input-port for binary. Or use transcoded-port to convert.",
     "code_example": "; Textual port (default):\n(call-with-input-file \"text.txt\"\n  (lambda (p) (read-line p)))  ; OK\n\n; Binary port:\n(let ([p (open-file-input-port \"data.bin\")])\n  (get-u8 p))  ; OK\n\n; Convert binary to textual:\n(transcoded-port binary-port (native-transcoder))",
     "imports": [],
-    "related_recipes": ["jerboa-port-utils"]
+    "related_recipes": [
+      "jerboa-port-utils"
+    ]
   },
   {
     "id": "tail-form-expression-error",
@@ -238,7 +284,79 @@
     "explanation": "Common mistake when porting from Gerbil: hash-set! should be hash-put!, hash-delete! should be hash-remove!, hash-contains? should be hash-key?.",
     "fix": "Use Jerboa hash API names: hash-put! (not hash-set!), hash-remove! (not hash-delete!), hash-key? (not hash-contains?).",
     "code_example": "; Wrong (Gerbil names):\n; (hash-set! h 'key val)\n; (hash-delete! h 'key)\n; (hash-contains? h 'key)\n\n; Right (Jerboa names):\n(hash-put! h 'key val)\n(hash-remove! h 'key)\n(hash-key? h 'key)",
-    "imports": ["(jerboa prelude)"],
-    "related_recipes": ["jerboa-hash-create", "gerbil-to-jerboa-imports"]
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "related_recipes": [
+      "jerboa-hash-create",
+      "gerbil-to-jerboa-imports"
+    ]
+  },
+  {
+    "id": "chez-void-arity-error",
+    "pattern": "incorrect argument count.*void|wrong number.*void|attempt to apply.*void with",
+    "type": "Arity Error in Error Handler",
+    "message": "void called with wrong number of arguments",
+    "explanation": "Chez Scheme's built-in void takes exactly 0 arguments. Gerbil's void is variadic. Code ported from Gerbil using (with-catch void ...) fails because with-catch calls (handler e) with 1 argument.",
+    "fix": "Replace (with-catch void ...) with (with-catch (lambda _ (void)) ...) or (with-catch (lambda (e) (void)) ...)",
+    "code_example": ";; WRONG:\n;; (with-catch void (lambda () (close-port p)))\n\n;; RIGHT:\n(with-catch (lambda _ (void)) (lambda () (close-port p)))",
+    "imports": [],
+    "related_recipes": [
+      "chez-void-handler-arity"
+    ]
+  },
+  {
+    "id": "chez-collect-deadlock",
+    "pattern": "deadlock|blocked.*collect|collect.*blocked|GC hang|collect hang",
+    "type": "GC Deadlock",
+    "message": "Explicit (collect) deadlocks when another thread is blocked in a foreign call",
+    "explanation": "Chez (collect) is stop-the-world. It waits for all threads to reach a Chez safe point. Threads in blocking foreign calls (c-read, c-accept, c-connect) cannot reach a safe point until the syscall returns. If the syscall is waiting for data that the calling thread would provide after GC, it deadlocks.",
+    "fix": "Never call (collect) explicitly in code running alongside threads doing blocking I/O. Use bytes-allocated to report stats instead, or schedule GC during idle periods.",
+    "code_example": ";; WRONG:\n;; (collect)  ;; while another thread is in c-read\n;; (write-safe out \"GC done\\n\")\n\n;; RIGHT: report stats without forcing GC\n(write-safe out\n  (string-append \"GC done. bytes: \"\n    (number->string (bytes-allocated)) \"\\n\"))",
+    "imports": [],
+    "related_recipes": [
+      "chez-collect-deadlock"
+    ]
+  },
+  {
+    "id": "chez-eintr-blocking-call",
+    "pattern": "accept.*failed|connect.*failed|read.*failed|EINTR|interrupted system call",
+    "type": "EINTR from GC Interruption",
+    "message": "Blocking syscall (accept/connect/read/write) fails with errno=EINTR",
+    "explanation": "Chez Scheme's stop-the-world GC sends signals to all threads to reach safe points. On Linux, this interrupts blocking syscalls (accept, connect, read, write) with EINTR (errno=4). Without retry logic, the operation fails spuriously.",
+    "fix": "Add EINTR retry loops around all blocking syscalls. Check (= (get-errno) EINTR) after failure and retry.",
+    "code_example": "(define EINTR 4)\n(define c-errno-location (foreign-procedure \"__errno_location\" () void*))\n(define (get-errno) (foreign-ref 'int (c-errno-location) 0))\n\n;; Retry accept on EINTR:\n(let loop ()\n  (let ([fd (c-accept srv 0 0)])\n    (cond\n      [(>= fd 0) fd]\n      [(= (get-errno) EINTR) (loop)]\n      [else (error 'accept \"failed\")])))",
+    "imports": [],
+    "related_recipes": [
+      "chez-tcp-accept-eintr-retry",
+      "chez-errno-access"
+    ]
+  },
+  {
+    "id": "chez-gc-double-close",
+    "pattern": "bad file descriptor|EBADF|double close|fd reuse",
+    "type": "GC Double-Close fd Bug",
+    "message": "File descriptor closed twice: once by close-port, once by GC finalizer",
+    "explanation": "Chez Scheme calls custom port close handlers both when close-port is called explicitly AND when the GC collects the port object. Without a guard, c-close(fd) is called twice. The second call may close a different socket that reused the same fd number, corrupting unrelated connections.",
+    "fix": "Use a shared closed? flag in fd->ports. The close handler checks closed? before calling c-close, and sets it to #t when called. Subsequent GC finalization is a no-op.",
+    "code_example": "(let ([closed? #f])\n  (make-custom-binary-input-port\n    name\n    read-callback\n    #f #f\n    (lambda ()                  ;; close handler\n      (unless closed?\n        (set! closed? #t)\n        (c-close fd)))))",
+    "imports": [],
+    "related_recipes": [
+      "chez-tcp-fd-ports"
+    ]
+  },
+  {
+    "id": "chez-script-thread-hang",
+    "pattern": "thread.*hang|fork-thread.*connect|server.*not.*accepting|accept.*never",
+    "type": "Thread Scheduling in --script Mode",
+    "message": "Forked thread doesn't run between top-level form evaluations in --script mode",
+    "explanation": "In --script mode, Chez compiles and evaluates each top-level form independently. A fork-thread in one form starts a thread, but the thread doesn't get CPU time until the main thread blocks or yields. Consecutive top-level defines don't yield, so the thread is never scheduled. The next form that tries to use the thread's result hangs.",
+    "fix": "Use --program mode for test files with threads. Or wrap everything in a single (begin ...) or (let ...) form. Or use (thread-yield) between forms.",
+    "code_example": ";; HANG in --script mode:\n;; (define srv (start-server! 0))  ;; forks thread\n;; (define conn (connect 127.0.0.1 srv))  ;; hangs!\n\n;; FIX 1: use --program mode in Makefile\n;; scheme --program tests/mytest.ss\n\n;; FIX 2: wrap in begin\n(begin\n  (define srv (start-server! 0))\n  (sleep-ms 100)  ;; thread gets to run\n  (define conn (connect \"127.0.0.1\" srv)))",
+    "imports": [],
+    "related_recipes": [
+      "chez-script-mode-threads",
+      "chez-tcp-server-test-pattern"
+    ]
   }
 ]
