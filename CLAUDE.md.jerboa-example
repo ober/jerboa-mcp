@@ -1,0 +1,198 @@
+## Build & Verification
+
+After modifying any `.ss` or `.sls` (Jerboa Scheme) source files, always run the build command and fix any errors before moving on. Common issues include: missing imports, wrong function names, and duplicate definitions.
+
+## Jerboa MCP Tools — MANDATORY Usage
+
+When a Jerboa MCP server is available, you MUST use its tools extensively instead of guessing about Jerboa APIs, syntax, or behavior. Jerboa is a niche Scheme dialect with limited training data — always verify with live tools rather than relying on memory.
+
+### Before Writing Code — Cookbook First!
+
+- **`jerboa_howto`** (**MUST call FIRST**): Before writing ANY non-trivial Jerboa code, search the cookbook for relevant patterns. The cookbook contains verified, working examples with correct imports, arities, and conventions — accumulated from real debugging sessions. Many bugs (wrong arity, missing import, wrong module path) are already documented here. Search with the module/task name (e.g., `"json parse"`, `"hash iterate"`, `"sort list"`, `"string split"`). **Skipping this step has repeatedly caused bugs that were already solved in the cookbook.**
+- **`jerboa_security_scan`** (**MUST run on new/modified code**): Before finalizing ANY Jerboa code that involves FFI, shell commands, file I/O, run the security scanner. It checks for known vulnerability patterns (shell injection, FFI type mismatches, resource leaks, unsafe patterns) and reports findings with severity and remediation guidance. Run on a single file or an entire project. **Skipping this step risks shipping code with known vulnerability patterns that the scanner would have caught.**
+- **`jerboa_module_exports`**: Check what a module actually exports before using it. Never guess function names. Module paths use `(std ...)` form: e.g., `(std sort)`, `(std text json)`, `(std misc string)`.
+- **`jerboa_function_signature`**: Check procedure arities and keyword arguments before calling functions. Prevents wrong-number-of-arguments errors.
+- **`jerboa_check_syntax`**: Validate syntax of any code you write before presenting it. Reports line and column numbers for reader/parser errors.
+- **`jerboa_batch_syntax_check`**: Check multiple Jerboa code snippets for syntax validity in a single call. Accepts an array of `{id, code}` objects and returns per-snippet pass/fail results. Much more efficient than individual `jerboa_check_syntax` calls when verifying many functions at once.
+- **`jerboa_compile_check`**: Run the full compiler to catch unbound identifiers and type issues beyond syntax. Combines stdout/stderr for complete error output.
+- **`jerboa_doc`**: Look up any symbol for type, arity, qualified name, and related symbols.
+
+### When Exploring or Debugging
+
+- **`jerboa_eval`**: Test expressions interactively to verify assumptions and reproduce issues. Use `imports` parameter to bring modules into scope (e.g. `["(std sort)", "(std text json)"]`). Use `env` parameter for FFI library paths (e.g. `LD_LIBRARY_PATH`).
+- **`jerboa_apropos`**: Search for symbols by substring when you're unsure of exact names.
+- **`jerboa_list_modules`**: Discover available standard library modules, optionally filtered by prefix.
+- **`jerboa_find_definition`**: Locate where a symbol is defined (source file, module, kind, arity). Use `source_preview: true` to include a code preview.
+- **`jerboa_smart_complete`**: Context-aware symbol completion for partial identifiers. Optionally scope completions to specific modules.
+- **`jerboa_explain_error`**: Classify Jerboa/Chez error messages with likely causes, suggested fixes, and relevant cookbook recipes.
+- **`jerboa_load_file`**: Parse a `.ss` file to extract its imports, exports, and definitions without executing it.
+- **`jerboa_module_deps`**: See what a module imports. Use `transitive: true` for full dependency tree.
+- **`jerboa_bisect_crash`**: Binary-search a crashing Jerboa file to find the minimal set of top-level forms that reproduce the crash. Useful for isolating errors in FFI code.
+- **`jerboa_describe`**: Evaluate an expression and describe the resulting value's type, structure, and contents. Shows hash table entries, list length, vector elements, string length, number type, etc. Useful for understanding what a function returns.
+- **`jerboa_stack_trace_decode`**: Parse Chez error output into structured form with type, message, irritants, and suggestions.
+- **`jerboa_error_fix_lookup`**: Look up known fixes for error messages. Returns explanations, fixes, and related cookbook recipes.
+- **`jerboa_stdlib_source`**: Read the source code of any Jerboa stdlib module (e.g., `(std sort)` → `lib/std/sort.sls`). Useful for understanding internal implementations.
+- **`jerboa_trace_eval`**: Step through `let*/let/letrec/letrec*` bindings, showing each variable's name, type, and value as it is bound. Useful for understanding complex binding sequences.
+
+### When Understanding Macros
+
+- **`jerboa_expand_macro`**: See the fully expanded core form of a macro expression.
+- **`jerboa_trace_macro`**: Step-by-step expansion showing each transformation level.
+
+### When Working with Types and FFI
+
+- **`jerboa_class_info`**: Inspect defclass/defstruct types — slots, fields, inheritance, precedence list, and exact constructor signature with positional argument order.
+- **`jerboa_ffi_scaffold`**: Parse a C header file and generate Jerboa FFI binding code using `foreign-procedure` and `load-shared-object`. Recognizes create/destroy pairs for automatic GC cleanup.
+- **`jerboa_ffi_type_check`**: Detect FFI type mismatches between `foreign-procedure` declarations and call sites. Static analysis, no subprocess.
+- **`jerboa_ffi_null_safety`**: Static analysis to find `foreign-procedure` pointer parameters dereferenced without null checks.
+- **`jerboa_error_hierarchy`**: View the full R6RS/Chez condition type hierarchy tree.
+
+### For Multi-Step Exploration
+
+- **`jerboa_repl_session`**: Maintain persistent state across evaluations. Define functions, import modules, test incrementally. Use `preload_file` to load a file's imports into the session automatically. Use `env` parameter for FFI library paths.
+
+### For Building and Testing
+
+- **`jerboa_build_and_report`**: Run `make build` and parse output for structured error diagnostics (file, line, severity). Prefer this over running make via bash for better error reporting.
+- **`jerboa_build_conflict_check`**: Detect when multiple Chez/make processes are running on the same project directory. Warns about potential conflicts with suggestions to kill old builds.
+- **`jerboa_make`**: Run Makefile targets in a project directory. Useful for `make build`, `make test`, `make clean`.
+- **`jerboa_stale_static`**: Compare compiled `.so` artifact mtimes against source `.sls` files. Reports stale artifacts that may cause surprising behavior.
+- **`jerboa_run_tests`**: Execute test files or run project-wide tests. Use `filter` to match test names, `quiet` for errors-only output.
+- **`jerboa_check_arity`**: Detect functions called with the wrong number of arguments across a project.
+- **`jerboa_test_coverage`**: Compare a module's exports against its test file to identify untested symbols.
+
+### For Performance Analysis
+
+- **`jerboa_profile`**: Instrument specific functions with call counting and timing. Reports per-function stats (calls, time, avg, %) plus overall wall/CPU/GC time and allocation.
+- **`jerboa_heap_profile`**: Capture GC heap metrics before/after an expression. Reports heap size, allocation, and object counts with deltas.
+- **`jerboa_trace_calls`**: Lightweight call counting (no timing overhead). Count how many times specified functions are called.
+- **`jerboa_benchmark_compare`**: Run benchmarks, save as named baseline (`save_as`), compare with previous runs (`compare_with`). Shows percentage changes.
+
+### For Code Quality
+
+- **`jerboa_lint`**: Static analysis: unused imports, duplicate defs, shadowed bindings, hash literal keys, missing exports, port-type mismatches, and more.
+- **`jerboa_check_exports`**: Cross-module export/import consistency checker. Detects symbols exported but not defined, and cross-module import mismatches across a project.
+- **`jerboa_check_import_conflicts`**: Detect import conflicts before build. Finds local-def vs import conflicts, cross-import collisions. Suggests `(only-in)`/`(except-in)` fixes.
+- **`jerboa_dead_code`**: Detect unexported, uncalled definitions across a project. Finds functions/values that are defined but never referenced from other files and not exported.
+- **`jerboa_dependency_cycles`**: Detect circular module dependencies in a project using DFS cycle detection. Reports all unique cycles found.
+- **`jerboa_migration_check`**: Scan source files for patterns needing Jerboa adaptation. Detects `(export #t)`, `##` primitives, `gxi`/`gxc`, `:gerbil/` imports, and other Gerbil-isms.
+- **`jerboa_diff_modules`**: Compare exports between two modules, showing added, removed, and shared symbols. Useful for understanding API differences between module versions.
+- **`jerboa_format`**: Pretty-print Jerboa expressions.
+- **`jerboa_verify`**: Combined syntax + compile + lint + arity + duplicate check in one pass. Returns unified issue list. Use this as the standard "is my code ok?" workflow.
+- **`jerboa_check_duplicates`**: Fast pre-build check for duplicate top-level defs. Catches rebind conflicts before compilation. No subprocess.
+- **`jerboa_check_balance`**: Fast paren/bracket/brace balance checking without spawning a subprocess.
+- **`jerboa_project_health_check`**: Composite project audit — balance, export consistency, circular imports, duplicates. Returns health score.
+
+### For Security Auditing
+
+- **`jerboa_security_scan`**: Static security scanner for `.ss`/`.sls` and C files. Detects shell injection, FFI type mismatches, missing `unwind-protect`, unsafe patterns, and more. Reports severity, line, and remediation. Scans single file (`file_path`) or project (`project_path`). Filter by `severity_threshold`. Supports inline suppression: `; jerboa-security: suppress <rule-id>`.
+- **`jerboa_security_pattern_add`**: Add custom security detection rules. Requires `id`, `title`, `severity`, `scope`, `pattern` (regex), `message`, and `remediation`. Update semantics (replaces existing same-id rules).
+
+### For Macro Development and Refactoring
+
+- **`jerboa_macro_pattern_detector`**: Analyze Jerboa source files for repetitive code patterns that could be replaced with macros. Detects repeated function definitions, hash-ref accessors, and method wrappers.
+- **`jerboa_boilerplate_converter`**: Convert repetitive code blocks into macro definitions automatically. Given 2+ similar Scheme expressions, extracts the common pattern and generates a `defrule` macro with appropriate pattern variables.
+- **`jerboa_signal_trace`**: Generate Jerboa code for debugging signal handling (SIGINT/SIGTERM/SIGHUP). Creates instrumentation that logs when signals are received and handlers execute.
+- **`jerboa_macro_expansion_size`**: Analyze macro expansion size to detect accidentally explosive macros. Reports expansion ratio and warning level (ok/large/explosive).
+- **`jerboa_macro_template_library`**: Generate reusable macro templates for common patterns. Supports: hash-accessors, method-delegation, validation-guards, enum-constants, event-handlers, type-setters.
+- **`jerboa_macro_hygiene_check`**: Detect free variable capture in macro definitions — a common source of subtle bugs.
+
+### For Navigation and Discovery
+
+- **`jerboa_document_symbols`**: List all definitions in a file with name, kind, and line number.
+- **`jerboa_workspace_symbols`**: Search for symbol definitions across all `.ss` files in a project directory.
+- **`jerboa_find_callers`**: Find all files in a directory that reference a given symbol, with line numbers.
+- **`jerboa_suggest_imports`**: Discover which standard library module exports a given symbol.
+- **`jerboa_read_forms`**: Read a file with the actual Jerboa reader and see each form's line range and summary.
+- **`jerboa_version`**: Check Jerboa/Chez versions, installation path, and system type.
+- **`jerboa_preflight_check`**: Diagnostic tool that verifies MCP server prerequisites and Jerboa environment health. Use when tools are not working or to verify the environment.
+
+### For Refactoring and Code Generation
+
+- **`jerboa_rename_symbol`**: Rename a symbol across all `.ss` files in a project directory or in a single file. Uses word-boundary detection to avoid partial matches. Dry-run by default. Use `file_path` for single-file local renames.
+- **`jerboa_generate_module_stub`**: Generate a module skeleton matching another module's exported signatures.
+- **`jerboa_generate_module`**: Create new modules by applying word-boundary-aware substitutions to a template file. Useful for mechanical variations of an existing module pattern.
+- **`jerboa_scaffold_test`**: Generate a test skeleton from a module's exports.
+- **`jerboa_balanced_replace`**: Like Edit/string-replace but validates delimiter balance before and after. Rejects edits that would break balance. Dry-run by default.
+- **`jerboa_wrap_form`**: Wrap lines in a new Scheme form (e.g. `when`, `let`, `begin`) with guaranteed matching parentheses. Auto-detects form boundaries when `end_line` is omitted. Dry-run by default.
+- **`jerboa_splice_form`**: Remove a wrapper form while keeping selected children (inverse of wrap). Child indices are 1-based. Default: keep all children except the head. Dry-run by default.
+- **`jerboa_generate_api_docs`**: Generate markdown API documentation from a module's exports. Introspects procedures (with arities), macros, and values to produce a complete API reference.
+- **`jerboa_httpd_handler_scaffold`**: Generate HTTP server code from route specifications. Produces handler functions, routing setup, and middleware patterns.
+- **`jerboa_actor_ensemble_scaffold`**: Generate distributed actor project template with multiple actor types, message protocols, and supervision trees.
+- **`jerboa_graceful_shutdown_scaffold`**: Generate signal handling and cleanup patterns with optional actor system integration.
+- **`jerboa_translate_scheme`**: Translate R7RS, Racket, or Gerbil code to idiomatic Jerboa (~40 rules). Returns translated code plus semantic warnings where behavior differs.
+- **`jerboa_project_template`**: Generate a complete Jerboa project from templates (cli, http-api, library, actor-service, db-crud, parser, ffi-wrapper, test-project). Creates package config, build scripts, source modules, and test files.
+
+### For Project Context
+
+- **`jerboa_project_info`**: Single-call project summary: package name, build targets, source files, and external dependencies.
+- **`jerboa_project_map`**: Complete view of all modules with their exports, definitions by kind, and import dependencies.
+- **`jerboa_project_dep_graph`**: Visualize project module dependency graph as an ASCII tree. Shows which project modules import from which others. External dependencies listed separately.
+- **`jerboa_module_catalog`**: Compact reference of all exports from a module with kind, arity, and brief descriptions. Replaces multiple `jerboa_doc` calls.
+- **`jerboa_module_quickstart`**: Generate a working example file that exercises a module's main exports. Introspects exports, arities, and types, then produces a runnable `.ss` file. Useful for undocumented modules.
+- **`jerboa_dynamic_reference`**: Auto-generate reference documentation for any Jerboa module on demand. Introspects all exports, classifies them (procedure/macro/value/type), and formats as markdown.
+- **`jerboa_event_system_guide`**: Interactive guide for channel, thread, mutex, promises, timers, and process patterns.
+
+### For Recipes and Idioms
+
+- **`jerboa_howto`**: Search curated Jerboa idioms by keyword with synonym expansion and fuzzy matching. Returns verified, working examples with correct imports. Use **before writing Jerboa code**. Example queries: `"json parse"`, `"hash iterate"`, `"channel thread"`. Use `compact: true` then `jerboa_howto_get` by id to save tokens.
+- **`jerboa_howto_get`**: Fetch a single cookbook recipe by its ID. Returns the full recipe with code, imports, notes, and related recipes. Use after `jerboa_howto` with `compact: true` to retrieve only the recipes you need.
+- **`jerboa_howto_add`**: Save recipes to the server's cookbook (available across all sessions/projects). Requires `id`, `title`, `tags`, `imports`, `code`. Optional: `notes`, `related`, `supersedes` (deprecates old recipe), `valid_for` (version strings). Same-id replaces existing.
+- **`jerboa_howto_run`**: Compile-check and optionally execute a cookbook recipe by ID. Validates that the recipe's code and imports produce valid Jerboa before running. Reports PASS/FAIL with output.
+- **`jerboa_howto_verify`**: Batch-verify cookbook recipes for syntax and optionally compilation validity. Use to maintain cookbook quality.
+- **`jerboa_error_fix_add`**: Add new error→fix mappings to the error fix database. Each entry needs an `id`, `pattern` (regex), `message`, `explanation`, `fix`, and optional `related_recipe`.
+- **`jerboa_file_summary`**: Quick structural overview of a `.ss` file — imports, exports, and definitions grouped by kind — without reading the entire file.
+
+### For Feature Suggestions
+
+- **`jerboa_list_features`**: Search or list existing feature suggestions for the jerboa-mcp toolset. Use before suggesting a new feature to check for duplicates. Shows vote counts for each feature.
+- **`jerboa_suggest_feature`**: Submit a feature suggestion. Requires `id`, `title`, `description`, `impact`, `tags`, `use_case`, `example_scenario`, `estimated_token_reduction`.
+- **`jerboa_vote_feature`**: Vote for an existing feature suggestion by ID. Use this when you encounter a situation where a suggested feature would have saved time or tokens. Votes help prioritize which features to implement next.
+
+### Key Principle
+
+**Never guess — always verify.** If you are unsure about any Jerboa API, symbol name, module export, function arity, or macro behavior, use the appropriate MCP tool to check before writing code. This is not optional — it is required practice for all Jerboa work in this repository.
+
+---
+
+## MANDATORY: Save What You Learn to the Jerboa Cookbook
+
+Jerboa is niche with limited training data. When you discover a non-trivial working pattern (correct imports, arity workarounds, API conventions, gotchas), you MUST save it via `jerboa_howto_add`. Check `jerboa_howto` first for duplicates. Do NOT save trivial one-liners or project-specific logic.
+
+Recipe format: kebab-case `id`, 4-6 `tags` (module name + task + alternative phrasings), all required `imports` (or `[]`), complete working `code` (copy-pasteable), and `notes` for gotchas.
+
+---
+
+## Save Discoveries: Skill and Hook
+
+Two mechanisms save cookbook recipes AND feature suggestions in one pass:
+
+- **`/save-discoveries` skill (manual)**: Install from jerboa-mcp's `.claude/skills/save-discoveries` directory (project or `~/.claude/skills/` for global). Invoke anytime to review the session, save patterns via `jerboa_howto_add`, and suggest tooling via `jerboa_suggest_feature`.
+- **PreCompact hook (automatic)**: Add a `PreCompact` hook in `.claude/settings.json` with `type: "prompt"` (NOT `type: "agent"` — agent hooks don't work for PreCompact) that instructs Claude to save discoveries before context compaction. See the jerboa-mcp repo for the full hook configuration JSON.
+
+---
+
+## MANDATORY: Suggest Tooling Improvements
+
+Call `jerboa_suggest_feature` when you notice missing tools, inefficient multi-call workflows, or missing parameters. Check `jerboa_list_features` first — vote with `jerboa_vote_feature` if a matching suggestion exists. Use kebab-case IDs, honest impact ratings, and specific `estimated_token_reduction`.
+
+---
+
+## Workflow Conventions
+
+When implementing new features, always complete the documentation update in the same session. Document non-trivial solutions as howto recipes in the cookbook system.
+
+### Common Workflows
+
+- **Write new code**: `jerboa_howto` → `jerboa_module_exports` → write code → `jerboa_verify` → `jerboa_security_scan`
+- **Debug an error**: `jerboa_explain_error` → follow suggested tools → `jerboa_howto` for fix patterns
+- **Understand unfamiliar code**: `jerboa_file_summary` → `jerboa_document_symbols` → `jerboa_module_deps`
+- **Refactor a module**: `jerboa_check_exports` → `jerboa_find_callers` → `jerboa_rename_symbol` → `jerboa_check_import_conflicts`
+- **Build project**: `jerboa_build_conflict_check` → `jerboa_make` → `jerboa_build_and_report`
+- **Port from Gerbil**: `jerboa_migration_check` → `jerboa_translate_scheme` → `jerboa_verify` → `jerboa_check_syntax`
+- **Audit project quality**: `jerboa_verify` → `jerboa_lint` → `jerboa_dead_code` → `jerboa_dependency_cycles`
+- **Debug a crash**: `jerboa_stale_static` → `jerboa_bisect_crash` → `jerboa_ffi_type_check`
+
+## Language-Specific Notes
+
+Jerboa is built on Chez Scheme. Module paths use `(std ...)` form (e.g., `(std sort)`, `(std text json)`). File extensions are `.ss` and `.sls`. The prelude is `(import (jerboa prelude))`. Tail calls are fully optimized. Avoid duplicate definitions across modules.
