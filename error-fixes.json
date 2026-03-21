@@ -111,7 +111,7 @@
     "message": "hash-ref called with missing key (2-arg form raises error)",
     "explanation": "In Jerboa, hash-ref with 2 args raises an error if the key is missing. hash-ref with 3 args returns a default. hash-get always returns #f for missing keys (it's a macro).",
     "fix": "Use (hash-get table key) for safe access (returns #f), or (hash-ref table key default) with a default value, or check with (hash-key? table key) first.",
-    "code_example": "; Wrong: (hash-ref table 'key) \u2014 error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
+    "code_example": "; Wrong: (hash-ref table 'key) — error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
     "imports": [
       "(jerboa prelude)"
     ],
@@ -357,6 +357,356 @@
     "related_recipes": [
       "chez-script-mode-threads",
       "chez-tcp-server-test-pattern"
+    ]
+  },
+  {
+    "id": "chez-stale-wpo",
+    "pattern": "does not define expected compilation instance|wpo.*older than source",
+    "type": "Stale WPO File",
+    "message": "compile-whole-program rejects .wpo older than .sls source",
+    "explanation": "A .wpo file was compiled from an older version of the .sls source. compile-whole-program detects the mismatch and throws an exception. The output file (e.g. jsh-all.so) is NOT generated, causing cascading build failures.",
+    "fix": "Recompile the stale library with (parameterize ([generate-wpo-files #t]) (compile-library \"path/to/file.sls\")). Or add an auto-recompile step before compile-whole-program that scans for stale .wpo files using file-modification-time comparison.",
+    "code_example": "(parameterize ([generate-wpo-files #t]\n               [optimize-level 2]\n               [generate-inspector-information #f])\n  (compile-library \"std/sugar.sls\"))",
+    "imports": [],
+    "related_recipes": [
+      "chez-stale-wpo-build-failure"
+    ]
+  },
+  {
+    "id": "chez-eintr-spontaneous-disconnect",
+    "pattern": "server closed connection|server EOF|disconnected.*unexpect",
+    "type": "EINTR Spontaneous Disconnect",
+    "message": "Client/server connection drops randomly during operation",
+    "explanation": "C FFI wrappers for recv/send/read return -1 on EINTR (signal interruption) without retrying. The Scheme layer interprets -1 as EOF/error and closes the connection. SIGCHLD from child processes is the most common trigger — any time a subprocess exits, the signal interrupts blocking I/O.",
+    "fix": "Wrap all blocking I/O syscalls in C shims with do { n = syscall(...); } while (n < 0 && errno == EINTR); loops. Check both recv, send, and read wrappers.",
+    "code_example": "/* Before (broken): */\nssize_t n = recv(fd, buf, len, 0);\nif (n < 0) return -1;  /* EINTR treated as error! */\n\n/* After (fixed): */\nssize_t n;\ndo { n = recv(fd, buf, len, 0); } while (n < 0 && errno == EINTR);\nif (n < 0) return -1;",
+    "imports": [],
+    "related_recipes": [
+      "chez-eintr-retry-c-shim",
+      "chez-tcp-accept-eintr-retry"
+    ]
+  },
+  {
+    "id": "chez-do-loop-infinite-negative",
+    "pattern": "hang|infinite loop|server.*not responding|render.*hang",
+    "type": "do-loop Infinite Loop",
+    "message": "do-loop with = test never terminates when bound is negative",
+    "explanation": "Chez do-loops conventionally use = for termination: (do ([r 0 (+ r 1)]) ((= r N)) ...). If N is negative (e.g., from (- rows 1) where rows=0), r increments past -1 and the loop never terminates. This caused a server hang in render-single-pane when terminal dimensions were 0x0.",
+    "fix": "Guard the input: (max 1 value) before subtraction, or use >= instead of = for the termination test. Also validate terminal dimensions at protocol boundaries — default 0 to 80/24.",
+    "code_example": ";; BROKEN: (do ([r 0 (+ r 1)]) ((= r (- 0 1))) ...) → infinite\n;; FIXED:\n(let ([rows (max 1 rows)])\n  (do ([r 0 (+ r 1)])\n      ((= r (- rows 1)))\n    (render-row r)))",
+    "imports": [],
+    "related_recipes": [
+      "chez-terminal-size-zero-guard",
+      "chez-do-loop-negative-bound"
+    ]
+  },
+  {
+    "id": "chez-daemon-fd-collision",
+    "pattern": "no entry for.*ffi|foreign-procedure.*not found|output.*wrong.*fd|socket.*corrupt",
+    "type": "Daemon FD Collision",
+    "message": "Daemonized process has fds 0/1/2 closed, causing fd number reuse",
+    "explanation": "When ffi-fork-exec closes all fds before exec, the daemon starts with fds 0/1/2 closed. The kernel assigns the lowest available fd to new open/socket calls. A listening socket may get fd 1 (stdout), so any Chez port I/O goes to the socket. Or a PTY master gets fd 0, conflicting with stdin.",
+    "fix": "Call ffi_ensure_std_fds() at daemon startup to open /dev/null for any closed standard fds (0, 1, 2). This reserves the standard fd numbers and prevents collisions.",
+    "code_example": ";; At start of daemon entry point:\n(ffi-ensure-std-fds)\n;; Now fds 0/1/2 are safely pointing to /dev/null\n;; and new sockets/files get fd >= 3",
+    "imports": [],
+    "related_recipes": [
+      "chez-daemon-fd-hygiene"
+    ]
+  },
+  {
+    "id": "chez-putenv-arity",
+    "pattern": "wrong number.*putenv|incorrect argument count.*putenv",
+    "type": "putenv Arity Error",
+    "message": "Chez putenv takes 2 args (name, value), not 1 C-style string",
+    "explanation": "Chez Scheme's putenv takes two arguments: (putenv name value). Unlike C's putenv which takes a single \"NAME=VALUE\" string. Also, Chez does not export setenv at all.",
+    "fix": "Use (putenv \"NAME\" \"VALUE\") with two arguments. Do not use C-style (putenv \"NAME=VALUE\").",
+    "code_example": ";; WRONG: (putenv \"FOO=bar\")\n;; RIGHT:\n(putenv \"FOO\" \"bar\")",
+    "imports": [],
+    "related_recipes": [
+      "chez-putenv-two-args"
+    ]
+  },
+  {
+    "id": "chez-record-question-mutator",
+    "pattern": "unbound identifier.*-set!",
+    "type": "Naming Error",
+    "message": "Record field mutator name wrong for ?-suffixed field",
+    "explanation": "R6RS define-record-type generates mutators by appending -set! to the FULL field name. For fields named eof?, closed?, active?, the mutator is recordtype-field?-set! (with ? before -set!). Writing recordtype-field-set! (without ?) is an unbound identifier.",
+    "fix": "Include the ? in the mutator name: (ssh-channel-eof?-set! ch #t) not (ssh-channel-eof-set! ch #t)",
+    "code_example": ";; Field: (mutable closed?)\n;; WRONG: my-record-closed-set!\n;; RIGHT: my-record-closed?-set!",
+    "imports": [],
+    "related_recipes": [
+      "chez-r6rs-record-question-mark-field"
+    ]
+  },
+  {
+    "id": "chez-record-accessor-duplicate",
+    "pattern": "multiple definitions for .* in body",
+    "type": "Duplicate Definition",
+    "message": "Custom function name conflicts with auto-generated record accessor",
+    "explanation": "define-record-type auto-generates accessors named recordtype-fieldname. Defining a function with the same name in the library body causes 'multiple definitions' at compile time.",
+    "fix": "Rename the custom function to avoid collision with the auto-generated accessor. E.g., use -alloc-id instead of -next-id.",
+    "code_example": ";; Record has field next-id → generates table-next-id\n;; WRONG: (define (table-next-id t) ...)\n;; RIGHT: (define (table-alloc-id t) (let ([id (table-next-id t)]) ...))",
+    "imports": [],
+    "related_recipes": [
+      "chez-r6rs-library-duplicate-definition"
+    ]
+  },
+  {
+    "id": "openssl-aead-ssh-mac-incorrect",
+    "pattern": "message authentication code incorrect|MAC verification failed",
+    "type": "Crypto Mismatch",
+    "message": "SSH server rejects packets with 'MAC incorrect' after kex succeeds",
+    "explanation": "OpenSSL's EVP_chacha20_poly1305() implements RFC 8439 AEAD which pads AAD/ciphertext to 16-byte boundaries and appends 8-byte LE length fields before computing Poly1305. OpenSSH's chacha20-poly1305@openssh.com uses raw Poly1305 over the plain concatenation (enc_length || enc_payload). The MAC tags are different.",
+    "fix": "Do NOT use EVP_chacha20_poly1305(). Instead use EVP_chacha20() for encryption and EVP_MAC(\"POLY1305\") for raw MAC. Generate poly key from ChaCha20(K2, counter=0), encrypt with counter=1, MAC over raw concatenation.",
+    "code_example": "/* Wrong: EVP_chacha20_poly1305() — RFC 8439 AEAD */\n/* Right: EVP_chacha20() + EVP_MAC(\"POLY1305\") — raw */",
+    "imports": [],
+    "related_recipes": [
+      "chez-ssh-chacha20-poly1305-openssh"
+    ]
+  },
+  {
+    "id": "stale-daemon-after-rebuild",
+    "pattern": "fix doesn't work|still not working|still broken|still hangs|does not exit|deleted",
+    "type": "Stale Daemon Process",
+    "message": "Changes not taking effect after rebuild — daemon running old binary",
+    "explanation": "When a daemon process is fork-exec'd via /proc/self/exe, it gets the current binary at that moment. After rebuilding, the daemon still runs the OLD code in memory. /proc/<pid>/exe will show '(deleted)' after the binary is overwritten. No amount of rebuilding will fix the running daemon.",
+    "fix": "1. Check: ls -la /proc/<pid>/exe — look for '(deleted)'\n2. Kill the old daemon: kill <pid>\n3. Start a new daemon with the rebuilt binary",
+    "code_example": ";; $ ls -la /proc/$(cat /run/user/$UID/jsh/default.pid)/exe\n;; ...jsh-musl (deleted)  ← STALE!\n;; $ kill $(cat /run/user/$UID/jsh/default.pid)\n;; Then: ,server",
+    "imports": [],
+    "related_recipes": [
+      "chez-proc-self-exe-stale"
+    ]
+  },
+  {
+    "id": "mux-window-not-closing",
+    "pattern": "window.*not.*clos|window.*stay|window.*disappear|pane.*not.*exit|dead.*pane|buffer.*not.*kill",
+    "type": "Mux Window Cleanup",
+    "message": "Mux windows not closing when shell exits (Ctrl-D)",
+    "explanation": "The mux server needs an explicit cleanup step in the event loop: detect dead panes (alive?=#f from SIGCHLD or PTY EOF), remove them from windows, remove empty windows, clamp indices, redraw clients. Without this, panes get marked dead but windows persist.",
+    "fix": "Add sm-cleanup-dead-panes! to event loop after handle-pty-output!. Also verify the server is running the current binary (ls -la /proc/<pid>/exe).",
+    "code_example": "(when (sm-cleanup-dead-panes! sm)\n  (redraw-all-clients!)\n  (when (all-sessions-empty?) (shutdown!)))",
+    "imports": [],
+    "related_recipes": [
+      "chez-mux-dead-pane-cleanup"
+    ]
+  },
+  {
+    "id": "contract-violation",
+    "pattern": "contract.?violation|precondition failed|postcondition.*failed|argument failed predicate",
+    "type": "Contract Violation",
+    "message": "A contract check (pre/post condition or argument validation) failed",
+    "explanation": "Code using (std contract) raised a contract violation. check-argument or define/contract detected invalid input or output.",
+    "fix": "Check what contract is being violated. Use contract-violation-who and contract-violation-message to get details. Fix the caller to pass valid arguments.",
+    "code_example": "(import (std contract))\n;; catch and inspect:\n(guard (e [(contract-violation? e)\n           (printf \"~a: ~a~n\"\n             (contract-violation-who e)\n             (contract-violation-message e))])\n  (check-argument string? 42 'my-func))",
+    "imports": [
+      "(std contract)"
+    ],
+    "related_recipes": [
+      "jerboa-contract"
+    ]
+  },
+  {
+    "id": "pqueue-empty",
+    "pattern": "empty priority queue",
+    "type": "Empty Priority Queue",
+    "message": "pqueue-pop! or pqueue-peek called on empty queue",
+    "explanation": "Attempted to pop or peek at an empty priority queue. Both operations error on empty queues.",
+    "fix": "Check pqueue-empty? before calling pqueue-pop! or pqueue-peek.",
+    "code_example": "(import (std misc pqueue))\n(define pq (make-pqueue))\n;; WRONG: (pqueue-pop! pq)  — errors if empty\n;; RIGHT:\n(unless (pqueue-empty? pq)\n  (pqueue-pop! pq))",
+    "imports": [
+      "(std misc pqueue)"
+    ],
+    "related_recipes": [
+      "jerboa-pqueue"
+    ]
+  },
+  {
+    "id": "barrier-parties-invalid",
+    "pattern": "parties must be a positive integer",
+    "type": "Invalid Barrier Parties",
+    "message": "make-barrier called with non-positive integer",
+    "explanation": "make-barrier requires a positive integer for the number of parties.",
+    "fix": "Pass a positive integer: (make-barrier 3)",
+    "code_example": ";; WRONG: (make-barrier 0) or (make-barrier -1)\n;; RIGHT: (make-barrier 3)",
+    "imports": [
+      "(std misc barrier)"
+    ],
+    "related_recipes": [
+      "jerboa-barrier"
+    ]
+  },
+  {
+    "id": "chunk-size-invalid",
+    "pattern": "chunk size must be positive",
+    "type": "Invalid Chunk Size",
+    "message": "chunk called with non-positive size",
+    "explanation": "The chunk function from (std misc list-more) requires a positive chunk size.",
+    "fix": "Pass a positive integer: (chunk lst 3)",
+    "code_example": ";; WRONG: (chunk '(1 2 3) 0)\n;; RIGHT: (chunk '(1 2 3) 2)  ;; => ((1 2) (3))",
+    "imports": [
+      "(std misc list-more)"
+    ],
+    "related_recipes": [
+      "jerboa-list-more"
+    ]
+  },
+  {
+    "id": "with-catch-to-exception-catcher",
+    "pattern": "unbound.*with-catch|variable.*with-catch.*not bound",
+    "type": "Untranslated with-catch",
+    "message": "Gerbil's with-catch used without translation",
+    "explanation": "Gerbil uses (with-catch handler thunk) but jerboa uses (with-exception-catcher handler thunk). If you're porting Gerbil code, run it through the translator first.",
+    "fix": "Either: 1) Use translate-try-catch from (jerboa translator), or 2) Manually replace (with-catch h t) with (with-exception-catcher h t), or 3) Use (jerboa prelude) which provides with-catch.",
+    "code_example": ";; Gerbil: (with-catch handler thunk)\n;; Jerboa: (with-exception-catcher handler thunk)\n\n;; Or use the translator:\n(import (jerboa translator))\n(translate-try-catch '(with-catch handler thunk))\n;; => (with-exception-catcher handler thunk)",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-translate-try-catch",
+      "jerboa-with-catch"
+    ]
+  },
+  {
+    "id": "defrules-empty-literals",
+    "pattern": "invalid syntax.*defrules|expected.*defrules",
+    "type": "Defrules Syntax Error",
+    "message": "Gerbil defrules with empty () literals list not recognized",
+    "explanation": "Gerbil's defrules has an extra () literals list: (defrules name () clauses...). Jerboa's defrules doesn't have this. The translator strips it.",
+    "fix": "Use translate-defrules from (jerboa translator) to strip the empty () literals list. Or manually remove the () after the macro name.",
+    "code_example": ";; Gerbil (won't work in jerboa):\n;; (defrules my-macro () ((_ x) x))\n\n;; Jerboa (correct):\n(defrules my-macro ((_ x) x))\n\n;; Or use translator:\n(import (jerboa translator))\n(translate-defrules '(defrules my-macro () ((_ x) x)))\n;; => (defrules my-macro ((_ x) x))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-translate-defrules",
+      "jerboa-defrules"
+    ]
+  },
+  {
+    "id": "method-dispatch-braces",
+    "pattern": "unexpected.*\\{|invalid.*\\{|unexpected character.*brace",
+    "type": "Untranslated Method Dispatch Braces",
+    "message": "Gerbil's {method obj} brace syntax used without translation",
+    "explanation": "Gerbil uses {method obj args} for method dispatch. This must be translated to (~ obj method args) for jerboa before parsing.",
+    "fix": "Apply translate-method-dispatch (string-level) before reading the file. This is a string transform, not an s-expr transform.",
+    "code_example": "(import (jerboa translator))\n;; Apply to raw source text BEFORE reading:\n(translate-method-dispatch \"{draw canvas x y}\")\n;; => \"(~ canvas draw x y)\"",
+    "imports": [
+      "(jerboa translator)"
+    ],
+    "related_recipes": [
+      "jerboa-translate-method-dispatch"
+    ]
+  },
+  {
+    "id": "symbol-hash-conflict",
+    "pattern": "import conflict.*symbol-hash|multiple.*symbol-hash",
+    "type": "symbol-hash Import Conflict",
+    "message": "symbol-hash conflicts with Chez's builtin",
+    "explanation": "Chez Scheme already provides symbol-hash natively. If a module tries to export/define symbol-hash, it conflicts with the (chezscheme) import.",
+    "fix": "Don't define or export symbol-hash — use Chez's builtin directly. Import (std misc symbol) for symbol-append, make-symbol, etc. but symbol-hash comes from (chezscheme).",
+    "code_example": ";; symbol-hash is a Chez builtin — just use it:\n(symbol-hash 'hello)  ;; => fixnum hash\n\n;; For other symbol utils:\n(import (std misc symbol))\n(symbol-append 'foo 'bar)  ;; => foobar",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-symbol-utils"
+    ]
+  },
+  {
+    "id": "eq-hashtable-clone-fail",
+    "pattern": "not a procedure.*#f.*make-hashtable|incorrect argument.*make-hashtable",
+    "type": "eq-hashtable Clone Failure",
+    "message": "Trying to clone an eq-hashtable with (make-hashtable hash-fn equiv) fails because hash-fn is #f",
+    "explanation": "Chez's (hashtable-hash-function ht) returns #f for eq and eqv hashtables. Passing #f to make-hashtable as the hash function causes an error. The hash-more module handles this with clone-empty.",
+    "fix": "Use the hash-more functions (hash-filter, hash-map/values, hash-union, hash-intersect) which detect eq/eqv/equal hashtables automatically. Or check (hashtable-equivalence-function ht) and use make-eq-hashtable/make-eqv-hashtable as appropriate.",
+    "code_example": ";; WRONG: cloning eq-hashtable\n;; (make-hashtable (hashtable-hash-function ht) (hashtable-equivalence-function ht))\n;; Fails because hash-function returns #f for eq-hashtables\n\n;; RIGHT: use hash-more which handles this\n(import (std misc hash-more))\n(hash-filter (lambda (k v) (> v 0)) my-eq-ht)  ;; works correctly",
+    "imports": [
+      "(std misc hash-more)"
+    ],
+    "related_recipes": [
+      "jerboa-hash-more"
+    ]
+  },
+  {
+    "id": "datum-syntax-needs-identifier",
+    "pattern": "invalid first argument|datum->syntax|not an identifier",
+    "type": "Macro Error",
+    "message": "datum->syntax requires an identifier, not a compound expression",
+    "explanation": "datum->syntax first argument must be an identifier (bare symbol in syntax). Passing a compound expression like #'(+ 1 2) fails because only identifiers carry scope context.",
+    "fix": "In syntax-case, use (k expr) pattern and (datum->syntax #'k val) where k is always a bare identifier.",
+    "code_example": "(define-syntax my-macro\n  (lambda (stx)\n    (syntax-case stx ()\n      [(k expr)\n       (datum->syntax #'k (eval (syntax->datum #'expr)))])))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-comptime-macro"
+    ]
+  },
+  {
+    "id": "vector-as-syntax-datum",
+    "pattern": "invalid syntax|cannot convert vector|syntax error.*vector",
+    "type": "Macro Error",
+    "message": "Vectors cannot be spliced directly as syntax datums",
+    "explanation": "datum->syntax cannot produce a vector literal for splicing into syntax templates. Attempting (datum->syntax #'k #(1 2 3)) causes invalid syntax.",
+    "fix": "Convert vector to list before datum->syntax, then wrap with list->vector: (with-syntax ([v (datum->syntax #'k (vector->list vec))]) #'(list->vector 'v))",
+    "code_example": "(with-syntax ([elems (datum->syntax #'k (vector->list #(1 2 3)))])\n  #'(list->vector 'elems))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-comptime-macro"
+    ]
+  },
+  {
+    "id": "thread-yield-unbound-chez",
+    "pattern": "variable thread-yield is not bound|unbound.*thread-yield",
+    "type": "Unbound Variable",
+    "message": "thread-yield does not exist in Chez Scheme",
+    "explanation": "Chez Scheme has no thread-yield primitive. Code ported from Gerbil or other Schemes that calls thread-yield gets an unbound variable error.",
+    "fix": "Replace (thread-yield) with (sleep (make-time 'time-duration 1000000 0)) for a 1ms cooperative yield.",
+    "code_example": ";; Instead of: (thread-yield)\n(sleep (make-time 'time-duration 1000000 0))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-csp-channels"
+    ]
+  },
+  {
+    "id": "define-record-type-constructor-redef",
+    "pattern": "rebind.*make-|duplicate definition.*make-",
+    "type": "Compile Error",
+    "message": "define-record-type auto-generates constructor; redefining causes duplicate binding",
+    "explanation": "define-record-type with a constructor clause or protocol generates the constructor binding. A subsequent (define (make-foo ...)) in the same scope triggers rebind conflict.",
+    "fix": "Do not redefine the constructor. Use case-lambda protocol for multi-arity, or rename your convenience constructor.",
+    "code_example": ";; Use protocol for multi-arity:\n(define-record-type foo\n  (fields x y)\n  (protocol\n    (lambda (new)\n      (case-lambda\n        [(x) (new x 0)]\n        [(x y) (new x y)]))))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-csp-channels"
+    ]
+  },
+  {
+    "id": "record-field-name-export-collision",
+    "pattern": "rebind conflict|duplicate binding|already defined",
+    "type": "Compile Error",
+    "message": "Record field accessor name conflicts with desired API export name",
+    "explanation": "define-record-type generates <type>-<field> accessors. If you want to export a function with that exact name, you get a duplicate binding.",
+    "fix": "Use distinct prefixes for the record type vs public API (e.g., nb- prefix for record, notebook- for API).",
+    "code_example": ";; Use distinct prefix for record:\n(define-record-type nb-cell (fields name deps thunk))\n;; Public API name is free:\n(define (notebook-cells nb) (map nb-cell-name (get-cells nb)))",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "eval-program-mode-no-user-bindings",
+    "pattern": "variable .* is not bound.*interaction-environment|eval.*not bound",
+    "type": "Runtime Error",
+    "message": "eval with interaction-environment cannot see user bindings in --program mode",
+    "explanation": "In --program mode, interaction-environment does not include top-level defines. eval calls fail with unbound variable for anything defined in the program.",
+    "fix": "Use (environment '(rnrs) '(your-library)) or restructure to avoid eval. Use dispatch tables instead.",
+    "code_example": ";; Use explicit environment:\n(eval '(+ 1 2) (environment '(rnrs base)))\n;; Or dispatch table:\n(define ops (list (cons 'add +) (cons 'mul *)))\n(apply (cdr (assq 'add ops)) '(1 2))",
+    "imports": [],
+    "related_recipes": []
+  },
+  {
+    "id": "syntax-rules-pattern-var-conflict",
+    "pattern": "bad syntax|invalid syntax.*macro",
+    "type": "Macro Error",
+    "message": "syntax-rules pattern variable clashes with generated lambda body",
+    "explanation": "Pattern variables in syntax-rules are substituted throughout the template. Naming a pattern variable the same as a binding inside generated code breaks the template.",
+    "fix": "Extract complex logic to helper functions. Or use syntax-case for more control over substitution.",
+    "code_example": ";; Extract to helper function:\n(define (parallel-run thunks)\n  (map (lambda (t) (t)) thunks))\n(define-syntax parallel\n  (syntax-rules ()\n    [(parallel body ...)\n     (parallel-run (list (lambda () body) ...))]))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-structured-concurrency"
     ]
   }
 ]

@@ -1,1 +1,191 @@
-[]
+[
+  {
+    "id": "missing-eintr-retry",
+    "title": "Missing EINTR retry in blocking I/O syscall wrapper",
+    "severity": "high",
+    "scope": "c",
+    "pattern": "\\b(recv|send|read|write|accept|connect)\\s*\\(",
+    "message": "Blocking I/O syscall without EINTR retry loop. Signals (SIGCHLD, SIGWINCH, etc.) can interrupt the call, returning -1 with errno=EINTR. Without a retry, the caller treats this as a real error — dropping connections, corrupting state, or losing data.",
+    "remediation": "Wrap in: do { n = syscall(...); } while (n < 0 && errno == EINTR); — Only retry on EINTR, not on other errors. For send(), also use MSG_NOSIGNAL to prevent SIGPIPE from killing the process."
+  },
+  {
+    "id": "unchecked-terminal-dimensions",
+    "title": "Terminal dimensions used without zero/negative check",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(ffi-terminal-(columns|rows)\\s",
+    "message": "Terminal dimensions from TIOCGWINSZ can be 0x0 (expect PTYs, detached terminals). Using (- rows 1) with rows=0 produces -1, which causes infinite loops in do/for constructs with = termination tests.",
+    "remediation": "Always validate: (let ([cols (if (<= cols 0) 80 cols)] [rows (if (<= rows 0) 24 rows)]) ...). Apply at both the protocol boundary (where dimensions are received) and the rendering boundary (defense in depth)."
+  },
+  {
+    "id": "daemon-missing-fd-hygiene",
+    "title": "Daemon process does not ensure fds 0/1/2 are open",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "ffi-daemonize|ffi-fork-exec.*daemon|setsid",
+    "message": "After daemonization (setsid + fork + close-all-fds), fds 0/1/2 are closed. New files/sockets get assigned these fd numbers, causing Chez port I/O to go to the wrong fd (e.g., display writes to a socket instead of /dev/null).",
+    "remediation": "Call ffi_ensure_std_fds() immediately after daemonization to open /dev/null on any closed standard fds. This reserves fd numbers 0-2 and prevents collisions with application fds."
+  },
+  {
+    "id": "do-loop-unchecked-bound",
+    "title": "do-loop termination bound derived from unchecked input",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(do\\s+\\(\\[\\w+\\s+0",
+    "message": "do-loop with = termination test where the bound comes from arithmetic on external input. If the bound becomes negative, the incrementing counter never hits it, causing an infinite loop.",
+    "remediation": "Either validate the input (max 1 value) before computing the bound, or use >= instead of = for the termination test when the bound could be negative."
+  },
+  {
+    "id": "openssl-aead-for-openssh-chacha20",
+    "title": "Using OpenSSL AEAD mode for OpenSSH ChaCha20-Poly1305",
+    "severity": "critical",
+    "scope": "c",
+    "pattern": "EVP_chacha20_poly1305\\s*\\(\\).*ssh|ssh.*EVP_chacha20_poly1305\\s*\\(\\)",
+    "message": "OpenSSL's EVP_chacha20_poly1305() implements RFC 8439 AEAD (padded AAD, appended lengths) which is INCOMPATIBLE with OpenSSH's chacha20-poly1305@openssh.com (raw Poly1305 over concatenated data). Packets will encrypt/decrypt locally but the server rejects them with 'message authentication code incorrect'. Kex succeeds because NEWKEYS is sent unencrypted — the bug only manifests on the first encrypted packet.",
+    "remediation": "Use EVP_chacha20() for encryption + EVP_MAC_fetch(NULL, \"POLY1305\", NULL) for raw MAC. Generate poly key from ChaCha20(K2, nonce, counter=0), encrypt payload with counter=1, compute MAC over raw (enc_length || enc_payload) without padding or length suffixes."
+  },
+  {
+    "id": "record-sentinel-zero-for-valid-int",
+    "title": "Using 0 as sentinel for optional integer record field",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(>\\s+\\([\\w-]+-(?:id|port|fd|index)\\s",
+    "message": "Record field initialized to 0 with (> field 0) as 'has value' check. Fails when 0 is a valid value (e.g., server-assigned channel ID 0, fd 0, port 0). Causes infinite loops in dispatch-until or poll loops that wait for the field to be set.",
+    "remediation": "Initialize optional integer fields to #f and check with (field ch) for truthiness. #f is never a valid integer, so this correctly distinguishes 'not yet set' from 'set to 0'."
+  },
+  {
+    "id": "pty-master-fd-double-close",
+    "title": "PTY master fd closed in multiple code paths",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "ffi-stream-close.*master-fd|master-fd.*ffi-stream-close",
+    "message": "PTY master fd may be closed by both the PTY EOF handler (in handle-pty-output!) and the cleanup function (sm-cleanup-dead-panes!). Double-closing an fd can close an unrelated fd if the number was reused between closes.",
+    "remediation": "Use guard (e [#t (void)]) around all ffi-stream-close calls on master fds. Alternatively, set the fd to -1 after closing and check before closing. The cleanup function should be the single owner of close responsibility."
+  },
+  {
+    "id": "ssh-password-in-env-var",
+    "title": "SSH/mux password passed via environment variable",
+    "severity": "low",
+    "scope": "scheme",
+    "pattern": "putenv.*_JSH_MUX_PW|getenv.*_JSH_MUX_PW|putenv.*password|putenv.*PASSWORD",
+    "message": "Passing passwords via environment variables (e.g., _JSH_MUX_PW) is safer than command-line args (not visible in ps output) but the env var persists in /proc/<pid>/environ until explicitly cleared.",
+    "remediation": "Clear the env var immediately after reading it in the child process: (putenv \"_JSH_MUX_PW\" \"\"). The parent should also clear it after fork-exec. Verify the var is cleared by checking /proc/<pid>/environ."
+  },
+  {
+    "id": "timeout-denial-of-service",
+    "title": "with-timeout tick count allows CPU exhaustion",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(with-timeout\\s+\\d{8,}",
+    "message": "with-timeout with very large tick count (>10M) effectively disables the timeout. An attacker supplying the timeout value can cause CPU exhaustion. The engine system uses ticks, not wall-clock time — ticks/second varies by workload.",
+    "remediation": "Cap the timeout seconds parameter: (with-timeout (min user-timeout MAX-TIMEOUT) default thunk). Use a maximum of 30-60 seconds for user-facing operations. For internal use, document the expected bounds."
+  },
+  {
+    "id": "foreign-alloc-no-free",
+    "title": "foreign-alloc without matching foreign-free",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "\\(foreign-alloc\\s",
+    "message": "foreign-alloc allocates unmanaged C memory. Without a matching foreign-free, the memory is leaked — Chez's GC does NOT track or free foreign-allocated memory. In long-running services, this leads to unbounded memory growth.",
+    "remediation": "Always pair foreign-alloc with foreign-free in a dynamic-wind or unwind-protect: (let ([ptr (foreign-alloc size)]) (dynamic-wind void (lambda () (use ptr)) (lambda () (foreign-free ptr)))). For ftype-pointer, free via (foreign-free (ftype-pointer-address p))."
+  },
+  {
+    "id": "ftype-buffer-overflow",
+    "title": "ftype-set! without bounds validation",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "\\(ftype-set!\\s",
+    "message": "ftype-set! writes directly to foreign memory without bounds checking. Writing past the allocated size corrupts memory, potentially leading to code execution. Chez's ftype system trusts the programmer to stay within bounds.",
+    "remediation": "Always allocate with ftype-sizeof to ensure correct size. When working with arrays, validate indices. Use ftype-pointer-null? to check for null pointers before dereferencing."
+  },
+  {
+    "id": "fasl-deserialize-untrusted",
+    "title": "FASL deserialization of untrusted data",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "\\(bytevector->fasl\\s|\\(fasl-file-read\\s|\\(fasl-read-datum\\s",
+    "message": "FASL deserialization uses Chez's read procedure internally, which can construct arbitrary Scheme objects. Deserializing data from untrusted sources could lead to injection if the data contains executable forms or exploits reader macros.",
+    "remediation": "Only deserialize FASL data from trusted sources (local cache files, known-good IPC channels). For untrusted data, use JSON or a restricted reader. Validate the deserialized data structure before use."
+  },
+  {
+    "id": "ephemeron-key-reuse",
+    "title": "Ephemeron key identity depends on GC timing",
+    "severity": "low",
+    "scope": "scheme",
+    "pattern": "\\(make-ephemeron-eq-hashtable\\)",
+    "message": "Ephemeron and weak hash tables use eq? identity. If keys are temporary objects (strings, lists), entries may vanish unpredictably as GC collects the key objects. Only symbols and objects with stable identity are safe as keys.",
+    "remediation": "Use symbols, records, or long-lived objects as ephemeron keys. If using temporary objects, ensure a strong reference exists elsewhere. For string keys, use make-hashtable with equal-hash/equal? instead."
+  },
+  {
+    "id": "contract-bypass-in-production",
+    "title": "Contract checks add runtime overhead without graceful handling",
+    "severity": "low",
+    "scope": "scheme",
+    "pattern": "\\(define/contract\\s|\\(check-argument\\s",
+    "message": "Contract checks (check-argument, define/contract) raise conditions that crash the program if unhandled. In production code, this may be the desired behavior for fail-fast, but in libraries consumed by others it can be surprising.",
+    "remediation": "Document which functions have contracts. Consider wrapping contract-heavy code paths in guard/try-catch at API boundaries. For performance-critical inner loops, avoid contracts — use them at module boundaries only."
+  },
+  {
+    "id": "barrier-deadlock",
+    "title": "Thread barrier with fewer threads than parties causes deadlock",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(barrier-wait!\\s",
+    "message": "If fewer threads call barrier-wait! than the barrier's party count, all waiting threads block forever. If a thread dies before reaching the barrier, all other threads deadlock.",
+    "remediation": "Ensure the number of threads matches make-barrier's party count exactly. Use barrier-reset! from a supervisor thread if a worker dies. Consider adding a timeout wrapper: (with-timeout 30.0 'deadlock (lambda () (barrier-wait! b)))."
+  },
+  {
+    "id": "region-use-after-free",
+    "title": "Region reference used after with-region scope exits",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "region-ref|region-set!",
+    "message": "The region module allocates memory via foreign-alloc and frees it in dynamic-wind cleanup when with-region exits. Any region-ref or region-set! on a pointer from that region after scope exit dereferences freed memory, causing undefined behavior or segfault.",
+    "remediation": "Ensure all region-ref/region-set! calls are lexically inside the with-region body. Never capture a region pointer in a closure, channel, or continuation that outlives the scope."
+  },
+  {
+    "id": "move-use-after-move",
+    "title": "Movable value accessed after move! invalidated the source",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "move-ref.*move!|move!.*move-ref",
+    "message": "move! transfers ownership and invalidates the source. Subsequent access on the original binding returns a runtime error. Interleaving move-ref and move! on the same binding indicates a logic error.",
+    "remediation": "After move!, never read the source binding again. Restructure so move! is the last operation on any given source."
+  },
+  {
+    "id": "affine-double-use",
+    "title": "Affine value consumed by affine-use! more than once",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "affine-use!",
+    "message": "Affine types enforce use-at-most-once. Second affine-use! raises runtime error, but multiple calls targeting the same binding indicate a design-level logic bug.",
+    "remediation": "Audit every affine binding to ensure affine-use! is called exactly once. Place affine-use! at exactly one branch exit if conditional."
+  },
+  {
+    "id": "borrow-mut-during-shared",
+    "title": "Mutable borrow attempted while shared borrows active",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "borrow-mut.*borrow\\b|borrow\\b.*borrow-mut",
+    "message": "The borrow checker requires mutable borrows to be exclusive. Nested borrow/borrow-mut calls indicate mixing read and write access, which the runtime rejects and signals a data-race-prone design.",
+    "remediation": "Release all shared borrows before acquiring mutable borrow. Serialize writes via mutex, actor, or single-writer epoch."
+  },
+  {
+    "id": "unchecked-mvcc-read",
+    "title": "MVCC store read outside transaction may see inconsistent state",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "mvcc-ref(?!.*mvcc-transact)",
+    "message": "mvcc-ref outside mvcc-transact does not acquire a snapshot version. Concurrent writers may commit between successive reads, violating snapshot isolation.",
+    "remediation": "Always perform mvcc-ref inside mvcc-transact for consistent snapshots. Document single-key reads that intentionally skip isolation."
+  },
+  {
+    "id": "fasl-untrusted-load-world",
+    "title": "World state loaded from untrusted FASL source",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "load-world\\b",
+    "message": "load-world deserializes FASL data which can reconstruct arbitrary Scheme objects. Loading from untrusted sources is equivalent to arbitrary code execution.",
+    "remediation": "Only load-world from trusted, application-produced files with appropriate filesystem permissions. Verify integrity with cryptographic signature. Never accept world image path from user input."
+  }
+]
