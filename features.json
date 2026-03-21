@@ -120,5 +120,23 @@
     "example_scenario": "PR adds a module with (import (std net tcp-raw)). Lint says: 'WARNING: raw TCP import — use (std safe) safe-tcp-connect for type validation and port range checking'.",
     "estimated_token_reduction": 400,
     "votes": 1
+  },
+  {
+    "id": "safe-prelude-generator",
+    "title": "Generate safe-by-default prelude module from unsafe module exports",
+    "description": "A tool that takes a list of unsafe modules and their safe wrapper module, then generates a prelude .ss file that re-exports the safe wrappers under the original (unsafe) names. Handles prefix stripping (safe-sqlite-open → sqlite-open), import/export generation, and excludes specified dangerous exports (c-lambda, foreign-procedure). Would automate the manual process of creating (jerboa prelude safe) style modules.",
+    "impact": "medium",
+    "tags": [
+      "prelude",
+      "safe",
+      "wrapper",
+      "rename",
+      "re-export",
+      "generator"
+    ],
+    "use_case": "When a project has raw FFI modules and safe wrapper modules, and wants to create a convenience prelude that shadows unsafe names with safe equivalents — common pattern for security-hardened Scheme libraries.",
+    "example_scenario": "jerboa has (std db sqlite-native) with sqlite-open and (std safe) with safe-sqlite-open. Creating (jerboa prelude safe) required manually listing ~40 exports, writing define aliases for each (define sqlite-open safe:safe-sqlite-open), and carefully excluding raw FFI forms. A generator tool could produce this from a mapping spec in one call.",
+    "estimated_token_reduction": "~800 tokens per prelude module — eliminates manual export listing, alias writing, and import construction",
+    "votes": 0
   }
 ]

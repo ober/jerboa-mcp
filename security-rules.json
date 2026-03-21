@@ -5,8 +5,8 @@
     "severity": "high",
     "scope": "c",
     "pattern": "\\b(recv|send|read|write|accept|connect)\\s*\\(",
-    "message": "Blocking I/O syscall without EINTR retry loop. Signals (SIGCHLD, SIGWINCH, etc.) can interrupt the call, returning -1 with errno=EINTR. Without a retry, the caller treats this as a real error \u2014 dropping connections, corrupting state, or losing data.",
-    "remediation": "Wrap in: do { n = syscall(...); } while (n < 0 && errno == EINTR); \u2014 Only retry on EINTR, not on other errors. For send(), also use MSG_NOSIGNAL to prevent SIGPIPE from killing the process."
+    "message": "Blocking I/O syscall without EINTR retry loop. Signals (SIGCHLD, SIGWINCH, etc.) can interrupt the call, returning -1 with errno=EINTR. Without a retry, the caller treats this as a real error — dropping connections, corrupting state, or losing data.",
+    "remediation": "Wrap in: do { n = syscall(...); } while (n < 0 && errno == EINTR); — Only retry on EINTR, not on other errors. For send(), also use MSG_NOSIGNAL to prevent SIGPIPE from killing the process."
   },
   {
     "id": "unchecked-terminal-dimensions",
@@ -41,7 +41,7 @@
     "severity": "critical",
     "scope": "c",
     "pattern": "EVP_chacha20_poly1305\\s*\\(\\).*ssh|ssh.*EVP_chacha20_poly1305\\s*\\(\\)",
-    "message": "OpenSSL's EVP_chacha20_poly1305() implements RFC 8439 AEAD (padded AAD, appended lengths) which is INCOMPATIBLE with OpenSSH's chacha20-poly1305@openssh.com (raw Poly1305 over concatenated data). Packets will encrypt/decrypt locally but the server rejects them with 'message authentication code incorrect'. Kex succeeds because NEWKEYS is sent unencrypted \u2014 the bug only manifests on the first encrypted packet.",
+    "message": "OpenSSL's EVP_chacha20_poly1305() implements RFC 8439 AEAD (padded AAD, appended lengths) which is INCOMPATIBLE with OpenSSH's chacha20-poly1305@openssh.com (raw Poly1305 over concatenated data). Packets will encrypt/decrypt locally but the server rejects them with 'message authentication code incorrect'. Kex succeeds because NEWKEYS is sent unencrypted — the bug only manifests on the first encrypted packet.",
     "remediation": "Use EVP_chacha20() for encryption + EVP_MAC_fetch(NULL, \"POLY1305\", NULL) for raw MAC. Generate poly key from ChaCha20(K2, nonce, counter=0), encrypt payload with counter=1, compute MAC over raw (enc_length || enc_payload) without padding or length suffixes."
   },
   {
@@ -77,7 +77,7 @@
     "severity": "medium",
     "scope": "scheme",
     "pattern": "\\(with-timeout\\s+\\d{8,}",
-    "message": "with-timeout with very large tick count (>10M) effectively disables the timeout. An attacker supplying the timeout value can cause CPU exhaustion. The engine system uses ticks, not wall-clock time \u2014 ticks/second varies by workload.",
+    "message": "with-timeout with very large tick count (>10M) effectively disables the timeout. An attacker supplying the timeout value can cause CPU exhaustion. The engine system uses ticks, not wall-clock time — ticks/second varies by workload.",
     "remediation": "Cap the timeout seconds parameter: (with-timeout (min user-timeout MAX-TIMEOUT) default thunk). Use a maximum of 30-60 seconds for user-facing operations. For internal use, document the expected bounds."
   },
   {
@@ -86,7 +86,7 @@
     "severity": "high",
     "scope": "scheme",
     "pattern": "\\(foreign-alloc\\s",
-    "message": "foreign-alloc allocates unmanaged C memory. Without a matching foreign-free, the memory is leaked \u2014 Chez's GC does NOT track or free foreign-allocated memory. In long-running services, this leads to unbounded memory growth.",
+    "message": "foreign-alloc allocates unmanaged C memory. Without a matching foreign-free, the memory is leaked — Chez's GC does NOT track or free foreign-allocated memory. In long-running services, this leads to unbounded memory growth.",
     "remediation": "Always pair foreign-alloc with foreign-free in a dynamic-wind or unwind-protect: (let ([ptr (foreign-alloc size)]) (dynamic-wind void (lambda () (use ptr)) (lambda () (foreign-free ptr)))). For ftype-pointer, free via (foreign-free (ftype-pointer-address p))."
   },
   {
@@ -123,7 +123,7 @@
     "scope": "scheme",
     "pattern": "\\(define/contract\\s|\\(check-argument\\s",
     "message": "Contract checks (check-argument, define/contract) raise conditions that crash the program if unhandled. In production code, this may be the desired behavior for fail-fast, but in libraries consumed by others it can be surprising.",
-    "remediation": "Document which functions have contracts. Consider wrapping contract-heavy code paths in guard/try-catch at API boundaries. For performance-critical inner loops, avoid contracts \u2014 use them at module boundaries only."
+    "remediation": "Document which functions have contracts. Consider wrapping contract-heavy code paths in guard/try-catch at API boundaries. For performance-critical inner loops, avoid contracts — use them at module boundaries only."
   },
   {
     "id": "barrier-deadlock",
@@ -194,7 +194,7 @@
     "severity": "high",
     "scope": "rust",
     "pattern": "std::mem::transmute.*'static|transmute.*Statement.*'static",
-    "message": "Transmuting a borrowed type to 'static lifetime to store in a static HashMap bypasses Rust's borrow checker. If the owning object (e.g., Connection) is dropped while the transmuted reference (e.g., Statement) still exists, the reference becomes dangling \u2014 causing use-after-free.",
+    "message": "Transmuting a borrowed type to 'static lifetime to store in a static HashMap bypasses Rust's borrow checker. If the owning object (e.g., Connection) is dropped while the transmuted reference (e.g., Statement) still exists, the reference becomes dangling — causing use-after-free.",
     "remediation": "Use raw C API pointers instead of Rust wrapper types with lifetimes. For sqlite: use rusqlite::ffi::sqlite3_prepare_v2 etc. directly instead of transmuting Statement<'conn> to Statement<'static>. Keep the Connection alive in the same entry to manage the sqlite3* lifetime."
   },
   {
@@ -284,7 +284,7 @@
     "severity": "high",
     "scope": "scheme",
     "pattern": "sanitize-html[^-].*(?:attr|href|src|action|onclick|style)",
-    "message": "sanitize-html only escapes < > & \" ' \u2014 sufficient for element content but NOT for attribute values. Attribute breakout is possible with backtick, equals, slash characters.",
+    "message": "sanitize-html only escapes < > & \" ' — sufficient for element content but NOT for attribute values. Attribute breakout is possible with backtick, equals, slash characters.",
     "remediation": "Use sanitize-html-attribute for attribute values. Use sanitize-url-attribute for href/src/action attributes (also blocks javascript: scheme)."
   },
   {
@@ -385,5 +385,59 @@
     "pattern": "(?:sqlite-exec|sqlite-query|pg-exec|pg-query).*string-append|format.*SELECT|format.*INSERT|format.*UPDATE|format.*DELETE",
     "message": "SQL query constructed via string-append or format with user input is vulnerable to SQL injection. An attacker can terminate the string and inject arbitrary SQL commands.",
     "remediation": "Use parameterized queries: (sqlite-execute db \"SELECT * FROM users WHERE id = ?\" user-id). Never interpolate user input into SQL strings. The (std safe) module's safe-sqlite-query wraps this pattern."
+  },
+  {
+    "id": "availability-flag-before-eval",
+    "title": "Module availability flag set before all evals complete",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "set!.*available\\?.*#t\\)[\\s\\S]*?eval\\s",
+    "message": "Availability flag set to #t before subsequent eval calls. If a later eval fails, the flag remains #t but function bindings are still #f, causing 'attempt to apply non-procedure' at runtime.",
+    "remediation": "Move (set! *-available? #t) to AFTER all (eval ...) calls succeed. Also reset to #f in the guard handler.",
+    "related_recipe": "dynamic-module-load-availability-flag-pattern",
+    "tags": [
+      "availability",
+      "eval",
+      "environment",
+      "dynamic-load",
+      "flag",
+      "ordering"
+    ]
+  },
+  {
+    "id": "sql-string-append-injection",
+    "title": "SQL query built via string-append or format",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "sqlite-(?:exec|query|execute|prepare)\\s+\\S+\\s+\\((?:string-append|format|string-concatenate)",
+    "message": "SQL query built via string concatenation instead of parameterized queries. This is a SQL injection vector — user input could modify query structure.",
+    "remediation": "Use parameterized queries: (sqlite-query db \"SELECT * FROM t WHERE id = ?\" user-id) instead of (sqlite-query db (string-append \"SELECT * FROM t WHERE id = \" user-id))",
+    "related_recipe": "sql-injection-heuristic-detection-scheme",
+    "tags": [
+      "sql",
+      "injection",
+      "string-append",
+      "format",
+      "sqlite",
+      "parameterized"
+    ]
+  },
+  {
+    "id": "raw-ffi-module-import-without-safe",
+    "title": "Direct import of raw FFI module without safe wrapper",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(import\\s.*\\((?:std\\s+db\\s+sqlite-native|std\\s+net\\s+tcp-raw)",
+    "message": "Direct import of raw FFI module bypasses contract checks, resource tracking, and SQL safety. Use (std safe) or (jerboa prelude safe) for safe wrappers with argument validation, guardian-based leak detection, and injection heuristics.",
+    "remediation": "Replace (import (std db sqlite-native)) with (import (std safe)) or (import (jerboa prelude safe)).",
+    "tags": [
+      "import",
+      "unsafe",
+      "raw",
+      "sqlite",
+      "tcp",
+      "ffi",
+      "safe-wrapper"
+    ]
   }
 ]
