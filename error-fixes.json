@@ -111,7 +111,7 @@
     "message": "hash-ref called with missing key (2-arg form raises error)",
     "explanation": "In Jerboa, hash-ref with 2 args raises an error if the key is missing. hash-ref with 3 args returns a default. hash-get always returns #f for missing keys (it's a macro).",
     "fix": "Use (hash-get table key) for safe access (returns #f), or (hash-ref table key default) with a default value, or check with (hash-key? table key) first.",
-    "code_example": "; Wrong: (hash-ref table 'key) — error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
+    "code_example": "; Wrong: (hash-ref table 'key) \u2014 error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
     "imports": [
       "(jerboa prelude)"
     ],
@@ -377,7 +377,7 @@
     "pattern": "server closed connection|server EOF|disconnected.*unexpect",
     "type": "EINTR Spontaneous Disconnect",
     "message": "Client/server connection drops randomly during operation",
-    "explanation": "C FFI wrappers for recv/send/read return -1 on EINTR (signal interruption) without retrying. The Scheme layer interprets -1 as EOF/error and closes the connection. SIGCHLD from child processes is the most common trigger — any time a subprocess exits, the signal interrupts blocking I/O.",
+    "explanation": "C FFI wrappers for recv/send/read return -1 on EINTR (signal interruption) without retrying. The Scheme layer interprets -1 as EOF/error and closes the connection. SIGCHLD from child processes is the most common trigger \u2014 any time a subprocess exits, the signal interrupts blocking I/O.",
     "fix": "Wrap all blocking I/O syscalls in C shims with do { n = syscall(...); } while (n < 0 && errno == EINTR); loops. Check both recv, send, and read wrappers.",
     "code_example": "/* Before (broken): */\nssize_t n = recv(fd, buf, len, 0);\nif (n < 0) return -1;  /* EINTR treated as error! */\n\n/* After (fixed): */\nssize_t n;\ndo { n = recv(fd, buf, len, 0); } while (n < 0 && errno == EINTR);\nif (n < 0) return -1;",
     "imports": [],
@@ -392,8 +392,8 @@
     "type": "do-loop Infinite Loop",
     "message": "do-loop with = test never terminates when bound is negative",
     "explanation": "Chez do-loops conventionally use = for termination: (do ([r 0 (+ r 1)]) ((= r N)) ...). If N is negative (e.g., from (- rows 1) where rows=0), r increments past -1 and the loop never terminates. This caused a server hang in render-single-pane when terminal dimensions were 0x0.",
-    "fix": "Guard the input: (max 1 value) before subtraction, or use >= instead of = for the termination test. Also validate terminal dimensions at protocol boundaries — default 0 to 80/24.",
-    "code_example": ";; BROKEN: (do ([r 0 (+ r 1)]) ((= r (- 0 1))) ...) → infinite\n;; FIXED:\n(let ([rows (max 1 rows)])\n  (do ([r 0 (+ r 1)])\n      ((= r (- rows 1)))\n    (render-row r)))",
+    "fix": "Guard the input: (max 1 value) before subtraction, or use >= instead of = for the termination test. Also validate terminal dimensions at protocol boundaries \u2014 default 0 to 80/24.",
+    "code_example": ";; BROKEN: (do ([r 0 (+ r 1)]) ((= r (- 0 1))) ...) \u2192 infinite\n;; FIXED:\n(let ([rows (max 1 rows)])\n  (do ([r 0 (+ r 1)])\n      ((= r (- rows 1)))\n    (render-row r)))",
     "imports": [],
     "related_recipes": [
       "chez-terminal-size-zero-guard",
@@ -446,7 +446,7 @@
     "message": "Custom function name conflicts with auto-generated record accessor",
     "explanation": "define-record-type auto-generates accessors named recordtype-fieldname. Defining a function with the same name in the library body causes 'multiple definitions' at compile time.",
     "fix": "Rename the custom function to avoid collision with the auto-generated accessor. E.g., use -alloc-id instead of -next-id.",
-    "code_example": ";; Record has field next-id → generates table-next-id\n;; WRONG: (define (table-next-id t) ...)\n;; RIGHT: (define (table-alloc-id t) (let ([id (table-next-id t)]) ...))",
+    "code_example": ";; Record has field next-id \u2192 generates table-next-id\n;; WRONG: (define (table-next-id t) ...)\n;; RIGHT: (define (table-alloc-id t) (let ([id (table-next-id t)]) ...))",
     "imports": [],
     "related_recipes": [
       "chez-r6rs-library-duplicate-definition"
@@ -459,7 +459,7 @@
     "message": "SSH server rejects packets with 'MAC incorrect' after kex succeeds",
     "explanation": "OpenSSL's EVP_chacha20_poly1305() implements RFC 8439 AEAD which pads AAD/ciphertext to 16-byte boundaries and appends 8-byte LE length fields before computing Poly1305. OpenSSH's chacha20-poly1305@openssh.com uses raw Poly1305 over the plain concatenation (enc_length || enc_payload). The MAC tags are different.",
     "fix": "Do NOT use EVP_chacha20_poly1305(). Instead use EVP_chacha20() for encryption and EVP_MAC(\"POLY1305\") for raw MAC. Generate poly key from ChaCha20(K2, counter=0), encrypt with counter=1, MAC over raw concatenation.",
-    "code_example": "/* Wrong: EVP_chacha20_poly1305() — RFC 8439 AEAD */\n/* Right: EVP_chacha20() + EVP_MAC(\"POLY1305\") — raw */",
+    "code_example": "/* Wrong: EVP_chacha20_poly1305() \u2014 RFC 8439 AEAD */\n/* Right: EVP_chacha20() + EVP_MAC(\"POLY1305\") \u2014 raw */",
     "imports": [],
     "related_recipes": [
       "chez-ssh-chacha20-poly1305-openssh"
@@ -469,10 +469,10 @@
     "id": "stale-daemon-after-rebuild",
     "pattern": "fix doesn't work|still not working|still broken|still hangs|does not exit|deleted",
     "type": "Stale Daemon Process",
-    "message": "Changes not taking effect after rebuild — daemon running old binary",
+    "message": "Changes not taking effect after rebuild \u2014 daemon running old binary",
     "explanation": "When a daemon process is fork-exec'd via /proc/self/exe, it gets the current binary at that moment. After rebuilding, the daemon still runs the OLD code in memory. /proc/<pid>/exe will show '(deleted)' after the binary is overwritten. No amount of rebuilding will fix the running daemon.",
-    "fix": "1. Check: ls -la /proc/<pid>/exe — look for '(deleted)'\n2. Kill the old daemon: kill <pid>\n3. Start a new daemon with the rebuilt binary",
-    "code_example": ";; $ ls -la /proc/$(cat /run/user/$UID/jsh/default.pid)/exe\n;; ...jsh-musl (deleted)  ← STALE!\n;; $ kill $(cat /run/user/$UID/jsh/default.pid)\n;; Then: ,server",
+    "fix": "1. Check: ls -la /proc/<pid>/exe \u2014 look for '(deleted)'\n2. Kill the old daemon: kill <pid>\n3. Start a new daemon with the rebuilt binary",
+    "code_example": ";; $ ls -la /proc/$(cat /run/user/$UID/jsh/default.pid)/exe\n;; ...jsh-musl (deleted)  \u2190 STALE!\n;; $ kill $(cat /run/user/$UID/jsh/default.pid)\n;; Then: ,server",
     "imports": [],
     "related_recipes": [
       "chez-proc-self-exe-stale"
@@ -513,7 +513,7 @@
     "message": "pqueue-pop! or pqueue-peek called on empty queue",
     "explanation": "Attempted to pop or peek at an empty priority queue. Both operations error on empty queues.",
     "fix": "Check pqueue-empty? before calling pqueue-pop! or pqueue-peek.",
-    "code_example": "(import (std misc pqueue))\n(define pq (make-pqueue))\n;; WRONG: (pqueue-pop! pq)  — errors if empty\n;; RIGHT:\n(unless (pqueue-empty? pq)\n  (pqueue-pop! pq))",
+    "code_example": "(import (std misc pqueue))\n(define pq (make-pqueue))\n;; WRONG: (pqueue-pop! pq)  \u2014 errors if empty\n;; RIGHT:\n(unless (pqueue-empty? pq)\n  (pqueue-pop! pq))",
     "imports": [
       "(std misc pqueue)"
     ],
@@ -600,8 +600,8 @@
     "type": "symbol-hash Import Conflict",
     "message": "symbol-hash conflicts with Chez's builtin",
     "explanation": "Chez Scheme already provides symbol-hash natively. If a module tries to export/define symbol-hash, it conflicts with the (chezscheme) import.",
-    "fix": "Don't define or export symbol-hash — use Chez's builtin directly. Import (std misc symbol) for symbol-append, make-symbol, etc. but symbol-hash comes from (chezscheme).",
-    "code_example": ";; symbol-hash is a Chez builtin — just use it:\n(symbol-hash 'hello)  ;; => fixnum hash\n\n;; For other symbol utils:\n(import (std misc symbol))\n(symbol-append 'foo 'bar)  ;; => foobar",
+    "fix": "Don't define or export symbol-hash \u2014 use Chez's builtin directly. Import (std misc symbol) for symbol-append, make-symbol, etc. but symbol-hash comes from (chezscheme).",
+    "code_example": ";; symbol-hash is a Chez builtin \u2014 just use it:\n(symbol-hash 'hello)  ;; => fixnum hash\n\n;; For other symbol utils:\n(import (std misc symbol))\n(symbol-append 'foo 'bar)  ;; => foobar",
     "imports": [],
     "related_recipes": [
       "jerboa-symbol-utils"
@@ -707,6 +707,222 @@
     "imports": [],
     "related_recipes": [
       "jerboa-structured-concurrency"
+    ]
+  },
+  {
+    "id": "ffi-no-entry-load-shared-object",
+    "pattern": "no entry for|foreign-procedure.*not found",
+    "type": "FFI Entry Not Found",
+    "message": "foreign-procedure can't find the C symbol in loaded shared objects",
+    "explanation": "In --script mode, load-shared-object in an imported library does NOT make symbols visible to foreign-procedure in the importing library. Each library that uses foreign-procedure must load the .so itself directly.",
+    "fix": "Add the load-shared-object guard pattern directly in each consuming library:\n(define _native-loaded\n  (or (guard (e [#t #f]) (load-shared-object \"libjerboa_native.so\") #t)\n      (error 'my-module \"libjerboa_native.so not found\")))",
+    "code_example": ";; WRONG: importing a loader module\n(import (std native)) ; loads .so but symbols invisible here\n\n;; RIGHT: load directly in each library\n(define _native-loaded\n  (or (guard (e [#t #f]) (load-shared-object \"libjerboa_native.so\") #t)\n      (error 'my-module \".so not found\")))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-rust-ffi-load-shared-object"
+    ]
+  },
+  {
+    "id": "ffi-void-star-not-ftype",
+    "pattern": "not an ftype pointer|is not an ftype pointer",
+    "type": "FFI Type Mismatch",
+    "message": "void* return type creates ftype pointer, not raw address",
+    "explanation": "foreign-procedure with void* return type creates an ftype-pointer object. If the Rust/C function returns a raw pointer (not a Chez-managed ftype), ftype-pointer-address will fail. Use uptr instead to get the raw address as an unsigned integer.",
+    "fix": "Change the foreign-procedure return type from void* to uptr. Compare with 0 for NULL instead of using ftype-pointer-null?.",
+    "code_example": ";; WRONG:\n;; (define c-alloc (foreign-procedure \"alloc\" (size_t) void*))\n;; (ftype-pointer-address (c-alloc 4096))  ; ERROR\n\n;; RIGHT:\n(define c-alloc (foreign-procedure \"alloc\" (size_t) uptr))\n(let ([ptr (c-alloc 4096)])\n  (when (= ptr 0) (error 'alloc \"failed\")))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-rust-ffi-uptr-not-void"
+    ]
+  },
+  {
+    "id": "r6rs-bytevector-copy-3args",
+    "pattern": "possible incorrect number of arguments",
+    "type": "R6RS Argument Warning",
+    "message": "bytevector-copy called with 3 arguments (Chez extension, not R6RS)",
+    "explanation": "R6RS specifies (bytevector-copy bv) with 1 argument. Chez extends it to 3 args (bv start count) but prints a warning. In R6RS library mode, this warning can be noisy.",
+    "fix": "Use a bv-sub helper with bytevector-copy! (5 args) which is standard R6RS:\n(define (bv-sub bv start len)\n  (let ([out (make-bytevector len)])\n    (bytevector-copy! bv start out 0 len)\n    out))",
+    "code_example": ";; Instead of: (bytevector-copy buf 0 n)  ; warns\n;; Use:\n(define (bv-sub bv start len)\n  (let ([out (make-bytevector len)])\n    (bytevector-copy! bv start out 0 len)\n    out))\n(bv-sub buf 0 n)  ; no warning",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-rust-ffi-bv-sub-r6rs"
+    ]
+  },
+  {
+    "id": "r6rs-library-body-ordering",
+    "pattern": "definition not permitted|body of a library.*expression before definition",
+    "type": "R6RS Library Body Error",
+    "message": "Expression placed before definitions in R6RS library body",
+    "explanation": "R6RS requires all definitions to come before expressions in a library body. A bare function call like (load-native) placed before define forms violates this rule. Wrapping the call in a define (as initialization) satisfies the requirement.",
+    "fix": "Wrap the initialization expression in a define:\n;; WRONG: (load-native) then (define foo ...)\n;; RIGHT: (define _loaded (load-native)) then (define foo ...)",
+    "code_example": ";; WRONG:\n(library (my lib) (export ...) (import ...)\n  (load-native)  ; expression before definitions!\n  (define foo ...))\n\n;; RIGHT:\n(library (my lib) (export ...) (import ...)\n  (define _loaded (load-native))  ; definition, not expression\n  (define foo ...))",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-library-definition"
+    ]
+  },
+  {
+    "id": "rust-ffi-statement-lifetime",
+    "pattern": "does not live long enough|cannot move out.*because it is borrowed",
+    "type": "Rust Lifetime Error",
+    "message": "Rust Statement<'conn> lifetime prevents separate storage from Connection",
+    "explanation": "rusqlite's Statement<'conn> borrows the Connection. You cannot store Connection and Statement in separate static HashMaps because the Statement's lifetime is tied to the Connection's borrow. Transmuting to 'static works but is fragile.",
+    "fix": "Use the raw SQLite C API via rusqlite::ffi instead of rusqlite's Rust wrapper types. Keep Connection in a struct for lifetime management but use sqlite3_prepare_v2/sqlite3_step/etc directly.",
+    "code_example": "// Instead of separate stores:\n// DB_STORE: HashMap<u64, Connection>\n// STMT_STORE: HashMap<u64, Statement<'??>>\n\n// Use raw pointers:\nstruct DbEntry {\n    _conn: Connection,  // keeps sqlite3* alive\n    raw: *mut rusqlite::ffi::sqlite3,\n}\nstruct StmtEntry {\n    raw: *mut rusqlite::ffi::sqlite3_stmt,\n    db_handle: u64,\n}",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-rust-ffi-sqlite-raw-api"
+    ]
+  },
+  {
+    "id": "sandbox-import-denied",
+    "pattern": "import.*not allowed|import.*denied|allowed-imports",
+    "type": "Sandbox Import Denied",
+    "message": "Attempted to import a module not in the sandbox allowed-imports list",
+    "explanation": "sandbox-import! enforces the allowed-imports list from sandbox-config. Only modules explicitly listed in the config can be imported into the sandbox.",
+    "fix": "Add the module to the allowed-imports list in make-sandbox-config, or use a sandbox without import restrictions.",
+    "code_example": "(def cfg (make-sandbox-config\n           allowed-imports: '((std sort) (std text json))))\n(def sb (make-sandbox cfg))\n(sandbox-import! sb '(std sort))  ;; OK\n;; (sandbox-import! sb '(chezscheme))  ;; DENIED",
+    "imports": [
+      "(jerboa embed)"
+    ],
+    "related_recipes": [
+      "jerboa-sandbox-safe-create"
+    ]
+  },
+  {
+    "id": "sandbox-eval-timeout",
+    "pattern": "sandbox.*timed? out|eval.*timeout|max-eval-time",
+    "type": "Sandbox Eval Timeout",
+    "message": "Sandbox evaluation exceeded max-eval-time",
+    "explanation": "The sandbox config has a max-eval-time limit. If evaluation takes longer, it is terminated. This prevents infinite loops and resource exhaustion in sandboxed code.",
+    "fix": "Increase max-eval-time in sandbox-config, or optimize the evaluated code. Default is no limit; set explicitly for security.",
+    "code_example": "(def cfg (make-sandbox-config max-eval-time: 10))  ;; 10 seconds\n(def sb (make-sandbox cfg))\n;; (sandbox-eval-string sb \"(let loop () (loop))\")  ;; times out",
+    "imports": [
+      "(jerboa embed)"
+    ],
+    "related_recipes": [
+      "jerboa-sandbox-safe-create"
+    ]
+  },
+  {
+    "id": "message-size-exceeded",
+    "pattern": "message.*exceeds.*maximum|message.*too large|max-message-size",
+    "type": "Message Size Exceeded",
+    "message": "Distributed actor message exceeds *max-message-size*",
+    "explanation": "The distributed actor module enforces *max-message-size* (default 1MB) to prevent memory exhaustion attacks via oversized messages.",
+    "fix": "Increase *max-message-size* if legitimate messages are larger, or split large payloads into smaller chunks.",
+    "code_example": "(import (std actor distributed))\n;; Default is 1MB. Increase if needed:\n(parameterize ([*max-message-size* (* 10 1024 1024)])  ;; 10MB\n  (deserialize-message port))",
+    "imports": [
+      "(std actor distributed)"
+    ],
+    "related_recipes": [
+      "jerboa-safe-deserialize"
+    ]
+  },
+  {
+    "id": "reader-depth-exceeded",
+    "pattern": "maximum.*depth.*exceeded|read.*depth|max-read-depth|max-string-length|max-list-length|max-symbol-length",
+    "type": "Reader Limit Exceeded",
+    "message": "jerboa-read hit a size/depth limit",
+    "explanation": "The jerboa reader enforces limits on nesting depth (*max-read-depth* = 1024), string length (*max-string-length* = 10MB), list length (*max-list-length* = 1M), and symbol length (*max-symbol-length* = 4KB) to prevent stack overflow and memory exhaustion.",
+    "fix": "If processing legitimate large data, increase the relevant parameter. For untrusted input, keep the defaults.",
+    "code_example": "(import (jerboa reader))\n;; Increase limits for trusted data:\n(parameterize ([*max-read-depth* 4096]\n               [*max-string-length* (* 100 1024 1024)])\n  (jerboa-read port))",
+    "imports": [
+      "(jerboa reader)"
+    ],
+    "related_recipes": [
+      "jerboa-safe-deserialize"
+    ]
+  },
+  {
+    "id": "taint-violation",
+    "pattern": "taint.*violation|tainted.*data.*cannot.*reach|check-untainted",
+    "type": "Taint Violation",
+    "message": "Tainted data reached a dangerous sink without sanitization",
+    "explanation": "A value marked as tainted (from HTTP, env, file, net, or deserialization input) was passed to a safe-* wrapper without being sanitized and untainted first.",
+    "fix": "Sanitize the tainted value using the appropriate sanitizer, then call untaint before passing to the sink.",
+    "code_example": "(import (std security taint))\n(import (std security sanitize))\n(def user-input (taint-http raw-path))\n;; Sanitize, then untaint:\n(def clean (sanitize-path (taint-value user-input)))\n(safe-open-input-file (untaint (taint-http clean)))",
+    "imports": [
+      "(std security taint)",
+      "(std security sanitize)"
+    ],
+    "related_recipes": [
+      "jerboa-taint-safe-wrappers"
+    ]
+  },
+  {
+    "id": "path-traversal",
+    "pattern": "path.*traversal|NUL byte in path|escapes base directory",
+    "type": "Path Traversal",
+    "message": "Path traversal attempt detected by sanitize-path or safe-path-join",
+    "explanation": "sanitize-path rejects paths with NUL bytes. safe-path-join ensures the resolved path stays under the base directory. Paths with .. components are canonicalized.",
+    "fix": "Use sanitize-path for standalone paths, safe-path-join when combining base + relative. Handle the &path-traversal condition.",
+    "code_example": "(import (std security sanitize))\n(guard (e [(path-traversal? e)\n           (format #t \"blocked: ~a\" (path-traversal-path e))])\n  (safe-path-join \"/var/www\" \"../../etc/passwd\"))",
+    "imports": [
+      "(std security sanitize)"
+    ],
+    "related_recipes": [
+      "jerboa-sanitize-html-contexts"
+    ]
+  },
+  {
+    "id": "url-scheme-violation",
+    "pattern": "URL scheme.*not allowed|dangerous URL scheme|url-scheme-violation",
+    "type": "URL Scheme Violation",
+    "message": "URL with disallowed scheme (javascript:, data:, etc.)",
+    "explanation": "sanitize-url only allows http:// and https://. sanitize-url-attribute also rejects javascript:, data:, vbscript:, and blob: schemes.",
+    "fix": "Only use http/https URLs. Handle &url-scheme-violation for user-provided URLs.",
+    "code_example": "(import (std security sanitize))\n(guard (e [(url-scheme-violation? e)\n           (display \"bad URL scheme\")])\n  (sanitize-url-attribute user-url))",
+    "imports": [
+      "(std security sanitize)"
+    ],
+    "related_recipes": [
+      "jerboa-sanitize-html-contexts"
+    ]
+  },
+  {
+    "id": "capability-denied",
+    "pattern": "capability.*denied|permission.*denied|not.*permitted.*capability",
+    "type": "Capability Denied",
+    "message": "Operation denied by capability check",
+    "explanation": "The capability system uses sealed opaque records with CSPRNG nonces. Operations check capabilities at runtime. Attenuated or intersected capabilities may have reduced permissions.",
+    "fix": "Check capability permissions before the operation. Use capability-permissions to inspect. Ensure the capability was not over-attenuated.",
+    "code_example": "(import (std security capability))\n(def cap (make-capability 'fs '((read . #t) (write . #f))))\n;; Check before use:\n(when (capability-check cap 'write)\n  (do-write-operation))",
+    "imports": [
+      "(std security capability)"
+    ],
+    "related_recipes": [
+      "jerboa-capability-intersection"
+    ]
+  },
+  {
+    "id": "privsep-max-children",
+    "pattern": "maximum.*privsep.*children|max-privsep-children|fork.*bomb",
+    "type": "Privsep Child Limit",
+    "message": "Maximum concurrent privilege-separated children reached",
+    "explanation": "make-privsep enforces *max-privsep-children* (default 64) to prevent fork bombs. The limit is checked atomically under a mutex.",
+    "fix": "Increase *max-privsep-children* if legitimate, or call privsep-shutdown! on unused processes to free slots.",
+    "code_example": "(import (std security privsep))\n;; Increase limit:\n(parameterize ([*max-privsep-children* 128])\n  (make-privsep handler))\n;; Or free slots:\n(privsep-shutdown! old-ps)",
+    "imports": [
+      "(std security privsep)"
+    ],
+    "related_recipes": [
+      "jerboa-privsep-hardened"
+    ]
+  },
+  {
+    "id": "read-eval-rce",
+    "pattern": "#\\..*system|#\\..*eval|read-eval.*attack|reader macro.*execution",
+    "type": "Read-Eval RCE Attempt",
+    "message": "Code execution via #. reader macro in untrusted input",
+    "explanation": "Chez Scheme's read procedure supports #.(expr) which evaluates expr during reading. This is a remote code execution vector when reading untrusted data. read-eval parameter must be #f.",
+    "fix": "Always (parameterize ([read-eval #f]) (read port)) for untrusted data. Or use jerboa-read which has built-in limits. Never use bare read on network/file/user input.",
+    "code_example": ";; WRONG:\n(read untrusted-port)  ;; #.(system \"id\") executes!\n\n;; RIGHT:\n(parameterize ([read-eval #f])\n  (read untrusted-port))\n\n;; BEST:\n(import (jerboa reader))\n(jerboa-read untrusted-port)",
+    "imports": [
+      "(jerboa reader)"
+    ],
+    "related_recipes": [
+      "jerboa-safe-deserialize"
     ]
   }
 ]

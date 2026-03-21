@@ -1,1 +1,35 @@
-[]
+[
+  {
+    "id": "jerboa-security-audit",
+    "title": "Jerboa-specific security audit tool",
+    "description": "A dedicated security scanner that understands Jerboa's security modules (taint, capability, restrict, sanitize, privsep) and can detect misuse patterns specific to Jerboa - like using sanitize-html in attribute context, missing taint checks at sinks, bare read without read-eval #f, and copy-environment without restrict.",
+    "impact": "high",
+    "tags": [
+      "security",
+      "audit",
+      "jerboa",
+      "static-analysis"
+    ],
+    "use_case": "When reviewing Jerboa code for security vulnerabilities, especially AI-generated code that may try to bypass the capability system.",
+    "example_scenario": "User writes a web handler that uses sanitize-html for an href attribute. The tool detects this is the wrong sanitizer for the context and suggests sanitize-url-attribute.",
+    "estimated_token_reduction": 500,
+    "votes": 1
+  },
+  {
+    "id": "jerboa-import-policy-check",
+    "title": "Import policy validation in build pipeline",
+    "description": "A build-time check that runs (std security import-audit) audit-imports-directory and fails the build if forbidden imports are found in user modules. Integrates with gerbil_build_and_report.",
+    "impact": "medium",
+    "tags": [
+      "security",
+      "build",
+      "imports",
+      "policy",
+      "ci"
+    ],
+    "use_case": "When building a Jerboa project, automatically detect AI-generated code that bypasses the capability system via direct (chezscheme) imports.",
+    "example_scenario": "A PR adds a new module with (import (chezscheme)). The build fails with a clear message about the import policy violation, listing the exact file and line.",
+    "estimated_token_reduction": 300,
+    "votes": 1
+  }
+]
