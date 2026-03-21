@@ -924,5 +924,87 @@
     "related_recipes": [
       "jerboa-safe-deserialize"
     ]
+  },
+  {
+    "id": "_dl_find_object-undefined",
+    "pattern": "undefined reference to.*_dl_find_object|_dl_find_object.*not found",
+    "type": "Linker Error",
+    "message": "_dl_find_object undefined when linking Rust static library with musl-gcc",
+    "explanation": "libgcc_eh.a (Rust's unwinding support) references _dl_find_object, which is a glibc-only symbol not available in musl. This appears when linking a Rust static library (.a) built with the musl target into a musl-gcc binary.",
+    "fix": "Add a stub function to your glibc-compat C shim: int _dl_find_object(void *a, void *b) { return -1; } — This safely indicates 'not found' which causes the runtime to fall back to non-DWARF unwinding. With panic=\"abort\" in Cargo.toml, unwinding never actually runs.",
+    "code_example": "/* In glibc-compat.c or ffi-shim.c */\nint _dl_find_object(void *a, void *b) { return -1; }",
+    "imports": [],
+    "related_recipes": [
+      "rust-ffi-static-musl"
+    ]
+  },
+  {
+    "id": "multiple-definition-rust-lto",
+    "pattern": "multiple definition of|ld.*multiple definition",
+    "type": "Linker Error",
+    "message": "Multiple definition errors when linking Rust .a with LTO",
+    "explanation": "When Rust builds with LTO + codegen-units=1, all symbols are packed into a single .o file inside the .a archive. If any C code in your project defines the same symbol (e.g., common libc wrappers), the linker reports 'multiple definition' errors.",
+    "fix": "Add -Wl,--allow-multiple-definition (singular, NOT --allow-multiple-definitions!) to the linker flags. This tells ld to use the first definition found and silently ignore duplicates.",
+    "code_example": "# In your link command or Makefile:\nmusl-gcc ... -Wl,--allow-multiple-definition -L rust/target/release -lmylib",
+    "imports": [],
+    "related_recipes": [
+      "rust-ffi-static-musl"
+    ]
+  },
+  {
+    "id": "load-shared-object-not-found-static",
+    "pattern": "libfoo\\.so.*not found|load-shared-object.*not found|cannot open shared object",
+    "type": "Runtime Error",
+    "message": "load-shared-object fails in static binary",
+    "explanation": "A library module calls (load-shared-object \"libfoo.so\") at top level, which fatally errors in static binaries because no dynamic loader is available. The module fails to initialize, crashing the binary at startup before any user code runs.",
+    "fix": "Replace bare (load-shared-object ...) with (or (guard (e [#t #f]) (load-shared-object \"libfoo.so\") #t) #t). In static builds, FFI symbols are pre-registered via Sforeign_symbol() in main(), so the .so is unnecessary. The guard pattern gracefully handles the missing .so.",
+    "code_example": ";; WRONG - crashes in static builds:\n(load-shared-object \"libjsh-ffi.so\")\n\n;; RIGHT - graceful fallback:\n(or (guard (e [#t #f])\n      (load-shared-object \"libjsh-ffi.so\")\n      #t)\n    #t)",
+    "imports": [],
+    "related_recipes": [
+      "chez-load-shared-object-static"
+    ]
+  },
+  {
+    "id": "pmap-empty-not-procedure",
+    "pattern": "attempt to apply non-procedure.*pmap|attempt to apply non-procedure.*pvec",
+    "type": "Non-Procedure Application",
+    "message": "pmap-empty / pvec-empty are values, not functions",
+    "explanation": "pmap-empty and pvec-empty are pre-constructed empty data structures (values), not factory functions. Calling (pmap-empty) or (pvec-empty) tries to apply a record as a procedure.",
+    "fix": "Use pmap-empty directly as a value, not as a function call. Same for pvec-empty.",
+    "code_example": ";; WRONG:\n(define my-map (pmap-empty))  ;; ERROR: non-procedure\n\n;; RIGHT:\n(define my-map pmap-empty)  ;; it's a value, not a function\n\n;; Or use the imap wrapper:\n(import (std immutable))\n(define my-map imap-empty)  ;; also a value",
+    "imports": [],
+    "related_recipes": [
+      "jerboa-immutable-data"
+    ]
+  },
+  {
+    "id": "fasl-write-procedure",
+    "pattern": "invalid fasl object.*procedure|cannot serialize procedure",
+    "type": "Serialization Error",
+    "message": "Cannot serialize procedures with FASL",
+    "explanation": "Chez Scheme's fasl-write cannot serialize procedure objects. If your data structure contains closures (even nested inside lists/vectors/hashtables), fasl-write will reject it. safe-fasl-write catches this earlier with a clear message.",
+    "fix": "Remove procedures from the data before serialization. Use (std safe-fasl) which walks the object graph and gives a clear error message identifying the offending procedure.",
+    "code_example": "(import (std safe-fasl))\n\n;; WRONG: data contains a procedure\n(safe-fasl-write-bytevector (list 1 (lambda () 2)))\n;; ERROR: \"cannot serialize procedure\"\n\n;; RIGHT: only serialize data\n(safe-fasl-write-bytevector (list 1 2 \"hello\"))\n\n;; If you MUST serialize code, opt in explicitly:\n(parameterize ([*fasl-allow-procedures* #t])\n  (safe-fasl-write-bytevector my-closure))",
+    "imports": [
+      "(std safe-fasl)"
+    ],
+    "related_recipes": [
+      "jerboa-safe-fasl"
+    ]
+  },
+  {
+    "id": "resource-leak-no-cleanup",
+    "pattern": "sqlite handle.*GC|resource.*not closed|file descriptor leak",
+    "type": "Resource Leak",
+    "message": "Resource not explicitly closed before GC",
+    "explanation": "A resource (file handle, database connection, socket) was garbage collected without being explicitly closed. This can cause file descriptor exhaustion, database lock contention, or data loss (unflushed output).",
+    "fix": "Use (std resource) with-resource for guaranteed cleanup. Never rely on GC to close resources.",
+    "code_example": "(import (std resource))\n\n;; WRONG: no cleanup guarantee\n(let ([db (sqlite-open \"test.db\")])\n  (sqlite-exec db \"SELECT 1\"))\n;; db may never be closed!\n\n;; RIGHT: with-resource guarantees cleanup\n(with-resource ([db (sqlite-open \"test.db\")])\n  (sqlite-exec db \"SELECT 1\"))\n;; db is always closed, even on exception",
+    "imports": [
+      "(std resource)"
+    ],
+    "related_recipes": [
+      "jerboa-with-resource"
+    ]
   }
 ]

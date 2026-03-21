@@ -322,5 +322,68 @@
     "pattern": "string-prefix\\?.*path|path.*string-prefix",
     "message": "Comparing paths with string-prefix? without first canonicalizing via realpath allows symlink and .. traversal bypasses.",
     "remediation": "Use canonicalize-path from (std security capability) which calls realpath(3) via FFI. Or use safe-path-join from (std security sanitize) which canonicalizes path components."
+  },
+  {
+    "id": "embed-path-traversal",
+    "title": "Path traversal in embed/virtual filesystem",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "embed[-/].*\\.\\.|\\.\\.\\/.*embed|virtual[-_]?fs.*\\.\\.|\\.\\.\\/.*virtual",
+    "message": "Path containing '..' components can escape the virtual filesystem boundary. An attacker can request '../../etc/passwd' to read files outside the embed root.",
+    "remediation": "Reject any path containing '..' components before resolving. Use (string-contains path \"..\") as a fast check, then canonicalize with realpath and verify the result is still under the embed root. Never rely solely on string-prefix? without canonicalization."
+  },
+  {
+    "id": "symlink-sandbox-bypass",
+    "title": "Path comparison without symlink resolution enables sandbox escape",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "string-prefix\\?.*path|path.*string-prefix\\?",
+    "message": "Using string-prefix? on paths without resolving symlinks first allows symlink-based sandbox escapes. An attacker can create a symlink inside the allowed directory that points outside, bypassing the prefix check.",
+    "remediation": "Always call realpath() (via FFI or canonicalize-path) on the path BEFORE comparing with string-prefix?. Compare the canonicalized path against the canonicalized sandbox root. This resolves all symlinks and '..' components."
+  },
+  {
+    "id": "load-shared-object-crash-static",
+    "title": "load-shared-object crashes static binary at boot",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(load-shared-object\\s",
+    "message": "Calling load-shared-object at module top level fatally errors in static binaries where no dynamic loader is available. This crashes the entire process during library initialization, before any user code runs.",
+    "remediation": "Wrap in (or (guard (e [#t #f]) (load-shared-object \"lib.so\") #t) #t). In static builds, symbols are pre-registered via Sforeign_symbol() so the .so is unnecessary. The guard pattern makes it graceful."
+  },
+  {
+    "id": "unsafe-fasl-deserialize",
+    "title": "Deserializing FASL from untrusted source without validation",
+    "severity": "critical",
+    "scope": "scheme",
+    "pattern": "\\(fasl-read\\s",
+    "message": "Raw fasl-read can deserialize arbitrary objects including procedures. An attacker who controls the FASL input can inject executable closures that run when the object is used. This is equivalent to pickle deserialization attacks in Python.",
+    "remediation": "Use (std safe-fasl) safe-fasl-read instead, which validates the deserialized object graph and rejects procedures and unregistered record types. Register expected record types with register-safe-record-type!. Set *fasl-max-object-count* and *fasl-max-byte-size* to prevent billion-laughs attacks."
+  },
+  {
+    "id": "resource-no-cleanup",
+    "title": "Resource acquisition without guaranteed cleanup",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(let\\s+\\(\\[\\w+\\s+\\((?:sqlite-open|tcp-connect|open-input-file|open-output-file)\\s",
+    "message": "Resource acquired in a let binding without dynamic-wind or with-resource cleanup. If the body raises an exception, the resource is leaked — file descriptors, database connections, or sockets are never closed.",
+    "remediation": "Use (std resource) with-resource macro for guaranteed cleanup: (with-resource ([db (sqlite-open \"test.db\")]) body ...). This wraps the body in dynamic-wind and auto-detects the cleanup procedure for common resource types."
+  },
+  {
+    "id": "bare-error-no-condition",
+    "title": "Using bare (error) instead of structured conditions",
+    "severity": "low",
+    "scope": "scheme",
+    "pattern": "\\(error\\s+'\\w+\\s+\"",
+    "message": "Bare (error 'who \"message\") creates an unstructured exception that can only be caught with a catch-all handler. Using structured conditions from (std error conditions) allows callers to pattern-match on error type with guard clauses (e.g., db-error?, network-error?, timeout-error?).",
+    "remediation": "Use (raise (condition (make-db-query-error 'db 'sqlite sql) (make-message-condition \"details\"))) or the convenience raisers: (raise-db-error 'sqlite \"query failed: ~a\" sql). Import (std error conditions)."
+  },
+  {
+    "id": "string-interpolation-sql",
+    "title": "SQL query built with string-append instead of parameterized query",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "(?:sqlite-exec|sqlite-query|pg-exec|pg-query).*string-append|format.*SELECT|format.*INSERT|format.*UPDATE|format.*DELETE",
+    "message": "SQL query constructed via string-append or format with user input is vulnerable to SQL injection. An attacker can terminate the string and inject arbitrary SQL commands.",
+    "remediation": "Use parameterized queries: (sqlite-execute db \"SELECT * FROM users WHERE id = ?\" user-id). Never interpolate user input into SQL strings. The (std safe) module's safe-sqlite-query wraps this pattern."
   }
 ]

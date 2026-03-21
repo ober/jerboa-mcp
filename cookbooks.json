@@ -2116,5 +2116,213 @@
     ],
     "code": "(import (std security privsep))\n\n;; Create privilege-separated process\n;; Handler runs in parent (supervisor) with elevated privileges\n(def ps (make-privsep\n          (lambda (req)\n            (case (car req)\n              [(read-secret) (get-secret (cadr req))]\n              [else (list ''error \"unknown request\")]))))\n\n;; Worker sends requests to supervisor\n(when (= (privsep-pid ps) 0)  ;; child process\n  (let ([resp (privsep-request ps ''(read-secret \"api-key\"))])\n    (display resp)))\n\n;; HARDENED features:\n;; - Max 64 concurrent children (*max-privsep-children*)\n;; - PIDs tracked in %active-children hashtable\n;; - privsep-shutdown! sends SIGTERM + waitpid (prevents zombies)\n;; - Child limit prevents fork bombs\n\n;; Proper shutdown (reaps child, no zombies)\n(privsep-shutdown! ps)",
     "notes": "SECURITY: make-privsep enforces *max-privsep-children* (default 64) to prevent fork bombs. privsep-shutdown! sends SIGTERM and calls waitpid to prevent zombie process accumulation. Always call privsep-shutdown! when done."
+  },
+  {
+    "id": "rust-ffi-static-musl",
+    "title": "Link Rust Static Library (.a) into Chez Scheme Musl Binary",
+    "tags": [
+      "rust",
+      "ffi",
+      "static",
+      "musl",
+      "link",
+      "cargo"
+    ],
+    "imports": [],
+    "code": ";; Cargo.toml settings for Rust library:\n;; [lib]\n;; crate-type = [\"staticlib\"]\n;;\n;; [profile.release]\n;; panic = \"abort\"        # CRITICAL: musl has no unwinding support\n;; lto = true\n;; codegen-units = 1\n;;\n;; Build with musl target:\n;; cargo build --release --target x86_64-unknown-linux-musl\n;;\n;; Link into Chez musl binary:\n;; musl-gcc ... -L target/x86_64-unknown-linux-musl/release -lmylib \\\n;;   -Wl,--allow-multiple-definition   ;; needed when Rust LTO packs all symbols into one .o\n;;\n;; glibc-compat shim stub (required for libgcc_eh.a):\n;; int _dl_find_object(void *a, void *b) { return -1; }\n;;\n;; Register FFI symbols for static build:\n;; Sforeign_symbol(\"my_rust_fn\", (void*)my_rust_fn);",
+    "notes": "Three key gotchas: (1) panic=\"abort\" is mandatory — musl has no unwinding runtime, so panic=unwind causes link errors. (2) _dl_find_object is a glibc-only symbol referenced by libgcc_eh.a — stub it out returning -1. (3) --allow-multiple-definition (singular!) is needed because Rust LTO with codegen-units=1 packs everything into one .o, causing symbol overlaps with C code."
+  },
+  {
+    "id": "rust-chacha20-poly1305-ffi",
+    "title": "ChaCha20-Poly1305 AEAD via Rust ring Crate from Chez Scheme",
+    "tags": [
+      "rust",
+      "ffi",
+      "chacha20",
+      "poly1305",
+      "aead",
+      "encryption",
+      "ring"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Rust FFI function signature:\n;; jsh_aead_seal(key, key_len, nonce, nonce_len,\n;;               plaintext, pt_len, aad, aad_len,\n;;               output, output_max, output_len_ptr) -> i32\n;;\n;; Scheme wrapper:\n(define aead-seal\n  (foreign-procedure \"jsh_aead_seal\"\n    (u8* size_t u8* size_t u8* size_t u8* size_t u8* size_t u8*)\n    int))\n\n(define (chacha20-poly1305-encrypt key nonce plaintext aad)\n  (let* ([pt-len (bytevector-length plaintext)]\n         [out-len (+ pt-len 16)]  ;; 16-byte Poly1305 tag\n         [output (make-bytevector out-len)]\n         [len-buf (make-bytevector 8 0)])  ;; u64 output for actual length\n    (let ([rc (aead-seal key (bytevector-length key)\n                         nonce (bytevector-length nonce)\n                         plaintext pt-len\n                         aad (bytevector-length aad)\n                         output out-len\n                         len-buf)])\n      (if (= rc 0)\n        (let ([actual-len (bytevector-u64-native-ref len-buf 0)])\n          (if (= actual-len out-len)\n            output\n            (bytevector-copy output 0 actual-len)))\n        (error 'chacha20-poly1305-encrypt \"seal failed\" rc)))))",
+    "notes": "Output buffer must be plaintext-length + 16 bytes (Poly1305 tag is appended). The output length pointer is a bytevector used as a u64* — read it with bytevector-u64-native-ref. Key must be exactly 32 bytes, nonce exactly 12 bytes."
+  },
+  {
+    "id": "rust-scrypt-ffi",
+    "title": "Scrypt Key Derivation via Rust Crate from Chez Scheme",
+    "tags": [
+      "rust",
+      "ffi",
+      "scrypt",
+      "kdf",
+      "key-derivation",
+      "password"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Rust FFI function:\n;; jsh_scrypt_derive(password, pw_len, salt, salt_len,\n;;                   log_n, r, p, output, output_len) -> i32\n;;\n;; GOTCHA: scrypt crate takes log_n (e.g. 14) NOT N (e.g. 16384)\n\n(define scrypt-derive\n  (foreign-procedure \"jsh_scrypt_derive\"\n    (u8* size_t u8* size_t unsigned-8 unsigned-32 unsigned-32 u8* size_t)\n    int))\n\n(define (scrypt-key password salt n r p key-len)\n  ;; Convert N to log_n: (bitwise-length (- n 1)) gives log2(N)\n  ;; e.g., N=16384 -> (bitwise-length 16383) -> 14\n  (let* ([log-n (bitwise-length (- n 1))]\n         [output (make-bytevector key-len)])\n    (let ([rc (scrypt-derive\n               (string->utf8 password) (string-length password)\n               salt (bytevector-length salt)\n               log-n r p\n               output key-len)])\n      (if (= rc 0)\n        output\n        (error 'scrypt-key \"derivation failed\" rc)))))",
+    "notes": "Key gotcha: the Rust scrypt crate takes log_n (e.g., 14) not N (e.g., 16384). Convert with (bitwise-length (- n 1)) which gives log2(N). Common parameters: N=16384 (log_n=14), r=8, p=1. Output key-len is typically 32 for AES-256 or ChaCha20."
+  },
+  {
+    "id": "rust-sqlite-handle-api",
+    "title": "Rust rusqlite from Chez Scheme with Handle-Based API",
+    "tags": [
+      "rust",
+      "ffi",
+      "sqlite",
+      "rusqlite",
+      "handle",
+      "database"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Handle-based API: Rust returns u64 handles, not raw void* pointers\n;; Strings passed as (bytevector, length) pairs, not null-terminated\n\n(define sqlite-open\n  (foreign-procedure \"jsh_sqlite_open\" (u8* size_t u8*) int))\n;; path as bv+len, handle-out as u64*\n\n(define sqlite-prepare\n  (foreign-procedure \"jsh_sqlite_prepare\" (unsigned-64 u8* size_t u8*) int))\n;; db-handle, sql as bv+len, stmt-handle-out as u64*\n\n(define sqlite-column-text\n  (foreign-procedure \"jsh_sqlite_column_text\"\n    (unsigned-64 int u8* size_t u8*) int))\n;; stmt-handle, col-idx, buf, buf-len, actual-len-out as u64*\n\n;; Usage pattern:\n(define (db-open path)\n  (let* ([path-bv (string->utf8 path)]\n         [handle-buf (make-bytevector 8 0)]\n         [rc (sqlite-open path-bv (bytevector-length path-bv) handle-buf)])\n    (if (= rc 0)\n      (bytevector-u64-native-ref handle-buf 0)\n      (error 'db-open \"sqlite open failed\" rc))))\n\n(define (db-column-text stmt col)\n  (let* ([buf (make-bytevector 4096)]\n         [len-buf (make-bytevector 8 0)]\n         [rc (sqlite-column-text stmt col buf 4096 len-buf)])\n    (if (= rc 0)\n      (utf8->string\n        (bytevector-copy buf 0\n          (bytevector-u64-native-ref len-buf 0)))\n      (error 'db-column-text \"column_text failed\" rc))))",
+    "notes": "Key differences from traditional C SQLite FFI: (1) u64 handles instead of raw void* pointers — safer, no pointer aliasing issues. (2) Strings passed as (bytevector, length) pairs, not null-terminated C strings. (3) column_text copies data to a caller-provided buffer with length output parameter (u64*) read via bytevector-u64-native-ref. (4) All functions return int status codes (0 = success)."
+  },
+  {
+    "id": "chez-load-shared-object-static",
+    "title": "Graceful load-shared-object in Static Binaries",
+    "tags": [
+      "chez",
+      "static",
+      "load-shared-object",
+      "musl",
+      "ffi",
+      "guard"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; In static binaries, symbols are registered via Sforeign_symbol()\n;; at startup, so load-shared-object is unnecessary and may crash.\n;;\n;; Pattern: try loading but don't error if it fails\n(or (guard (e [#t #f])\n      (load-shared-object \"libmylib.so\")\n      #t)\n    #t)\n\n;; This succeeds in BOTH cases:\n;; - Dynamic build: loads the .so normally\n;; - Static build: guard catches the error, falls through to #t\n;;\n;; The symbols are already available either way:\n;; - Dynamic: loaded from .so\n;; - Static: registered via Sforeign_symbol in main()",
+    "notes": "Without this pattern, a module that calls (load-shared-object ...) at top level will crash during static binary boot. The guard/or pattern makes it graceful — the .so is loaded if available, but failure is silently ignored since static builds have symbols pre-registered via Sforeign_symbol()."
+  },
+  {
+    "id": "jerboa-with-resource",
+    "title": "RAII Resource Management with with-resource",
+    "tags": [
+      "resource",
+      "raii",
+      "cleanup",
+      "dynamic-wind",
+      "file",
+      "close",
+      "leak"
+    ],
+    "imports": [
+      "(std resource)"
+    ],
+    "code": "(import (std resource))\n\n;; Single resource — port auto-closed on exit or exception\n(with-resource1 (port (open-input-file \"data.txt\"))\n  (read port))\n\n;; Multiple resources — cleaned up right-to-left\n(with-resource ([db (sqlite-open \"test.db\")]\n               [sock (tcp-connect \"localhost\" 8080)])\n  (sqlite-exec db \"SELECT 1\")\n  (tcp-write-string sock \"hello\"))\n;; Both db and sock guaranteed closed here\n\n;; Explicit cleanup procedure\n(with-resource ([buf (make-bytevector 4096) (lambda (b) (bytevector-fill! b 0))])\n  (use buf))\n\n;; Register custom cleanup for a type\n(register-resource-cleanup!\n  sqlite-db?  ;; predicate\n  sqlite-close)  ;; cleanup procedure",
+    "notes": "with-resource uses dynamic-wind for guaranteed cleanup even on exceptions. Auto-detects ports (close-port) and registered types. For custom resources, pass an explicit cleanup lambda as the third element. Resources are acquired left-to-right, cleaned up right-to-left. If acquisition of resource N fails, resources 0..N-1 are still cleaned up."
+  },
+  {
+    "id": "jerboa-error-conditions",
+    "title": "Structured Error Conditions for Guard Clauses",
+    "tags": [
+      "error",
+      "condition",
+      "guard",
+      "exception",
+      "network",
+      "database",
+      "timeout"
+    ],
+    "imports": [
+      "(std error conditions)"
+    ],
+    "code": "(import (std error conditions))\n\n;; Guard can pattern-match on error type\n(guard (exn\n        [(connection-refused? exn)\n         (format #t \"Connection refused to ~a:~a\\n\"\n                 (network-error-address exn)\n                 (network-error-port-number exn))]\n        [(db-query-error? exn)\n         (format #t \"SQL error in: ~a\\n\" (db-query-error-sql exn))]\n        [(timeout-error? exn)\n         (format #t \"~a timed out after ~as\\n\"\n                 (timeout-error-operation exn)\n                 (timeout-error-seconds exn))]\n        [(parse-depth-exceeded? exn)\n         (format #t \"Nesting too deep: ~a > ~a\\n\"\n                 (parse-depth-exceeded-actual exn)\n                 (parse-depth-exceeded-limit exn))])\n  (do-risky-operation))\n\n;; Raise structured errors\n(raise (condition\n        (make-db-query-error 'db 'sqlite \"SELECT * FROM bad_table\")\n        (make-message-condition \"no such table: bad_table\")))\n\n;; Convenience raisers\n(raise-timeout-error 30 'tcp-read \"timed out after ~a seconds\" 30)",
+    "notes": "Hierarchy: &jerboa > &jerboa-network > &connection-refused, &connection-timeout, &dns-failure, &tls-error. &jerboa > &jerboa-db > &db-query-error, &db-constraint-violation, &db-timeout. &jerboa > &jerboa-actor > &actor-dead, &mailbox-full. &jerboa > &jerboa-timeout. &jerboa > &jerboa-parse > &parse-depth-exceeded, &parse-size-exceeded. All subtypes are also supertypes — (network-error? x) catches connection-refused too."
+  },
+  {
+    "id": "jerboa-error-context",
+    "title": "Error Context Breadcrumbs with with-context",
+    "tags": [
+      "error",
+      "context",
+      "breadcrumb",
+      "debugging",
+      "trace",
+      "diagnostic"
+    ],
+    "imports": [
+      "(std error context)"
+    ],
+    "code": "(import (std error context))\n\n;; Nest context — errors include the full chain\n(with-context \"processing request #1234\"\n  (with-context \"validating input\"\n    (with-context \"checking email field\"\n      (error 'validate \"invalid email format\"))))\n;; Error message: \"processing request #1234 > validating input > checking email field > invalid email format\"\n\n;; raise-in-context for manual context inclusion\n(with-context \"db migration\"\n  (raise-in-context 'migrate \"column ~a not found\" \"email\"))\n\n;; Query current context\n(with-context \"outer\"\n  (with-context \"inner\"\n    (context->string)))  ;; => \"outer > inner\"\n    (context->list)))    ;; => (\"outer\" \"inner\")",
+    "notes": "with-context uses parameterize for thread-local context stack. Exceptions are caught and re-raised with a &context-condition compound condition attached. Context is only added once — if the exception already has context, it passes through unchanged. Use raise-in-context when you want to explicitly format the error message with context prefix."
+  },
+  {
+    "id": "jerboa-safe-fasl",
+    "title": "Safe FASL Serialization (No Procedure Injection)",
+    "tags": [
+      "fasl",
+      "serialize",
+      "deserialize",
+      "security",
+      "safe",
+      "binary"
+    ],
+    "imports": [
+      "(std safe-fasl)"
+    ],
+    "code": "(import (std safe-fasl))\n\n;; Safe write/read — rejects procedures and unregistered records\n(let-values ([(port extract) (open-bytevector-output-port)])\n  (safe-fasl-write '(1 \"hello\" #t) port)\n  (let ([bv (extract)])\n    (safe-fasl-read (open-bytevector-input-port bv))))\n;; => (1 \"hello\" #t)\n\n;; Bytevector convenience\n(let* ([bv (safe-fasl-write-bytevector '(data 42))]\n       [result (safe-fasl-read-bytevector bv)])\n  result)  ;; => (data 42)\n\n;; REJECTED: procedures\n(safe-fasl-write-bytevector (lambda () 42))  ;; ERROR!\n(safe-fasl-write-bytevector (list 1 (lambda () 2)))  ;; ERROR!\n\n;; Register a record type as safe for serialization\n(define-record-type point (fields x y))\n(register-safe-record-type! (record-type-descriptor point))\n(safe-fasl-write-bytevector (make-point 3 4))  ;; OK\n\n;; Configure limits\n(parameterize ([*fasl-max-object-count* 10000]\n               [*fasl-max-byte-size* (* 1 1024 1024)])  ;; 1MB\n  (safe-fasl-write-bytevector large-data))",
+    "notes": "FASL is 1000x faster than JSON for large data, but standard fasl-write/fasl-read can serialize procedures — dangerous for network-facing code. safe-fasl-write walks the object graph and rejects: (1) procedures (unless *fasl-allow-procedures* is #t), (2) unregistered record types (register with register-safe-record-type!), (3) object graphs exceeding *fasl-max-object-count* (default 1M), (4) serialized output exceeding *fasl-max-byte-size* (default 100MB). Conditions are always allowed (they're standard Chez types)."
+  },
+  {
+    "id": "jerboa-with-timeout",
+    "title": "Engine-Based Preemptive Timeout",
+    "tags": [
+      "timeout",
+      "engine",
+      "preemptive",
+      "interrupt",
+      "hang",
+      "infinite-loop"
+    ],
+    "imports": [
+      "(std safe-timeout)"
+    ],
+    "code": "(import (std safe-timeout))\n\n;; Preemptive timeout — interrupts even infinite loops\n(with-timeout 5  ;; seconds\n  (expensive-computation))\n\n;; Timeout fires on infinite loop\n(guard (exn [(timeout-error? exn) 'timed-out])\n  (with-timeout 1\n    (let loop () (loop))))  ;; => 'timed-out\n\n;; No timeout (pass #f)\n(with-timeout #f\n  (fast-operation))  ;; runs without timeout overhead\n\n;; Default timeout parameter for all operations in a thread\n(parameterize ([*default-timeout* 10])\n  ...)",
+    "notes": "Uses Chez Scheme's engine system — true preemptive interruption based on tick budget, NOT wall-clock time via fork-thread. This works even if code is stuck in a pure Scheme infinite loop. LIMITATION: Does NOT interrupt blocked foreign calls (C/Rust FFI). For FFI calls, use socket-level SO_RCVTIMEO/SO_SNDTIMEO instead. Raises &operation-timeout (subtype of &jerboa-timeout) with seconds and operation fields."
+  },
+  {
+    "id": "jerboa-safe-stdlib",
+    "title": "Contract-Checked Safe Stdlib Wrappers",
+    "tags": [
+      "safe",
+      "contract",
+      "sqlite",
+      "tcp",
+      "file",
+      "json",
+      "validation"
+    ],
+    "imports": [
+      "(std safe)"
+    ],
+    "code": "(import (std safe))\n\n;; SQLite with type checking — catches errors before FFI\n(with-resource ([db (safe-sqlite-open \"test.db\")])\n  (safe-sqlite-exec db \"CREATE TABLE t(x INTEGER)\")\n  (safe-sqlite-query db \"SELECT * FROM t\"))\n\n;; TCP with validation\n(safe-tcp-connect \"localhost\" 8080)  ;; validates string + port range\n(safe-tcp-connect 42 80)             ;; ERROR: expected string\n(safe-tcp-connect \"host\" 99999)      ;; ERROR: port must be 1-65535\n\n;; File I/O with existence checks\n(safe-open-input-file \"/nonexistent\")  ;; ERROR: file not found\n(safe-call-with-input-file \"data.txt\"\n  (lambda (port) (read port)))\n\n;; Auto-dispatch sqlite-bind by value type\n(safe-sqlite-bind stmt 1 42)        ;; binds as int\n(safe-sqlite-bind stmt 2 3.14)      ;; binds as double\n(safe-sqlite-bind stmt 3 \"hello\")   ;; binds as text\n(safe-sqlite-bind stmt 4 #f)        ;; binds as NULL\n\n;; Release mode: skip checks for zero overhead\n(parameterize ([*safe-mode* 'release])\n  (safe-sqlite-exec db sql))",
+    "notes": "Import (std safe) instead of raw modules for maximum safety. All wrappers validate argument types before crossing FFI boundary, preventing cryptic C-level errors. safe-sqlite-bind auto-dispatches by Scheme type (fixnum->int, flonum->double, string->text, #f->NULL). Use *safe-mode* 'release to skip checks in production for zero overhead. Re-exports with-resource for convenience."
+  },
+  {
+    "id": "jerboa-immutable-data",
+    "title": "Immutable-by-Default Data Structures (imap/ivec)",
+    "tags": [
+      "immutable",
+      "persistent",
+      "map",
+      "vector",
+      "functional",
+      "imap",
+      "ivec",
+      "hamt"
+    ],
+    "imports": [
+      "(std immutable)"
+    ],
+    "code": "(import (std immutable))\n\n;; Immutable map — functional updates, original unchanged\n(define m (imap \"name\" \"Alice\" \"age\" 30))\n(define m2 (imap-set m \"age\" 31))\n(imap-ref m \"age\")   ;; => 30 (unchanged!)\n(imap-ref m2 \"age\")  ;; => 31\n\n;; Immutable vector — O(log32 n) ≈ O(1) access\n(define v (ivec 1 2 3))\n(define v2 (ivec-set v 0 99))\n(ivec-ref v 0)    ;; => 1 (unchanged!)\n(ivec-ref v2 0)   ;; => 99\n\n;; Append returns new vector\n(define v3 (ivec-append v 4))\n(ivec-length v)   ;; => 3\n(ivec-length v3)  ;; => 4\n\n;; Convert from mutable\n(define ht (make-hashtable string-hash string=?))\n(hashtable-set! ht \"k\" \"v\")\n(define im (hashtable->imap ht))\n\n(define iv (vector->ivec (vector 1 2 3)))\n\n;; Filter, map, fold work functionally\n(ivec->list (ivec-filter odd? (ivec 1 2 3 4 5)))  ;; => (1 3 5)\n(ivec->list (ivec-map (lambda (x) (* x 2)) (ivec 1 2 3)))  ;; => (2 4 6)",
+    "notes": "imap wraps (std pmap) — HAMT with 32-way branching, O(log32 n) for ref/set/delete. ivec wraps (std pvec) — persistent trie with tail optimization, O(log32 n) for ref/set, amortized O(1) for append. Both use structural sharing — modifications share unchanged nodes with the original. Use these instead of mutable hashtables/vectors to prevent accidental mutation bugs. pmap-empty and pvec-empty are VALUES not functions — use directly, don't call them."
   }
 ]

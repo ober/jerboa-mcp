@@ -31,5 +31,94 @@
     "example_scenario": "A PR adds a new module with (import (chezscheme)). The build fails with a clear message about the import policy violation, listing the exact file and line.",
     "estimated_token_reduction": 300,
     "votes": 1
+  },
+  {
+    "id": "rust-ffi-musl-build-tool",
+    "title": "Rust static library musl build automation tool",
+    "description": "A tool that automates building Rust static libraries for the musl target using the rustup-managed toolchain (not Homebrew/system Rust). Would detect the correct toolchain path, verify the x86_64-unknown-linux-musl target is installed, set CC=musl-gcc for the cc crate, and run cargo build --release --target x86_64-unknown-linux-musl. Reports the output .a path and any missing dependencies.",
+    "impact": "medium",
+    "tags": [
+      "rust",
+      "ffi",
+      "musl",
+      "static",
+      "build",
+      "cargo"
+    ],
+    "use_case": "When integrating a Rust crate as a static library into a Chez Scheme musl binary. Currently requires manually finding the right rustup toolchain, setting env vars, and verifying target installation.",
+    "example_scenario": "User wants to add a new Rust crate (e.g., argon2 for password hashing) to their Chez Scheme project. The tool detects rustup's active toolchain, ensures musl target is installed, builds the crate, and reports the .a file location ready for linking.",
+    "estimated_token_reduction": 400,
+    "votes": 1
+  },
+  {
+    "id": "chez-static-symbol-audit",
+    "title": "Audit Sforeign_symbol registrations against linked .a symbols",
+    "description": "A tool that cross-references Sforeign_symbol() registration calls in the static binary entry point (main.c or boot file) against actual symbols exported by linked .a/.o files (via nm). Detects missing registrations that cause 'foreign-procedure not found' errors at runtime, and dead registrations for symbols that no longer exist.",
+    "impact": "high",
+    "tags": [
+      "chez",
+      "static",
+      "ffi",
+      "symbol",
+      "audit",
+      "link"
+    ],
+    "use_case": "When adding or removing FFI functions from a Rust or C library linked into a static Chez binary. Missing Sforeign_symbol calls only fail at runtime when the foreign-procedure is first called, making them hard to catch.",
+    "example_scenario": "User adds 5 new Rust FFI functions but only registers 4 of them with Sforeign_symbol. The tool reports the missing registration before the binary is even run, saving a debugging cycle.",
+    "estimated_token_reduction": 600,
+    "votes": 1
+  },
+  {
+    "id": "jerboa-safe-prelude-default",
+    "title": "Make safe APIs the default prelude exports",
+    "description": "The (jerboa prelude) should re-export safe-sqlite-open as sqlite-open, safe-tcp-connect as tcp-connect, etc. Claude and humans will always reach for the simplest import — if the safe version IS the default, nobody has to remember to use (std safe). Raw APIs should require explicit (import (std db sqlite-native)) opt-in.",
+    "impact": "critical",
+    "tags": [
+      "safety",
+      "prelude",
+      "default",
+      "claude",
+      "api",
+      "import"
+    ],
+    "use_case": "Every time Claude writes Jerboa code, it imports (jerboa prelude). If that gives it the safe APIs by default, all generated code is automatically type-checked and resource-safe without Claude knowing about the safety modules.",
+    "example_scenario": "Claude writes (import (jerboa prelude)) then (sqlite-open \"db\") — this silently calls safe-sqlite-open which validates types, and (with-resource ...) is the documented pattern. No separate (import (std safe)) needed.",
+    "estimated_token_reduction": 200,
+    "votes": 1
+  },
+  {
+    "id": "jerboa-finalizer-safety-net",
+    "title": "GC finalizer warning for unclosed resources",
+    "description": "Register Chez guardians on resource-acquiring functions (sqlite-open, tcp-connect, open-input-file). When a resource is garbage collected without being closed, log a warning with the allocation site. This catches resource leaks that with-resource would have prevented, without crashing.",
+    "impact": "high",
+    "tags": [
+      "resource",
+      "gc",
+      "guardian",
+      "finalizer",
+      "leak",
+      "warning"
+    ],
+    "use_case": "Claude-generated code forgets with-resource and uses bare (let ([db (sqlite-open ...)]). The connection leaks silently. With a finalizer safety net, a warning appears in the log so the leak is noticed during testing.",
+    "example_scenario": "A test run shows 'WARNING: sqlite handle 7 GC'd without close at line 42 of handler.ss'. Developer wraps the sqlite-open in with-resource. Bug fixed before production.",
+    "estimated_token_reduction": 300,
+    "votes": 1
+  },
+  {
+    "id": "jerboa-unsafe-import-lint",
+    "title": "Lint rule warning on raw FFI module imports",
+    "description": "A lint pass that detects (import (std db sqlite-native)) and warns 'consider (std safe) for type-checked wrappers'. Also warns on bare (error ...) calls suggesting structured conditions from (std error conditions), and on fork-thread suggesting (std concur structured).",
+    "impact": "high",
+    "tags": [
+      "lint",
+      "safety",
+      "import",
+      "warning",
+      "static-analysis"
+    ],
+    "use_case": "Code review automation. Before merging, lint catches unsafe patterns that Claude or humans introduced. Much cheaper than debugging runtime crashes.",
+    "example_scenario": "PR adds a module with (import (std net tcp-raw)). Lint says: 'WARNING: raw TCP import — use (std safe) safe-tcp-connect for type validation and port range checking'.",
+    "estimated_token_reduction": 400,
+    "votes": 1
   }
 ]
