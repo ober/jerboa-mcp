@@ -2383,5 +2383,142 @@
       "sqlite-database-operations",
       "postgresql-database-queries"
     ]
+  },
+  {
+    "id": "chez-foreign-alloc-struct-packing",
+    "title": "Pack C structs with foreign-alloc for syscalls (Chez Scheme)",
+    "tags": [
+      "foreign-alloc",
+      "struct",
+      "syscall",
+      "ffi",
+      "chez",
+      "c-struct",
+      "pack"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Pack a C struct into foreign memory for passing to syscalls\\n;; Example: landlock_ruleset_attr { u64 handled_access_fs; } = 8 bytes\\n(let ([mem (foreign-alloc 8)])\\n  (foreign-set! 'unsigned-64 mem 0 #xFFFF)  ;; set u64 at offset 0\\n  ;; Pass mem as 'long' arg to syscall (on x86_64, long = pointer size)\\n  (let ([result (foreign-procedure \\\"syscall\\\" (long long long) long)\\n                SYS_landlock_create_ruleset mem 8 0)])\\n  (foreign-free mem))\\n\\n;; For multi-field structs, compute offsets manually:\\n;; struct { u64 allowed_access; s32 parent_fd; } = 12 bytes\\n(let ([mem (foreign-alloc 12)])\\n  (foreign-set! 'unsigned-64 mem 0 access-bits)  ;; offset 0: u64\\n  (foreign-set! 'integer-32  mem 8 fd)            ;; offset 8: s32\\n  ;; ... use mem ...\\n  (foreign-free mem))",
+    "notes": "Always foreign-free after use. On x86_64, passing foreign-alloc pointers as 'long' works because sizeof(long) == sizeof(void*). For BPF sock_filter: {u16 code, u8 jt, u8 jf, u32 k} = 8 bytes per instruction. Use unsigned-16/unsigned-8/unsigned-32 with correct offsets."
+  },
+  {
+    "id": "chez-meta-define-expand-phase",
+    "title": "Use meta define for expand-time bindings in R6RS libraries",
+    "tags": [
+      "meta",
+      "define",
+      "expand",
+      "phase",
+      "r6rs",
+      "macro",
+      "syntax-case"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Problem: A helper called from a syntax transformer runs at expand time (phase 1)\\n;; but plain 'define' is phase 0. This causes:\\n;;   \\\"attempt to reference out-of-phase identifier\\\"\\n;;\\n;; Solution: Use 'meta define' for expand-time helpers\\n;; and import dependencies with (for ... run expand)\\n\\n(library (my-lib)\\n  (export my-macro)\\n  (import (chezscheme)\\n         (for (some-dep) run expand))  ;; available at BOTH phases\\n\\n  ;; This runs at expand time (phase 1) — visible to syntax transformers\\n  (meta define (expand-time-helper arg)\\n    (do-something-with arg))\\n\\n  ;; This runs at run time (phase 0) — NOT visible to macros\\n  (define (runtime-helper arg)\\n    (do-something-else arg))\\n\\n  (define-syntax my-macro\\n    (lambda (stx)\\n      ;; Can call expand-time-helper here\\n      (expand-time-helper (syntax->datum stx))\\n      ;; CANNOT call runtime-helper here — wrong phase!\\n      #'(void))))",
+    "notes": "Key gotcha: parameters (make-parameter) are runtime only — you cannot check (*my-param*) inside a syntax transformer. If you need config at expand time, use a separate mechanism. Also: (for (mod) run expand) makes mod available at both phases, which is what you usually want for type environments, inference engines, etc."
+  },
+  {
+    "id": "chez-safe-mkdir-p",
+    "title": "Safe recursive mkdir without shell injection (Chez Scheme)",
+    "tags": [
+      "mkdir",
+      "directory",
+      "safe",
+      "shell-injection",
+      "filesystem",
+      "chez"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; WRONG: Shell injection via user-controlled path\\n;; (system (string-append \\\"mkdir -p \\\" path))  ;; VULNERABLE!\\n;;\\n;; RIGHT: Pure Scheme recursive mkdir\\n(define (split-path path)\\n  (let loop ([i 0] [start 0] [parts '()])\\n    (cond\\n      [(= i (string-length path))\\n       (reverse (if (> i start)\\n                  (cons (substring path start i) parts)\\n                  parts))]\\n      [(char=? (string-ref path i) #\\\\/)\\n       (loop (+ i 1) (+ i 1)\\n             (if (> i start)\\n               (cons (substring path start i) parts)\\n               parts))]\\n      [else (loop (+ i 1) start parts)])))\\n\\n(define (mkdir-p path)\\n  (when (string-contains-char path #\\\\nul)\\n    (error 'mkdir-p \\\"path contains null byte\\\" path))\\n  (let ([components (split-path path)])\\n    (let loop ([parts components] [current \\\"\\\"])\\n      (unless (null? parts)\\n        (let ([dir (if (string=? current \\\"\\\")\\n                     (car parts)\\n                     (string-append current \\\"/\\\" (car parts)))])\\n          (unless (or (string=? dir \\\"\\\") (file-directory? dir))\\n            (guard (exn [#t (void)])  ;; ignore EEXIST races\\n              (mkdir dir #o755)))\\n          (loop (cdr parts) dir))))))",
+    "notes": "Never use (system ...) with user-controlled paths. The guard around mkdir handles EEXIST from race conditions. Check for null bytes to prevent truncation attacks."
+  },
+  {
+    "id": "rustls-tls-server",
+    "title": "Create a TLS Server with Rustls FFI",
+    "tags": [
+      "tls",
+      "rustls",
+      "server",
+      "network",
+      "std net tls-rustls"
+    ],
+    "imports": [
+      "(std net tls-rustls)"
+    ],
+    "code": "(import (std net tls-rustls))\n\n;; Create server context with cert and key\n(define ctx (rustls-server-ctx-new \"server.pem\" \"server-key.pem\"))\n\n;; Accept a TLS connection on an already-accepted TCP fd\n;; (tcp-fd comes from accept(2) on your listening socket)\n(define conn (rustls-accept ctx tcp-fd))\n\n;; Read/write on the TLS connection\n(define buf (make-bytevector 4096))\n(define n (rustls-read conn buf 4096))  ;; returns bytes read, 0=EOF, -1=error\n(rustls-write conn (string->utf8 \"hello\") 5)\n\n;; Get underlying fd for poll/select\n(define fd (rustls-get-fd conn))\n\n;; Cleanup\n(rustls-close conn)\n(rustls-server-ctx-free ctx)",
+    "notes": "rustls-server-ctx-new returns an opaque handle (unsigned-64). Pass it to rustls-accept for each incoming TCP fd. rustls-write auto-flushes. Always call rustls-close then rustls-server-ctx-free. For mTLS, use rustls-server-ctx-new-mtls instead."
+  },
+  {
+    "id": "rustls-mtls-self-signed",
+    "title": "Mutual TLS (mTLS) with Self-Signed Certs via Rustls",
+    "tags": [
+      "mtls",
+      "tls",
+      "rustls",
+      "mutual",
+      "self-signed",
+      "client-cert"
+    ],
+    "imports": [
+      "(std net tls-rustls)"
+    ],
+    "code": "(import (std net tls-rustls))\n\n;; === SERVER ===\n;; For self-signed mTLS, use same cert as server cert AND client CA.\n;; This means: any client presenting this cert is trusted.\n(define server-ctx\n  (rustls-server-ctx-new-mtls\n    \"cert.pem\"     ;; server cert\n    \"key.pem\"      ;; server key\n    \"cert.pem\"))   ;; CA that signed client certs (same cert for self-signed)\n\n;; Clients without a valid cert are rejected at TLS handshake level.\n(define conn (rustls-accept server-ctx tcp-fd))\n\n;; === CLIENT ===\n;; Present client cert and verify server against same CA.\n(define client-conn\n  (rustls-connect-mtls\n    \"server-host\" 8443\n    \"cert.pem\"     ;; client cert to present\n    \"key.pem\"      ;; client key\n    \"cert.pem\"))   ;; CA to verify server (same cert for self-signed)\n\n;; I/O works the same as standard TLS\n(define buf (make-bytevector 4096))\n(rustls-read client-conn buf 4096)\n(rustls-write client-conn (string->utf8 \"authenticated!\") 14)\n\n;; Cleanup\n(rustls-close client-conn)\n(rustls-close conn)\n(rustls-server-ctx-free server-ctx)",
+    "notes": "mTLS = both sides present and verify certificates. For self-signed: use the same cert.pem as server cert, client cert, AND CA cert. The Rust backend uses WebPkiClientVerifier for server-side client auth and ClientConfig::with_client_auth_cert for client-side cert presentation. Rejection happens at the TLS handshake — no application-level check needed."
+  },
+  {
+    "id": "capsicum-compute-only-preset",
+    "title": "Capsicum Compute-Only Preset (FreeBSD Sandbox)",
+    "tags": [
+      "capsicum",
+      "sandbox",
+      "freebsd",
+      "preset",
+      "compute-only",
+      "std security capsicum"
+    ],
+    "imports": [
+      "(std security capsicum)"
+    ],
+    "code": "(import (std security capsicum))\n\n;; Compute-only preset: restricts stdin/stdout/stderr/pipe to minimal rights.\n;; Analogous to seccomp compute-only on Linux.\n(define pipe-fd 3)  ;; your communication pipe fd\n(define preset (capsicum-compute-only-preset pipe-fd))\n;; => ((0 . (read event))        ;; stdin: read only\n;;     (1 . (write event))       ;; stdout: write only\n;;     (2 . (write event))       ;; stderr: write only\n;;     (3 . (read write event))) ;; pipe: read/write\n\n;; Apply preset: restricts each fd then calls cap_enter()\n;; cap_enter() is IRREVERSIBLE — no new fds can be opened after this.\n(capsicum-apply-preset! preset)",
+    "notes": "capsicum-apply-preset! calls capsicum-limit-fd! on each fd in the alist then capsicum-enter!. cap_enter() is irreversible. The compute-only preset is analogous to seccomp's compute-only mode: only stdin/stdout/stderr/pipe are allowed, with minimal rights."
+  },
+  {
+    "id": "capsicum-path-pre-open",
+    "title": "Capsicum Path Pre-Opening for File Access in Sandbox",
+    "tags": [
+      "capsicum",
+      "sandbox",
+      "freebsd",
+      "path",
+      "pre-open",
+      "file-access"
+    ],
+    "imports": [
+      "(std security capsicum)"
+    ],
+    "code": "(import (std security capsicum))\n\n;; Pre-open a path as a restricted fd BEFORE entering capability mode.\n;; This is how you grant file access in Capsicum's fd-based model\n;; (analogous to Landlock path-based restrictions on Linux).\n\n;; Open a directory for reading (listing entries, lookup)\n(define data-fd (capsicum-open-path \"/data\" '(read fstat seek lookup)))\n;; => returns the fd number (e.g. 4)\n\n;; Open a file for read/write\n(define log-fd (capsicum-open-path \"/var/log/app.log\" '(read write fstat)))\n\n;; Build an io-only preset that includes these pre-opened fds\n(define pipe-fd 3)\n(define preset (capsicum-io-only-preset pipe-fd (list data-fd log-fd)))\n\n;; Enter capability mode with all fds restricted\n(capsicum-apply-preset! preset)\n;; After this, the process can only use stdin/stdout/stderr/pipe + data-fd + log-fd\n;; with the rights specified above.",
+    "notes": "capsicum-open-path opens the path with open(2), restricts it with cap_rights_limit, and returns the raw fd number. Must be called BEFORE capsicum-enter!/capsicum-apply-preset!. The io-only preset extends compute-only with additional user fds. This maps Landlock-style path restrictions to Capsicum's fd-based model."
+  },
+  {
+    "id": "rustls-connect-pinned",
+    "title": "TLS Connection with Certificate Pinning (Rustls)",
+    "tags": [
+      "tls",
+      "rustls",
+      "pinning",
+      "certificate",
+      "client",
+      "std net tls-rustls"
+    ],
+    "imports": [
+      "(std net tls-rustls)"
+    ],
+    "code": "(import (std net tls-rustls))\n\n;; Connect to a server verifying only the pinned certificate hash,\n;; bypassing CA verification entirely. Useful for internal services\n;; with self-signed certs where you know the exact cert.\n\n;; pin-sha256 is a bytevector of the SHA-256 hash of the server's DER cert\n(define pin (string->utf8 \"base64-encoded-pin-here\"))\n(define conn (rustls-connect-pinned \"internal.host\" 8443 pin))\n\n;; I/O same as regular TLS\n(define buf (make-bytevector 4096))\n(rustls-read conn buf 4096)\n(rustls-close conn)",
+    "notes": "Certificate pinning skips CA chain verification — the connection succeeds only if the server's cert hash matches pin-sha256 exactly. Stronger than CA verification for known internal services, but fragile if certs rotate. For mTLS with mutual auth, use rustls-connect-mtls instead."
   }
 ]

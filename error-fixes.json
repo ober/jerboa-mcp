@@ -1006,5 +1006,36 @@
     "related_recipes": [
       "jerboa-with-resource"
     ]
+  },
+  {
+    "id": "mtls-handshake-failure",
+    "pattern": "mTLS.*failed|TLS accept failed|handshake.*client.*cert|certificate required",
+    "type": "mTLS Handshake Failure",
+    "message": "mTLS handshake rejected — client certificate missing or invalid",
+    "explanation": "The server was configured with rustls-server-ctx-new-mtls (requires client certs) but the client connected without presenting a cert, or the client cert was not signed by the CA specified in client-ca-path. For self-signed mTLS, the same cert.pem must be used as server cert, client cert, AND CA cert.",
+    "fix": "Ensure client uses rustls-connect-mtls (not rustls-connect) and passes the correct cert-path, key-path, and ca-cert-path. For self-signed: all three server args and all three client args should reference the same cert/key pair.",
+    "code_example": ";; Server: same cert as both server identity and client CA\n(define ctx (rustls-server-ctx-new-mtls \"cert.pem\" \"key.pem\" \"cert.pem\"))\n\n;; Client: same cert as client identity, verify server against same CA\n(define conn (rustls-connect-mtls \"host\" 8443 \"cert.pem\" \"key.pem\" \"cert.pem\"))",
+    "imports": [
+      "(std net tls-rustls)"
+    ],
+    "related_recipes": [
+      "rustls-mtls-self-signed"
+    ]
+  },
+  {
+    "id": "capsicum-enotcapable",
+    "pattern": "ENOTCAPABLE|not permitted.*capability|Operation not permitted.*cap",
+    "type": "Capsicum Rights Violation",
+    "message": "Operation denied by Capsicum capability rights",
+    "explanation": "After cap_enter(), an operation was attempted on an fd that lacks the required capability right. For example, trying to write to an fd restricted to (read) only, or trying to seek on an fd without seek rights. cap_rights_limit is monotonically decreasing — you cannot add rights back.",
+    "fix": "Ensure the fd has the required rights BEFORE calling capsicum-apply-preset! or capsicum-enter!. Add missing rights to your preset alist. Common rights: read, write, seek, fstat, event, lookup, mmap, ftruncate.",
+    "code_example": ";; Add seek right if you need random access\n(define preset\n  `((0 . (read event))\n    (1 . (write event))\n    (4 . (read write seek fstat))))  ;; data fd needs seek\n(capsicum-apply-preset! preset)",
+    "imports": [
+      "(std security capsicum)"
+    ],
+    "related_recipes": [
+      "capsicum-compute-only-preset",
+      "capsicum-path-pre-open"
+    ]
   }
 ]

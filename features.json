@@ -138,5 +138,42 @@
     "example_scenario": "jerboa has (std db sqlite-native) with sqlite-open and (std safe) with safe-sqlite-open. Creating (jerboa prelude safe) required manually listing ~40 exports, writing define aliases for each (define sqlite-open safe:safe-sqlite-open), and carefully excluding raw FFI forms. A generator tool could produce this from a mapping spec in one call.",
     "estimated_token_reduction": "~800 tokens per prelude module — eliminates manual export listing, alias writing, and import construction",
     "votes": 0
+  },
+  {
+    "id": "mtls-cert-generation-tool",
+    "title": "Generate self-signed mTLS cert+key for testing",
+    "description": "A tool that generates a self-signed Ed25519 certificate and private key suitable for mTLS testing. Calls the existing (std crypto x509) cert generation, then validates the cert is usable as both server cert and client CA (self-signed mTLS pattern). Returns file paths ready to pass to rustls-server-ctx-new-mtls and rustls-connect-mtls.",
+    "impact": "medium",
+    "tags": [
+      "mtls",
+      "tls",
+      "certificate",
+      "x509",
+      "testing",
+      "self-signed"
+    ],
+    "use_case": "When setting up mTLS for jerboa-shell or testing TLS code. Currently requires manually generating certs with openssl or the x509 module, then knowing that the same cert works for server, client, and CA in the self-signed case.",
+    "example_scenario": "User wants to test mTLS server/client. Tool generates cert.pem + key.pem, validates they load in rustls, and prints the exact rustls-server-ctx-new-mtls and rustls-connect-mtls calls to use.",
+    "estimated_token_reduction": 400,
+    "votes": 0
+  },
+  {
+    "id": "sandbox-parity-checker",
+    "title": "Cross-platform sandbox feature parity checker",
+    "description": "A tool that compares sandbox capabilities across Linux (seccomp/Landlock), FreeBSD (Capsicum), and macOS (Seatbelt). Reports which features are available, which have parity, and which are platform-specific. Would read the actual (std security sandbox), (std security capsicum), (std security seccomp), and (std security seatbelt) modules to determine real coverage.",
+    "impact": "medium",
+    "tags": [
+      "sandbox",
+      "security",
+      "cross-platform",
+      "capsicum",
+      "seccomp",
+      "landlock",
+      "seatbelt"
+    ],
+    "use_case": "When adding new sandbox features, to verify parity across platforms. Currently requires manually reading each platform module and comparing exports/presets.",
+    "example_scenario": "User adds a new seccomp preset on Linux. Tool shows that FreeBSD/Capsicum has a matching preset but macOS/Seatbelt does not, prompting the user to add the Seatbelt equivalent.",
+    "estimated_token_reduction": 500,
+    "votes": 0
   }
 ]

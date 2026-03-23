@@ -439,5 +439,54 @@
       "ffi",
       "safe-wrapper"
     ]
+  },
+  {
+    "id": "tls-server-no-client-auth",
+    "title": "TLS server created without client certificate verification",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "rustls-server-ctx-new(?!-mtls)\\b",
+    "message": "TLS server context created without client certificate verification (no mTLS). Any client with network access can connect. If the server handles privileged operations (shell access, file I/O, database), unauthenticated TLS is insufficient — an attacker can connect and issue commands.",
+    "remediation": "Use rustls-server-ctx-new-mtls instead, providing a CA cert to verify client certificates. For self-signed setups, use the same cert as both server cert and client CA: (rustls-server-ctx-new-mtls cert key cert).",
+    "tags": [
+      "tls",
+      "mtls",
+      "authentication",
+      "rustls",
+      "server",
+      "client-cert"
+    ]
+  },
+  {
+    "id": "capsicum-enter-without-fd-restrict",
+    "title": "cap_enter() called without restricting file descriptors",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "capsicum-enter!(?!.*capsicum-limit-fd|.*capsicum-apply-preset)",
+    "message": "Entering Capsicum capability mode without first restricting fd rights. All open fds retain full rights — a compromised process can read/write/seek/mmap on any inherited fd. cap_enter() alone only prevents opening NEW fds; existing fds are unrestricted.",
+    "remediation": "Use capsicum-apply-preset! (which restricts fds then enters cap mode) or call capsicum-limit-fd! on each open fd before capsicum-enter!. Minimum: restrict stdin to read, stdout/stderr to write.",
+    "tags": [
+      "capsicum",
+      "sandbox",
+      "freebsd",
+      "fd",
+      "capability"
+    ]
+  },
+  {
+    "id": "tls-ctx-handle-leak",
+    "title": "TLS server context created without corresponding free",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "rustls-server-ctx-new(?:-mtls)?\\s",
+    "message": "TLS server context handle allocated but may not be freed. Each context holds Rust-allocated memory (cert chains, key material, verifier state). Without rustls-server-ctx-free, this memory leaks for the process lifetime.",
+    "remediation": "Always pair with rustls-server-ctx-free in a cleanup/finally path: (dynamic-wind void (lambda () ...) (lambda () (rustls-server-ctx-free ctx))). For long-lived servers, create the context once and free on shutdown.",
+    "tags": [
+      "tls",
+      "rustls",
+      "leak",
+      "resource",
+      "ffi"
+    ]
   }
 ]
