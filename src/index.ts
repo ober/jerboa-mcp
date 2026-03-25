@@ -313,6 +313,98 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 - Don't skip the cookbook — use jerboa_howto before writing code
 - Jerboa is a niche Scheme dialect with limited training data — always verify with live tools
 
+## CRITICAL: Gerbil vs Jerboa API Differences
+
+Your training data conflates Gerbil Scheme and Jerboa. These are DIFFERENT. You MUST use the Jerboa names:
+
+### Hash Tables (from (jerboa prelude) or (jerboa runtime))
+- hash-set! → USE hash-put!
+- hash-delete! → USE hash-remove!
+- hash-contains? → USE hash-key?
+- hash-ref (2 args) → USE hash-get (returns #f if missing) or hash-ref (3 args with default)
+- make-equal-hashtable → USE make-hash-table
+- make-eqv-hashtable → USE make-hash-table-eq
+- hash-table-set! → USE hash-put!
+- hashtable-set! → USE hash-put! (Chez name exists but prelude wraps it)
+
+### Strings
+- read-line → USE get-line — (chezscheme) built-in
+- string-split (without import) → MUST import from (std misc string)
+- string-join (without import) → MUST import from (std misc string)
+
+### Processes
+- open-process → USE open-process-ports — (chezscheme) built-in, returns 4 values
+- process-status → USE process-port-status — (std misc process)
+- process-pid → USE process-port-pid — (std misc process)
+
+### Threading
+- thread-sleep! → exists in (std misc thread) but Chez native is (sleep (make-time 'time-duration ns s))
+- make-thread → USE fork-thread (chezscheme) or spawn (std misc thread)
+- mutex-lock! → USE mutex-acquire — (chezscheme)
+- mutex-unlock! → USE mutex-release — (chezscheme)
+
+### Error Handling
+- Error? → USE condition?
+- error-exception? → USE condition?
+- with-catch handler thk → USE try/catch (prelude) or guard
+- time->seconds → USE time-second
+
+### Other Common Mistakes
+- (void exn) → USE (lambda _ (void)) — Chez void takes 0 args!
+- (bytevector-copy bv 0 n) → USE (subbytevector bv 0 n) — bytevector-copy is 1-arg in R6RS
+- (export #t) → USE (export sym1 sym2 ...) — must enumerate exports
+- Gerbil keyword args at call site → USE positional optionals — Jerboa def doesn't support keyword: at call sites
+
+## Quick Import Reference
+
+Most common imports and what they provide:
+
+- **(jerboa prelude)** — The kitchen sink: 200+ symbols, all conflicts pre-resolved. USE THIS by default.
+- **(std sort)** — sort, sort!, stable-sort, stable-sort!
+- **(std misc string)** — string-split, string-join, string-trim, string-prefix?, string-suffix?, string-contains, string-empty?
+- **(std misc thread)** — spawn, spawn/name, thread-yield!, thread-sleep!, mutex-lock!, mutex-unlock!, thread-send, thread-receive
+- **(std misc process)** — run-process, run-process/batch, open-input-process, process-port-pid
+- **(std misc list)** — flatten, unique, group-by, partition, take, drop, zip, frequencies
+- **(std misc ports)** — read-all-as-string, read-all-as-lines, read-file-string, write-file-string
+- **(std misc func)** — compose, curry, negate, identity, constantly, flip, memo-proc, juxt, partial
+- **(std text json)** — read-json, write-json, string->json-object, json-object->string
+- **(std csv)** — read-csv, write-csv, csv->alists, alists->csv
+- **(std db sqlite)** — sqlite-open, sqlite-close, sqlite-exec, sqlite-eval, sqlite-query
+- **(std db duckdb)** — DuckDB in-process OLAP database
+- **(std net tcp)** — tcp-listen, tcp-accept, tcp-connect, tcp-close
+- **(std net httpd)** — httpd-start, httpd-route, http-respond-json
+- **(std os path)** — path-expand, path-normalize, path-join, path-absolute?
+- **(std os env)** — getenv, setenv, unsetenv
+- **(std crypto digest)** — md5, sha1, sha256, sha512, digest->hex-string
+- **(std crypto random)** — random-bytes, random-u64, random-token, random-uuid
+- **(std stm)** — make-tvar, atomically, tvar-read, tvar-write!, retry, or-else
+- **(std srfi srfi-1)** — iota, filter-map, every, any, fold, reduce, delete-duplicates, take, drop, zip
+- **(std srfi srfi-13)** — string-index, string-contains, string-trim, string-pad, string-tokenize
+- **(std iter)** — for, for/collect, for/fold, in-list, in-range, in-hash-pairs
+- **(std result)** — ok, err, ok?, unwrap, map-ok, and-then, try-result
+- **(std datetime)** — datetime-now, parse-datetime, datetime->iso8601, datetime-add, datetime-diff
+- **(std sugar)** — ->, ->>, as->, chain, awhen, aif, when-let, cut, dotimes, str, with-resource
+
+## Chez Scheme Gotchas
+
+These are the most common Chez-specific pitfalls:
+
+1. **void takes 0 args**: (void) is correct. (void x) is WRONG. Use (lambda _ (void)) as a discard handler.
+2. **bytevector-copy is 1-arg**: R6RS (bytevector-copy bv) copies the whole thing. For slicing, use subbytevector or bytevector-copy! with 5 args.
+3. **Multiple return values**: open-process-ports returns 4 VALUES (not a list). Use (let-values ([(to from err pid) (open-process-ports cmd)]) ...).
+4. **putenv takes 2 args**: (putenv "NAME" "VALUE"), NOT (putenv "NAME=VALUE").
+5. **R6RS body ordering**: ALL definitions must come before expressions in a body. No interleaving.
+6. **Record fields are immutable by default**: Use (mutable field-name) in define-record-type to allow mutation.
+7. **Record ?-field mutators**: A field named closed? generates mutator record-closed?-set! (keeps the ?).
+8. **--script vs --program mode**: In --script mode, forked threads DON'T run between top-level form evaluations. Use --program for concurrent code.
+9. **EINTR from GC signals**: Chez's stop-the-world GC sends signals. Blocking syscalls (accept, read, write) can fail with EINTR. Always retry.
+10. **GC double-close**: GC finalizers may close ports you already closed, potentially closing a REUSED fd. Use a closed? flag.
+11. **(collect) deadlocks**: Never call (collect) while another thread is in a blocking foreign call.
+12. **Stale .wpo files**: If compile-whole-program fails with a mysterious error, run make clean first. Stale .wpo files break builds.
+13. **Stale daemon processes**: After rebuilding, kill the old daemon. Check /proc/PID/exe for (deleted).
+14. **load-shared-object in static binaries**: Crashes at startup. Wrap in (guard ...) with a fallback.
+15. **Phase separation**: Macros cannot reference runtime bindings. Use (meta define ...) or (for (module) expand) imports.
+
 ## Troubleshooting
 
 - Tool returns empty results → check module path spelling, ensure module is installed
