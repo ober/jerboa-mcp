@@ -30,7 +30,7 @@ export function registerProjectMapTool(server: McpServer): void {
       },
     },
     async ({ project_path }) => {
-      // 1. Try to detect package name from a manifest or gerbil.pkg equivalent
+      // 1. Try to detect package name from a manifest (package.scm, jerboa.pkg, etc.)
       let packageName = '';
       // Jerboa projects may have a package.scm or similar; we'll just use directory name
       try {

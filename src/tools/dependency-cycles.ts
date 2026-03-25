@@ -43,7 +43,7 @@ function extractLocalImports(content: string, packagePrefix: string): string[] {
     while ((modMatch = modPattern.exec(body)) !== null) {
       imports.push(modMatch[0]);
     }
-    // Also look for :package/module style (Gerbil compat in prelude)
+    // Also look for :package/module style (legacy compat in prelude)
     const colonPattern = new RegExp(`:${packagePrefix}/[a-zA-Z0-9_/.-]+`, 'g');
     let colonMatch: RegExpExecArray | null;
     while ((colonMatch = colonPattern.exec(body)) !== null) {
@@ -55,7 +55,7 @@ function extractLocalImports(content: string, packagePrefix: string): string[] {
 
 /**
  * Read a project config file to get the package name.
- * Tries jerboa.pkg first, then gerbil.pkg for compat.
+ * Tries jerboa.pkg first, then gerbil.pkg for legacy compat.
  */
 async function readPackagePrefix(projectPath: string): Promise<string | null> {
   // Try jerboa.pkg
@@ -66,7 +66,7 @@ async function readPackagePrefix(projectPath: string): Promise<string | null> {
   } catch {
     // try next
   }
-  // Try gerbil.pkg (compatible projects)
+  // Try gerbil.pkg (legacy compat)
   try {
     const content = await readFile(join(projectPath, 'gerbil.pkg'), 'utf-8');
     const match = content.match(/package:\s*([a-zA-Z0-9_/.-]+)/);
@@ -139,7 +139,7 @@ export function registerDependencyCyclesTool(server: McpServer): void {
         'Detect circular module dependencies in a Jerboa project. ' +
         'Circular imports cause cryptic compilation errors. This tool builds ' +
         'a dependency graph from import statements and reports any cycles found. ' +
-        'Reads jerboa.pkg or gerbil.pkg for the package prefix.',
+        'Reads jerboa.pkg (or legacy gerbil.pkg) for the package prefix.',
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
@@ -148,7 +148,7 @@ export function registerDependencyCyclesTool(server: McpServer): void {
         project_path: z.string().describe('Path to the Jerboa project directory'),
         package_prefix: z.string().optional().describe(
           'Package name prefix to use for identifying local imports. ' +
-          'If omitted, reads from jerboa.pkg or gerbil.pkg.',
+          'If omitted, reads from jerboa.pkg (or legacy gerbil.pkg).',
         ),
       },
     },

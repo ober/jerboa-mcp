@@ -18,7 +18,7 @@
   {
     "id": "jerboa-import-policy-check",
     "title": "Import policy validation in build pipeline",
-    "description": "A build-time check that runs (std security import-audit) audit-imports-directory and fails the build if forbidden imports are found in user modules. Integrates with gerbil_build_and_report.",
+    "description": "A build-time check that runs (std security import-audit) audit-imports-directory and fails the build if forbidden imports are found in user modules. Integrates with jerboa_build_and_report.",
     "impact": "medium",
     "tags": [
       "security",

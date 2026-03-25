@@ -1,7 +1,7 @@
 {
   "name": "jerboa-mcp",
   "version": "1.0.0",
-  "description": "MCP server providing Jerboa language intelligence (Gerbil Scheme on Chez)",
+  "description": "MCP server providing Jerboa Scheme language intelligence",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

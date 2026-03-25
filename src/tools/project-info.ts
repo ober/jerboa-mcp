@@ -16,7 +16,7 @@ export function registerProjectInfoTool(server: McpServer): void {
       title: 'Project Context Overview',
       description:
         'Single-call summary of a Jerboa project: package name, build targets, ' +
-        'source files, and external dependencies. Reads gerbil.pkg (if present), ' +
+        'source files, and external dependencies. Reads jerboa.pkg or legacy gerbil.pkg (if present), ' +
         'Makefile (if present), build.ss (if present), and scans source files.',
       annotations: {
         readOnlyHint: true,
@@ -33,7 +33,7 @@ export function registerProjectInfoTool(server: McpServer): void {
     async ({ project_path }) => {
       const sections: string[] = [];
 
-      // 1. Parse gerbil.pkg (compatible with Jerboa)
+      // 1. Parse gerbil.pkg (legacy compat)
       let packageName = '';
       let hasPkg = false;
       try {
@@ -48,10 +48,10 @@ export function registerProjectInfoTool(server: McpServer): void {
         sections.push(`Location: ${project_path}`);
         sections.push('');
       } catch {
-        // gerbil.pkg not present — try Makefile
+        // pkg file not present — try Makefile
       }
 
-      // 2. Parse Makefile for project info (if no gerbil.pkg, or in addition)
+      // 2. Parse Makefile for project info (if no pkg file, or in addition)
       if (!hasPkg) {
         let makefileInfo = '';
         try {

@@ -56,10 +56,10 @@ jerboa-mcp/
 │       ├── jerboa-pattern-matching.md
 │       └── jerboa-stdlib-map.md
 ├── dist/                 — Compiled output (generated, do not edit)
-├── cookbooks.json        — Cookbook recipes (persisted by gerbil_howto_add)
-├── error-fixes.json      — Error fix database (gerbil_error_fix_add)
-├── security-rules.json   — Custom security patterns (gerbil_security_pattern_add)
-├── features.json         — Feature suggestions (gerbil_suggest_feature)
+├── cookbooks.json        — Cookbook recipes (persisted by jerboa_howto_add)
+├── error-fixes.json      — Error fix database (jerboa_error_fix_add)
+├── security-rules.json   — Custom security patterns (jerboa_security_pattern_add)
+├── features.json         — Feature suggestions (jerboa_suggest_feature)
 ├── package.json
 └── tsconfig.json
 ```
@@ -256,7 +256,7 @@ Format for `cookbooks.json`:
 ## Tool Count
 
 Currently **99 tools** are registered in `src/index.ts`. The tool names follow
-the prefix `jerboa_` (not `gerbil_` — this server is Jerboa-specific).
+the prefix `jerboa_`.
 
 Tools are grouped in `src/index.ts` registrations by category:
 - Core evaluation (eval, check-syntax, compile-check, batch-syntax-check)

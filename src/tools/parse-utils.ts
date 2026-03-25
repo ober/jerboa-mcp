@@ -144,7 +144,7 @@ function extractForm(lines: string[], startIdx: number): string {
 // ── File System Scanning ────────────────────────────────────────────
 
 const SKIP_DIRS = new Set([
-  '.git', '.svn', 'node_modules', '.gerbil', '__pycache__', 'dist',
+  '.git', '.svn', 'node_modules', '.jerboa', '__pycache__', 'dist',
 ]);
 
 /**
