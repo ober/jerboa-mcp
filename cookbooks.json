@@ -2520,5 +2520,88 @@
     ],
     "code": "(import (std net tls-rustls))\n\n;; Connect to a server verifying only the pinned certificate hash,\n;; bypassing CA verification entirely. Useful for internal services\n;; with self-signed certs where you know the exact cert.\n\n;; pin-sha256 is a bytevector of the SHA-256 hash of the server's DER cert\n(define pin (string->utf8 \"base64-encoded-pin-here\"))\n(define conn (rustls-connect-pinned \"internal.host\" 8443 pin))\n\n;; I/O same as regular TLS\n(define buf (make-bytevector 4096))\n(rustls-read conn buf 4096)\n(rustls-close conn)",
     "notes": "Certificate pinning skips CA chain verification — the connection succeeds only if the server's cert hash matches pin-sha256 exactly. Stronger than CA verification for known internal services, but fragile if certs rotate. For mTLS with mutual auth, use rustls-connect-mtls instead."
+  },
+  {
+    "id": "chez-spinlock-box-cas",
+    "title": "CAS-based Spinlock using box-cas!",
+    "tags": [
+      "spinlock",
+      "cas",
+      "box-cas!",
+      "lock",
+      "concurrency",
+      "atomic"
+    ],
+    "imports": [
+      "(std misc spinlock)"
+    ],
+    "code": ";; Create a spinlock (optional max-spin count, default 10)\n(define sl (make-spinlock))\n(define sl2 (make-spinlock 20))  ; 20 spins before yield\n\n;; Manual lock/unlock\n(spin-lock! sl)\n;; ... critical section ...\n(spin-unlock! sl)\n\n;; Macro form (exception-safe, auto-unlocks)\n(with-spinlock sl\n  (+ 1 2 3))  ; => 6\n\n;; Implementation uses Chez box-cas! for the CAS operation:\n;;   (box-cas! box old new) => #t if swapped\n;; Deadlock detection: errors if current thread already holds lock.\n;; Yields via (sleep (make-time 'time-duration 0 0)) after max spins.",
+    "notes": "Chez has no thread-yield. Use (sleep (make-time 'time-duration 0 0)) as a zero-duration sleep to yield. Gambit uses ##vector-cas! but Chez uses box-cas! on a box value. Spinlocks are only appropriate for very short critical sections — use mutex for anything that might block."
+  },
+  {
+    "id": "chez-syntax-case-in-library",
+    "title": "Use syntax-case (not syntax-rules) for macros in R6RS libraries",
+    "tags": [
+      "syntax-case",
+      "syntax-rules",
+      "macro",
+      "library",
+      "define-syntax",
+      "r6rs"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; WRONG: syntax-rules can't reference library-local bindings in templates\n;; (define-syntax my-macro\n;;   (syntax-rules ()\n;;     ((_ x) (my-helper x))))  ; => \"misplaced aux keyword\" error\n\n;; CORRECT: use syntax-case with lambda wrapper\n(define-syntax my-macro\n  (lambda (stx)\n    (syntax-case stx ()\n      ((_ x)\n       #'(my-helper x)))))\n\n;; Multi-clause with rest args:\n(define-syntax with-thing\n  (lambda (stx)\n    (syntax-case stx ()\n      ((_ obj expr)\n       #'(let ((o obj))\n           (thing-acquire! o)\n           (let ((result (guard (e (else (thing-release! o) (raise e)))\n                           expr)))\n             (thing-release! o)\n             result)))\n      ((_ obj expr rest ...)\n       #'(with-thing obj (begin expr rest ...))))))",
+    "notes": "In Jerboa/Chez R6RS libraries, syntax-rules macros fail with 'misplaced aux keyword' errors when the template references library-defined procedures (like spin-lock!, my-helper). This is because syntax-rules templates are opaque — they can't capture lexical bindings from the library scope. Always use (define-syntax name (lambda (stx) (syntax-case stx () ...))) with #' templates instead. The #' (syntax) form properly captures the lexical environment."
+  },
+  {
+    "id": "chez-record-type-custom-constructor",
+    "title": "Custom record constructor to avoid name conflicts",
+    "tags": [
+      "record-type",
+      "define-record-type",
+      "constructor",
+      "naming",
+      "conflict"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Problem: define-record-type auto-generates make-foo, but you want\n;; a custom constructor (e.g., with default arguments via case-lambda).\n;; Using (define make-foo ...) after define-record-type causes\n;; \"multiple definitions\" error.\n\n;; Solution: use 3-name form to give internal constructor a different name\n(define-record-type (%foo %make-foo foo?)\n  (nongenerative foo-unique-id)\n  (sealed #t)\n  (fields (immutable x) (immutable y)))\n\n;; Now define public constructor with defaults\n(define make-foo\n  (case-lambda\n    (()    (%make-foo 0 0))\n    ((x)   (%make-foo x 0))\n    ((x y) (%make-foo x y))))\n\n;; Accessors use the first name: %foo-x, %foo-y\n;; Predicate uses third name: foo?",
+    "notes": "The 3-name form is (define-record-type (internal-name constructor-name predicate-name)). Accessors are prefixed with internal-name (e.g., %foo-x). If you want public accessors with a nice name, define wrapper procedures or use a different naming convention like $foo for internal."
+  },
+  {
+    "id": "jerboa-with-list-builder",
+    "title": "Efficient list building with with-list-builder",
+    "tags": [
+      "list-builder",
+      "with-list-builder",
+      "call-with-list-builder",
+      "accumulate",
+      "collect",
+      "build-list"
+    ],
+    "imports": [
+      "(std misc list)"
+    ],
+    "code": ";; Macro form: bind a collector function\n(with-list-builder (c)\n  (c 1) (c 2) (c 3))  ; => (1 2 3)\n\n;; Procedural form: pass a procedure that receives the collector\n(call-with-list-builder\n  (lambda (c)\n    (do ((i 0 (+ i 1)))\n      ((= i 5))\n      (c (* i i)))))  ; => (0 1 4 9 16)\n\n;; Useful for building lists in imperative loops or callbacks\n;; where reverse-accumulate pattern is awkward:\n(with-list-builder (add!)\n  (for-each (lambda (x)\n              (when (even? x)\n                (add! (* x 10))))\n    '(1 2 3 4 5 6)))  ; => (20 40 60)",
+    "notes": "Ported from Gerbil v0.19's with-list-builder. Uses a mutable tail pointer for O(1) append. The collector function (c) appends to the end of the list, maintaining insertion order without needing reverse at the end. Much more efficient than (reverse (fold ...)) for large lists."
+  },
+  {
+    "id": "jerboa-prelude-import-conflicts",
+    "title": "Resolving import conflicts in (jerboa prelude)",
+    "tags": [
+      "prelude",
+      "import",
+      "conflict",
+      "except",
+      "only",
+      "r6rs",
+      "library"
+    ],
+    "imports": [],
+    "code": ";; When building a prelude that re-exports from multiple modules,\n;; use (only ...) instead of (except ...) to avoid errors when\n;; the excluded symbol doesn't exist in the source module.\n\n;; WRONG: errors if sugar doesn't export 'while'\n;; (except (std sugar) try catch finally while)\n\n;; CORRECT: explicitly list what you want\n;; (only (std sugar)\n;;   assert! chain chain-and\n;;   unwind-protect with-id with-lock with-catch\n;;   cut cute <> <...> ...)\n\n;; For Chez builtins that clash with custom modules:\n;; (except (chezscheme)\n;;   make-hash-table hash-table?   ; clashes with (jerboa runtime)\n;;   sort sort!                     ; clashes with (std sort)\n;;   partition                      ; clashes with (std misc list)\n;;   printf fprintf                 ; clashes with (std format)\n;;   iota 1+ 1-)                   ; clashes with (jerboa runtime)",
+    "notes": "R6RS (except ...) is strict: it errors if the excluded symbol is not actually exported by the source library. This means removing an export from a module can break downstream except clauses. Prefer (only ...) for fragile multi-module prelude assembly. Common Chez/Jerboa clashes: partition, sort, sort!, printf, fprintf, make-hash-table, hash-table?, iota, 1+, 1-, path-extension, path-absolute?."
   }
 ]

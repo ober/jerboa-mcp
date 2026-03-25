@@ -175,5 +175,22 @@
     "example_scenario": "User adds a new seccomp preset on Linux. Tool shows that FreeBSD/Capsicum has a matching preset but macOS/Seatbelt does not, prompting the user to add the Seatbelt equivalent.",
     "estimated_token_reduction": 500,
     "votes": 0
+  },
+  {
+    "id": "compile-check-direct-module",
+    "title": "compile_check should test module in isolation, not via prelude",
+    "description": "jerboa_compile_check currently seems to transitively import the prelude when checking a library. If the prelude itself has errors (e.g., invalid except clause), compile_check fails on unrelated modules like (std misc list) with the prelude's error. It should compile the target library in isolation, only loading its declared imports — not the full prelude chain. This would make compile_check reliable even when the prelude is broken.",
+    "impact": "medium",
+    "tags": [
+      "compile-check",
+      "isolation",
+      "prelude",
+      "error",
+      "module"
+    ],
+    "use_case": "When iterating on library code while the prelude has a known issue. compile_check should still work on libraries that don't depend on the prelude.",
+    "example_scenario": "The prelude has an invalid (except (std sugar) ... while ...) clause. Running jerboa_compile_check on lib/std/misc/list.sls (which imports only (chezscheme)) fails with the prelude error instead of checking list.sls. Had to fall back to running scheme directly via bash to verify the module compiled.",
+    "estimated_token_reduction": "~300 tokens per failed compile-check that forces bash fallback",
+    "votes": 0
   }
 ]
