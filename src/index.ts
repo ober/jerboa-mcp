@@ -101,6 +101,18 @@ import { registerEventSystemGuideTool } from './tools/event-system-guide.js';
 import { registerStaleStaticTool } from './tools/stale-static.js';
 import { registerProjectHealthCheckTool } from './tools/project-health-check.js';
 import { registerPackageInfoTool } from './tools/package-info.js';
+import { registerSecurityAuditTool } from './tools/security-audit.js';
+import { registerImportPolicyCheckTool } from './tools/import-policy-check.js';
+import { registerUnsafeImportLintTool } from './tools/unsafe-import-lint.js';
+import { registerRustMuslBuildTool } from './tools/rust-musl-build.js';
+import { registerStaticSymbolAuditTool } from './tools/static-symbol-audit.js';
+import { registerBootLibraryAuditTool } from './tools/boot-library-audit.js';
+import { registerSafePreludeCheckTool } from './tools/safe-prelude-check.js';
+import { registerResourceLeakCheckTool } from './tools/resource-leak-check.js';
+import { registerSafePreludeGeneratorTool } from './tools/safe-prelude-generator.js';
+import { registerSandboxParityTool } from './tools/sandbox-parity.js';
+import { registerMtlsCertGenerateTool } from './tools/mtls-cert-generate.js';
+import { registerCommandTraceTool } from './tools/command-trace.js';
 
 const INSTRUCTIONS = `You have access to a live Jerboa Scheme environment via this MCP server. Use these tools proactively when working with Jerboa Scheme code.
 
@@ -273,6 +285,30 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 
 - jerboa_security_scan: Static security scanner. Detects shell injection, FFI type mismatches, missing unwind-protect, unsafe patterns. Reports severity, line, and remediation. Scans single file (file_path) or project (project_path). Filter by severity_threshold. Supports inline suppression: ; jerboa-security: suppress <rule-id>.
 - jerboa_security_pattern_add: Add custom security detection rules. Requires id, title, severity, scope, pattern (regex), message, and remediation.
+- jerboa_security_audit: Jerboa-specific security auditor that understands Jerboa's security modules (taint, capability, restrict, sanitize, privsep). Detects sanitizer context misuse, missing taint checks at sinks, bare read without read-eval #f, copy-environment without restrict, eval of user input, SQL injection, path traversal, and resource leaks. More Jerboa-aware than the generic security_scan.
+- jerboa_import_policy_check: Build-time check that scans .ss files for forbidden imports (direct (chezscheme), inline foreign-procedure, load-shared-object, shell interpolation). Reports violations with file, line, and clear remediation. Excludes .sls library files by default.
+- jerboa_unsafe_import_lint: Lint pass that warns on raw/unsafe module imports and suggests safe alternatives. Detects (std db sqlite-native), (std net tcp-raw), inline foreign-procedure, bare (error ...), fork-thread, and more. Suggests (std safe) wrappers, structured concurrency, and structured conditions.
+
+## Safe-by-Default Tools
+
+- jerboa_safe_prelude_check: Checks whether a project uses safe APIs by default. Scans for uses of unsafe functions (sqlite-open, tcp-connect, open-input-file, foreign-procedure, system) and reports where safe alternatives exist from (std safe).
+- jerboa_resource_leak_check: Static analysis for resource leaks. Detects resource-acquiring calls not protected by with-resource, unwind-protect, dynamic-wind, or call-with-* patterns. Checks sqlite-open, tcp-connect, open-input-file, duckdb-open, mutex-acquire, and more.
+- jerboa_safe_prelude_generate: Generates a safe-by-default prelude module that re-exports safe wrappers under the original names. Given (std safe) module, strips "safe-" prefixes and generates a library with define aliases. Excludes dangerous exports like foreign-procedure.
+
+## Static Build Tools
+
+- jerboa_rust_musl_build: Automates building Rust static libraries for the musl target. Detects rustup toolchain, verifies target installation, sets CC=musl-gcc, runs cargo build. Reports output .a path. Use when integrating Rust crates into Chez static binaries.
+- jerboa_static_symbol_audit: Cross-references Sforeign_symbol() registration calls in C entry points against actual symbols from linked .a/.o files (via nm). Detects missing registrations (causes runtime "foreign-procedure not found") and dead registrations.
+- jerboa_boot_library_audit: Audits a Chez static build script's library list against the transitive import closure. Detects missing libraries (causes runtime "library not found") and dead-weight libraries (increase binary size without being used).
+
+## Cross-Platform Tools
+
+- jerboa_sandbox_parity: Compares sandbox capabilities across Linux (seccomp/Landlock), FreeBSD (Capsicum), and macOS (Seatbelt) by introspecting actual module exports. Reports feature parity gaps and platform-specific capabilities.
+- jerboa_mtls_cert_generate: Generates self-signed Ed25519 (or RSA/EC) certificate and private key for mTLS testing. Returns file paths and example Jerboa code for rustls-server-ctx-new-mtls and rustls-connect-mtls.
+
+## Debugging Tools
+
+- jerboa_command_trace: Traces the dispatch path for a given editor command. Analyzes cmd-* function definitions to show cond/match branches, predicates tested, and which branch fires for a given buffer type. Helps diagnose "why does command X do nothing?" issues.
 
 ## Feature Tracking
 
@@ -294,6 +330,10 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 - **Find imports for symbols**: jerboa_suggest_imports → jerboa_module_exports → jerboa_eval to confirm
 - **Debug a crash**: jerboa_stale_static → jerboa_bisect_crash → jerboa_ffi_type_check
 - **Build project**: jerboa_build_conflict_check → jerboa_make → jerboa_build_and_report
+- **Security audit**: jerboa_security_audit → jerboa_import_policy_check → jerboa_unsafe_import_lint
+- **Static build audit**: jerboa_static_symbol_audit → jerboa_boot_library_audit → jerboa_rust_musl_build
+- **Safe-by-default check**: jerboa_safe_prelude_check → jerboa_resource_leak_check → jerboa_safe_prelude_generate
+- **Debug editor command**: jerboa_command_trace with project_path and buffer_type
 - **Port from Gerbil**: jerboa_migration_check → jerboa_translate_scheme → jerboa_verify → jerboa_check_syntax
 - **Check project health**: jerboa_project_health_check → fix issues → jerboa_build_and_report
 - **Learn a module**: jerboa_stdlib_source → jerboa_module_catalog → jerboa_module_quickstart
@@ -555,6 +595,28 @@ registerEventSystemGuideTool(server);
 registerSuggestFeatureTool(server);
 registerListFeaturesTool(server);
 registerVoteFeatureTool(server);
+
+// Jerboa-specific security audit
+registerSecurityAuditTool(server);
+registerImportPolicyCheckTool(server);
+registerUnsafeImportLintTool(server);
+
+// Safe-by-default tools
+registerSafePreludeCheckTool(server);
+registerResourceLeakCheckTool(server);
+registerSafePreludeGeneratorTool(server);
+
+// Static build and FFI tools
+registerRustMuslBuildTool(server);
+registerStaticSymbolAuditTool(server);
+registerBootLibraryAuditTool(server);
+
+// Cross-platform and testing
+registerSandboxParityTool(server);
+registerMtlsCertGenerateTool(server);
+
+// Debugging
+registerCommandTraceTool(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

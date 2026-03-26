@@ -88,6 +88,30 @@ When a Jerboa MCP server is available, you MUST use its tools extensively instea
 
 - **`jerboa_security_scan`**: Static security scanner for `.ss`/`.sls` and C files. Detects shell injection, FFI type mismatches, missing `unwind-protect`, unsafe patterns, and more. Reports severity, line, and remediation. Scans single file (`file_path`) or project (`project_path`). Filter by `severity_threshold`. Supports inline suppression: `; jerboa-security: suppress <rule-id>`.
 - **`jerboa_security_pattern_add`**: Add custom security detection rules to the scanner. Each rule needs an `id` (kebab-case), `title`, `severity` (critical/high/medium/low), `scope` (scheme/c-shim/ffi-boundary), `pattern` (regex), `message` (vulnerability explanation), and `remediation` (fix guidance). Optional: `related_recipe`, `tags`. If a rule with the same `id` exists, it is replaced (update semantics).
+- **`jerboa_security_audit`**: Jerboa-specific security auditor that understands Jerboa's security modules (taint, capability, restrict, sanitize, privsep). Detects sanitizer context misuse (e.g. `sanitize-html` in URL attribute context), missing taint checks at sinks, bare `read` without `read-eval #f`, `copy-environment` without `restrict`, eval of user input, SQL injection via string interpolation, path traversal, and resource leaks. More Jerboa-aware than the generic `security_scan`.
+- **`jerboa_import_policy_check`**: Build-time check that scans `.ss` files for forbidden imports and unsafe patterns. Detects direct `(import (chezscheme))`, inline `foreign-procedure`, `load-shared-object` in application code, and shell interpolation. Reports file, line, and violation details. Excludes `.sls` library files by default. Supports custom rules via `extra_forbidden` and inline suppression with `; policy: allow`.
+- **`jerboa_unsafe_import_lint`**: Lint pass that warns on raw/unsafe module imports and suggests safe alternatives. Detects `(std db sqlite-native)`, `(std net tcp-raw)`, inline `foreign-procedure`, bare `(error ...)`, `fork-thread`, `open-process-ports`, and more. Suggests `(std safe)` wrappers, structured concurrency, and structured conditions.
+
+### For Safe-by-Default Enforcement
+
+- **`jerboa_safe_prelude_check`**: Checks whether a project uses safe APIs by default. Scans for uses of unsafe functions (`sqlite-open`, `tcp-connect`, `open-input-file`, `foreign-procedure`, `system`, etc.) and reports where safe alternatives exist from `(std safe)`. Helps enforce the principle that `(jerboa prelude)` should provide safe wrappers.
+- **`jerboa_resource_leak_check`**: Static analysis for resource leaks. Detects resource-acquiring calls (`sqlite-open`, `tcp-connect`, `open-input-file`, `duckdb-open`, `mutex-acquire`, etc.) not protected by `with-resource`, `unwind-protect`, `dynamic-wind`, or `call-with-*` patterns. Reports each leak site with the specific cleanup pattern to use.
+- **`jerboa_safe_prelude_generate`**: Generates a safe-by-default prelude module that re-exports safe wrappers under the original names. Given a safe module (e.g. `(std safe)`), strips the `safe-` prefix and generates `define` aliases. Excludes dangerous exports like `foreign-procedure`.
+
+### For Static Builds and FFI
+
+- **`jerboa_rust_musl_build`**: Automates building Rust static libraries for the musl target. Detects the rustup toolchain, verifies the musl target is installed, sets `CC=musl-gcc`, and runs `cargo build --release`. Reports the output `.a` path. Use when integrating Rust crates into Chez static binaries. Supports `dry_run` for prerequisite checking.
+- **`jerboa_static_symbol_audit`**: Cross-references `Sforeign_symbol()` registration calls in C entry points against actual symbols from linked `.a`/`.o` files (via `nm`). Detects missing registrations (causes runtime "foreign-procedure not found") and dead registrations (registered but symbol no longer exists). Prevents hard-to-debug runtime FFI failures.
+- **`jerboa_boot_library_audit`**: Audits a Chez static build script's library list against the transitive import closure. Detects missing libraries (causes runtime "library not found") and dead-weight libraries (increase binary size without being used). Walks the import graph to find all transitive dependencies.
+
+### For Cross-Platform and Testing
+
+- **`jerboa_sandbox_parity`**: Compares sandbox capabilities across Linux (seccomp/Landlock), FreeBSD (Capsicum), and macOS (Seatbelt) by introspecting actual module exports. Reports feature parity gaps and platform-specific capabilities.
+- **`jerboa_mtls_cert_generate`**: Generates self-signed certificates (Ed25519, RSA, or EC) and private keys for mTLS testing via `openssl`. Returns file paths and example Jerboa code for `rustls-server-ctx-new-mtls` and `rustls-connect-mtls`. Supports custom SANs and key types.
+
+### For Editor Command Debugging
+
+- **`jerboa_command_trace`**: Traces the dispatch path for a given editor command. Analyzes `cmd-*` function definitions to show `cond`/`match` branches, predicates tested (`terminal-buffer?`, `shell-buffer?`, etc.), and which branch fires for a given buffer type. Diagnoses "why does command X do nothing?" without manual REPL probing.
 
 ### For Macro Development and Refactoring
 
@@ -222,6 +246,10 @@ When you notice opportunities to improve the jerboa-mcp toolset during a session
 - **Audit project quality**: `jerboa_verify` → `jerboa_lint` → `jerboa_dead_code` → `jerboa_dependency_cycles`
 - **Debug a crash**: `jerboa_stale_static` → `jerboa_bisect_crash` → `jerboa_ffi_type_check`
 - **Learn a module**: `jerboa_stdlib_source` → `jerboa_module_catalog` → `jerboa_module_quickstart`
+- **Security audit**: `jerboa_security_audit` → `jerboa_import_policy_check` → `jerboa_unsafe_import_lint`
+- **Static build audit**: `jerboa_static_symbol_audit` → `jerboa_boot_library_audit` → `jerboa_rust_musl_build`
+- **Safe-by-default check**: `jerboa_safe_prelude_check` → `jerboa_resource_leak_check` → `jerboa_safe_prelude_generate`
+- **Debug editor command**: `jerboa_command_trace` with `project_path` and `buffer_type`
 
 ## Workflow Conventions
 

@@ -307,6 +307,72 @@ export function buildSyntaxCheckScript(code: string, imports?: string[]): string
 }
 
 /**
+ * Build a compile-check script for .sls library files that use #!chezscheme.
+ * Uses the standard Chez reader (not jerboa-read) so brackets in syntax-case
+ * patterns are handled correctly. Does NOT import (jerboa prelude), so the
+ * check succeeds even if the prelude is broken.
+ */
+export function buildChezCompileCheckScript(code: string): string {
+  const escaped = escapeSchemeString(code);
+
+  return `(import (chezscheme))
+
+(guard (e [else
+           (display "${ERROR_MARKER}\\n")
+           (display-condition e (current-output-port))])
+  (let ([port (open-string-input-port "${escaped}")])
+    (let loop ()
+      (let ([expr (read port)])
+        (unless (eof-object? expr)
+          (expand expr)
+          (loop)))))
+  (display "${VALID_MARKER}\\n"))
+`;
+}
+
+/**
+ * Build a compile-check script for a library file using only its own imports.
+ * Reads the file content, extracts its library form, and compiles it in
+ * isolation without importing the prelude. This ensures compile-check works
+ * even when the prelude itself has errors.
+ */
+export function buildIsolatedCompileCheckScript(code: string, useChezReader: boolean): string {
+  const escaped = escapeSchemeString(code);
+
+  if (useChezReader) {
+    // For #!chezscheme files: use standard Chez reader
+    return `(import (chezscheme))
+
+(guard (e [else
+           (display "${ERROR_MARKER}\\n")
+           (display-condition e (current-output-port))])
+  (let ([port (open-string-input-port "${escaped}")])
+    (let loop ()
+      (let ([expr (read port)])
+        (unless (eof-object? expr)
+          (expand expr)
+          (loop)))))
+  (display "${VALID_MARKER}\\n"))
+`;
+  } else {
+    // For Jerboa .ss files: use jerboa-read but only import what's needed
+    return `(import (jerboa reader))
+
+(guard (e [else
+           (display "${ERROR_MARKER}\\n")
+           (display-condition e (current-output-port))])
+  (let ([port (open-string-input-port "${escaped}")])
+    (let loop ()
+      (let ([expr (jerboa-read port)])
+        (unless (eof-object? expr)
+          (expand expr)
+          (loop)))))
+  (display "${VALID_MARKER}\\n"))
+`;
+  }
+}
+
+/**
  * Build the standard preamble for a non-eval Jerboa script.
  * For scripts that embed code directly (not via eval), use this
  * plus write the code in standard Chez syntax (no [...] etc.).
