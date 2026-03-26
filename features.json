@@ -48,7 +48,7 @@
     "use_case": "When integrating a Rust crate as a static library into a Chez Scheme musl binary. Currently requires manually finding the right rustup toolchain, setting env vars, and verifying target installation.",
     "example_scenario": "User wants to add a new Rust crate (e.g., argon2 for password hashing) to their Chez Scheme project. The tool detects rustup's active toolchain, ensures musl target is installed, builds the crate, and reports the .a file location ready for linking.",
     "estimated_token_reduction": 400,
-    "votes": 1
+    "votes": 2
   },
   {
     "id": "chez-static-symbol-audit",
@@ -66,7 +66,7 @@
     "use_case": "When adding or removing FFI functions from a Rust or C library linked into a static Chez binary. Missing Sforeign_symbol calls only fail at runtime when the foreign-procedure is first called, making them hard to catch.",
     "example_scenario": "User adds 5 new Rust FFI functions but only registers 4 of them with Sforeign_symbol. The tool reports the missing registration before the binary is even run, saving a debugging cycle.",
     "estimated_token_reduction": 600,
-    "votes": 1
+    "votes": 2
   },
   {
     "id": "jerboa-safe-prelude-default",
@@ -191,6 +191,58 @@
     "use_case": "When iterating on library code while the prelude has a known issue. compile_check should still work on libraries that don't depend on the prelude.",
     "example_scenario": "The prelude has an invalid (except (std sugar) ... while ...) clause. Running jerboa_compile_check on lib/std/misc/list.sls (which imports only (chezscheme)) fails with the prelude error instead of checking list.sls. Had to fall back to running scheme directly via bash to verify the module compiled.",
     "estimated_token_reduction": "~300 tokens per failed compile-check that forces bash fallback",
+    "votes": 1
+  },
+  {
+    "id": "compile-check-chez-reader",
+    "title": "compile_check should use Chez reader for .sls files with #!chezscheme",
+    "description": "jerboa_compile_check uses the Jerboa reader (which converts [...] to (list ...)) even for .sls library files that start with #!chezscheme. This causes false compilation failures on any library using brackets in syntax-case patterns — including the existing (std typed) module. The tool should detect #!chezscheme at the top of a file and use the standard Chez reader instead of the Jerboa reader, matching what `scheme --libdirs` does at build time.",
+    "impact": "high",
+    "tags": [
+      "compile-check",
+      "reader",
+      "bracket",
+      "chezscheme",
+      "sls"
+    ],
+    "use_case": "When writing or modifying any .sls library that uses brackets in syntax-case, define-syntax, or let bindings — which is nearly all of them.",
+    "example_scenario": "Writing lib/std/ergo.sls with a define-syntax using syntax-case and [(_ expr type) ...] patterns. jerboa_compile_check returns 'invalid syntax-case clause (list (_ expr type) ...)' because [...] was read as (list ...). Had to skip compile_check entirely and rely on make build, losing the fast feedback loop.",
+    "estimated_token_reduction": "~200 tokens per compile-check call that fails spuriously, plus eliminates need to run bash make as workaround. Affects nearly every .sls file edit session.",
+    "votes": 0
+  },
+  {
+    "id": "ipc-repl-command-trace",
+    "title": "IPC REPL: trace command dispatch path for a given command name",
+    "description": "A tool or REPL helper that traces which branch of cmd-* dispatch fires for a given command in the current editor state — showing which buffer-type predicate matched, what guard conditions passed/failed, and which leaf function was called. Currently diagnosing \"why does backspace do nothing?\" requires manually querying (terminal-buffer? buf), (shell-buffer? buf), (hash-get *shell-state* buf) etc. one at a time via nc to the IPC REPL.",
+    "impact": "medium",
+    "tags": [
+      "debug",
+      "ipc-repl",
+      "dispatch",
+      "command",
+      "trace"
+    ],
+    "use_case": "When an editing command silently does nothing in a specific buffer type, trace which cond branch fired (or failed to fire) without manually querying each predicate.",
+    "example_scenario": "User reports backspace doesn't work in shell script files. Root cause: shell-buffer? returns #t (lexer-lang=shell), but no shell-state entry exists, so all cond branches in cmd-backward-delete-char fail silently. Diagnosing this required 5+ separate nc REPL queries to check each predicate and state variable one at a time.",
+    "estimated_token_reduction": "~300 tokens per debug session (eliminates 4-6 sequential REPL probe calls)",
+    "votes": 0
+  },
+  {
+    "id": "static-boot-library-audit",
+    "title": "Audit boot file library list against transitive imports",
+    "description": "A tool that parses a Chez static build script's boot file library list and compares it against the transitive import closure of the entry point. Detects libraries that are imported but missing from the boot file (causing runtime 'library not found' errors in static builds) and libraries listed in the boot file but never transitively imported (dead weight). Works by reading the build script's library list and walking the import graph via jerboa_module_deps.",
+    "impact": "high",
+    "tags": [
+      "boot",
+      "static",
+      "library",
+      "import",
+      "audit",
+      "musl"
+    ],
+    "use_case": "When adding a new library dependency to a static Chez binary. Missing a single transitive dependency from the boot file causes a runtime error that only manifests when the code path is hit, making it hard to catch before deployment.",
+    "example_scenario": "Added (jerboa-aws pssm) to the boot file but forgot its transitive dependency (jerboa-coreutils common security). The binary built fine but crashed at runtime when pssm tried to import security. Had to debug by trial and error, adding missing libraries one at a time. This tool would have reported all missing transitive deps in one pass.",
+    "estimated_token_reduction": "~1000 tokens per missing-library debugging cycle — eliminates 3-5 rounds of build/run/crash/add-library",
     "votes": 0
   }
 ]

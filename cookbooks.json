@@ -2603,5 +2603,181 @@
     "imports": [],
     "code": ";; When building a prelude that re-exports from multiple modules,\n;; use (only ...) instead of (except ...) to avoid errors when\n;; the excluded symbol doesn't exist in the source module.\n\n;; WRONG: errors if sugar doesn't export 'while'\n;; (except (std sugar) try catch finally while)\n\n;; CORRECT: explicitly list what you want\n;; (only (std sugar)\n;;   assert! chain chain-and\n;;   unwind-protect with-id with-lock with-catch\n;;   cut cute <> <...> ...)\n\n;; For Chez builtins that clash with custom modules:\n;; (except (chezscheme)\n;;   make-hash-table hash-table?   ; clashes with (jerboa runtime)\n;;   sort sort!                     ; clashes with (std sort)\n;;   partition                      ; clashes with (std misc list)\n;;   printf fprintf                 ; clashes with (std format)\n;;   iota 1+ 1-)                   ; clashes with (jerboa runtime)",
     "notes": "R6RS (except ...) is strict: it errors if the excluded symbol is not actually exported by the source library. This means removing an export from a module can break downstream except clauses. Prefer (only ...) for fragile multi-module prelude assembly. Common Chez/Jerboa clashes: partition, sort, sort!, printf, fprintf, make-hash-table, hash-table?, iota, 1+, 1-, path-extension, path-absolute?."
+  },
+  {
+    "id": "ergo-using-dot-access",
+    "title": "Typed scope with dot-access via using",
+    "tags": [
+      "using",
+      "dot-access",
+      "typed",
+      "struct",
+      "ergo",
+      "field-access"
+    ],
+    "imports": [
+      "(std ergo)",
+      "(jerboa core)"
+    ],
+    "code": ";; Define a struct\n(defstruct point (x y))\n\n;; Checked: runtime type check + dot-access\n(using (p (make-point 3 4) : point)\n  (+ p.x p.y))  ;; => 7, p.x expands to (point-x p)\n\n;; Unchecked: dot-access only, no runtime check\n(using (p (make-point 3 4) as point)\n  p.x)  ;; => 3\n\n;; Multiple bindings\n(defstruct rect (w h))\n(using ((p (make-point 1 2) : point)\n        (r (make-rect 10 20) : rect))\n  (+ p.x r.w))  ;; => 11",
+    "notes": "v1 supports single-level dot access only (p.x works, p.a.b doesn't). The : variant checks the type in debug mode (*typed-mode*); the as variant skips the check. Quoted symbols like 'p.x are NOT transformed. Multi-binding expands to nested single-binding using calls."
+  },
+  {
+    "id": "ergo-typed-def",
+    "title": "Define functions with inline type annotations",
+    "tags": [
+      "def",
+      "typed",
+      "type-annotation",
+      "ergo",
+      "inline-types",
+      "contract"
+    ],
+    "imports": [
+      "(jerboa core)",
+      "(std typed)"
+    ],
+    "code": ";; Typed args: (param : type)\n(def (add (x : fixnum) (y : fixnum))\n  (fx+ x y))\n\n;; With return type\n(def (greet (name : string)) : string\n  (string-append \"hello \" name))\n\n;; Mixed typed and untyped params\n(def (lookup (key : string) default)\n  (hashtable-ref some-table key default))\n\n;; Type checks respect *typed-mode*:\n;; 'debug (default) = checks enabled, raises on mismatch\n;; 'release = checks stripped, zero overhead",
+    "notes": "Uses (param : type) syntax in def formals. The : must be a symbol (space-separated). Works alongside optional args — (param default) is 2-element, (param : type) is 3-element, no ambiguity. Requires (std typed) to be imported (for check-type! and check-return-type!). Types use the same registry as define/t: fixnum, string, boolean, pair, list, number, symbol, etc. plus custom types via register-type-predicate!."
+  },
+  {
+    "id": "ergo-checked-cast",
+    "title": "Inline checked type cast with :",
+    "tags": [
+      "cast",
+      "type-check",
+      "ergo",
+      "colon",
+      "assert"
+    ],
+    "imports": [
+      "(std ergo)",
+      "(std typed)"
+    ],
+    "code": ";; (: expr type) — checked cast, raises in debug mode\n(: 42 fixnum)        ;; => 42\n(: \"hello\" string)   ;; => \"hello\"\n;; (: \"oops\" fixnum) ;; => ERROR in debug mode\n\n;; Contract predicates\n((maybe string?) #f)     ;; => #t (#f always passes)\n((maybe string?) \"hi\")   ;; => #t\n((list-of? fixnum?) '(1 2 3))  ;; => #t",
+    "notes": "The : operator cannot be named :- or :~ because Jerboa's reader treats : as keyword prefix (so :- becomes keyword -). Use (: expr type) for checked casts. maybe and list-of? return predicates, not values — use them with guard, assert, or define/contract."
+  },
+  {
+    "id": "reader-colon-keyword-gotcha",
+    "title": "Jerboa reader colon-prefix keyword gotcha",
+    "tags": [
+      "reader",
+      "keyword",
+      "colon",
+      "symbol",
+      "gotcha",
+      "define-syntax"
+    ],
+    "imports": [],
+    "code": ";; The Jerboa reader treats : as a keyword prefix.\n;; :- reads as keyword -, not symbol :-\n;; :~ reads as keyword ~, not symbol :~\n;; :? reads as keyword ?, not symbol :?\n\n;; Verify:\n;; ':-  => (-)     ;; NOT the symbol :-\n;; ':~  => (~)     ;; NOT the symbol :~\n;; ':   => :       ;; colon alone IS a valid symbol\n;; '::  => garbled ;; double colon gets mangled\n\n;; SAFE symbols for define-syntax names:\n;; : (bare colon with space after) — works fine\n;; as, is, of — plain words, always safe\n\n;; UNSAFE — cannot be used as macro/export names:\n;; :- :~ :? :> :: :foo  — all become keyword forms\n\n;; Workaround: use |:-| pipe-escaping for identifiers\n'|:-|  ;; => the symbol :-\n;; But this is ugly — prefer renaming to : or as",
+    "notes": "This matters when porting Gerbil's :- and :~ type operators to Jerboa. You cannot define-syntax a name starting with : (except bare :) because the reader converts it to keyword syntax before the expander sees it. The (std ergo) module uses : for checked cast and as for unchecked annotation as a workaround."
+  },
+  {
+    "id": "syntax-tree-walk-transform",
+    "title": "Walk and transform syntax tree in macros",
+    "tags": [
+      "macro",
+      "syntax",
+      "tree-walk",
+      "transform",
+      "datum->syntax",
+      "replace"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Pattern: walk a syntax tree and replace symbols matching a condition.\n;; Used by with-fixnum-ops (std typed) and using (std ergo).\n\n(define-syntax my-transform\n  (lambda (stx)\n    ;; Walk s-expression, replacing via rewrite-map\n    (define (transform s rewrite-map ctx)\n      (let ([d (syntax->datum s)])\n        (cond\n          ;; Symbol matches rewrite map\n          [(and (symbol? d) (assq d rewrite-map))\n           => (lambda (entry)\n                (datum->syntax ctx (cdr entry)))]\n          ;; Not a pair — return as-is\n          [(not (pair? d)) s]\n          ;; Don't descend into quotes\n          [(eq? (car d) 'quote) s]\n          ;; List — recurse into each element\n          [else\n           (let ([lst (syntax->list s)])\n             (if lst\n               (datum->syntax ctx\n                 (map (lambda (x)\n                        (syntax->datum (transform x rewrite-map ctx)))\n                      lst))\n               s))])))\n\n    (syntax-case stx ()\n      [(_ body ...)\n       (let ([rmap '((old-name . new-name))])\n         (with-syntax ([(tb ...)\n                        (map (lambda (b)\n                               (datum->syntax #'stx\n                                 (syntax->datum (transform b rmap #'stx))))\n                             (syntax->list #'(body ...)))])\n           #'(begin tb ...)))])))",
+    "notes": "Key insight: use (syntax->datum s) to inspect, (datum->syntax ctx ...) to rebuild with proper lexical context. The ctx argument should be a syntax object from the macro use site so that generated identifiers resolve in the user's scope. Always skip (quote ...) forms to avoid transforming quoted data. This pattern is O(n) in the size of the syntax tree — fine for typical macro bodies."
+  },
+  {
+    "id": "qscintilla-lexer-per-widget",
+    "title": "QScintilla: Re-apply syntax lexer when buffer appears in a new editor widget",
+    "tags": [
+      "qscintilla",
+      "lexer",
+      "syntax-highlighting",
+      "split-window",
+      "per-widget",
+      "sci-send"
+    ],
+    "imports": [],
+    "code": ";; QScintilla lexers (and keyword lists) are per-widget, NOT per-document.\n;; When sharing a document across multiple editor widgets (e.g. split windows),\n;; each new widget needs the lexer explicitly re-applied.\n;;\n;; The shared Scintilla document (SCI_SETDOCPOINTER) preserves text and undo\n;; history, but the lexer state lives in the widget. After attaching a buffer\n;; to a new editor, check if the buffer has a stored lexer-lang and re-apply it:\n\n(def (reapply-lexer-to-widget! ed buf)\n  (let ((lang (buffer-lexer-lang buf)))\n    (when lang\n      (let ((lexer-name (language->lexer-name lang)))\n        (when lexer-name\n          ;; Re-set the lexer on this specific widget\n          (qt-scintilla-set-lexer-language! ed lexer-name)\n          ;; Re-apply keywords (QsciLexer::setLexer resets them)\n          (case lang\n            ((shell) (sci-send/string ed SCI_SETKEYWORDS *shell-keywords* 0))\n            ;; ... other languages ...\n            (else (void)))\n          ;; Restore margin/background colors (setLexer resets these too)\n          (restore-margin-colors! ed)\n          (qt-enable-code-folding! ed))))))\n\n;; Call this from post-buffer-attach-hook or after SCI_SETDOCPOINTER:\n;;   (add-hook! 'post-buffer-attach-hook\n;;     (lambda (editor buf)\n;;       (reapply-lexer-to-widget! editor buf)))",
+    "notes": "This pattern applies whenever SCI_SETDOCPOINTER is used to share a document across editor widgets (split windows, multi-frame setups). The lexer, keywords (SCI_SETKEYWORDS), and margin colors are all per-widget and must be re-applied to each new widget. Also note: org-mode uses manual styling (SCI_SETILEXER=4033 to disable lexer) so handle it separately. SCI_DELETEBACK (2326) works correctly for multibyte characters and is simpler than manual SCI_GETCURRENTPOS + SCI_DELETERANGE math."
+  },
+  {
+    "id": "qscintilla-buffer-type-predicate-pitfall",
+    "title": "QScintilla: Buffer type predicates match by lexer-lang, not by runtime state",
+    "tags": [
+      "buffer",
+      "predicate",
+      "shell-buffer",
+      "lexer-lang",
+      "dispatch",
+      "command",
+      "silent-fail"
+    ],
+    "imports": [],
+    "code": ";; PITFALL: shell-buffer? (and similar predicates) return #t based on lexer-lang,\n;; NOT based on whether an interactive shell session is active.\n;;\n;; Example: opening a shell script file ~/foo.sh gives it lexer-lang=shell,\n;; so shell-buffer? returns #t — even though there's no shell state.\n;;\n;; (def (shell-buffer? buf)\n;;   (eq? (buffer-lexer-lang buf) 'shell))   ;; <-- matches ALL shell-lang buffers!\n;;\n;; Commands that branch on shell-buffer? must also check for active shell state.\n;; Without this check, editing commands silently do nothing on shell script files.\n\n;; WRONG — silently fails on shell script files (no shell-state entry):\n(cond\n  ((shell-buffer? buf)\n   (let ((ss (hash-get *shell-state* buf)))\n     (cond\n       ((and ss (shell-pty-busy? ss)) ...)   ;; only runs if interactive shell\n       ((and ss (> pos (shell-state-prompt-pos ss))) ...)))))  ;; same\n\n;; CORRECT — add fallthrough for file buffers without shell state:\n(cond\n  ((shell-buffer? buf)\n   (let ((ss (hash-get *shell-state* buf)))\n     (cond\n       ((and ss (shell-pty-busy? ss))\n        (shell-send-input! ss (string (integer->char 127))))\n       ((and ss (> pos (shell-state-prompt-pos ss)))\n        (qt-backward-delete-char! ed))\n       ((not ss)\n        ;; No shell state = regular shell script file being edited\n        (qt-backward-delete-char! ed))))))",
+    "notes": "This pattern generalizes to any command that dispatches on buffer type predicates backed by lexer-lang. Always check for active runtime state (shell-state, terminal-state, repl-state) separately from the type predicate. The symptom is silent failure: the command runs (no error) but does nothing, because none of the cond branches match. Debug by checking (hash-get *shell-state* buf) via IPC REPL."
+  },
+  {
+    "id": "capture-stdout-parameterize",
+    "title": "Capture stdout to string via parameterize + open-output-string",
+    "tags": [
+      "capture",
+      "stdout",
+      "output",
+      "string",
+      "parameterize",
+      "redirect"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Capture stdout from a thunk into a string, letting stderr pass through\n(define (call-with-captured-stdout thunk)\n  (let ([out-port (open-output-string)])\n    (parameterize ([current-output-port out-port])\n      (thunk))\n    (get-output-string out-port)))\n\n;; Usage:\n(let ([result (call-with-captured-stdout\n                (lambda ()\n                  (display \"hello\\n\")\n                  (printf \"count: ~a~n\" 42)))])\n  (printf \"captured: ~s~n\" result))\n;; => captured: \"hello\\ncount: 42\\n\"",
+    "notes": "Use open-output-string + get-output-string, NOT call-with-string-output-port, when you need to read the accumulated output after an error (e.g. inside guard). call-with-string-output-port won't return the port's contents if the thunk raises. For error capture, combine with guard and get-output-string in the guard clause.",
+    "related": [
+      "error-handling"
+    ]
+  },
+  {
+    "id": "intercept-exit-in-subcommand",
+    "title": "Intercept (exit n) in a subcommand without terminating the host process",
+    "tags": [
+      "exit",
+      "handler",
+      "guard",
+      "intercept",
+      "catch",
+      "subprocess",
+      "shell"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; When embedding a CLI tool (e.g. pssm-main) inside a shell/REPL,\n;; calling (exit n) would kill the host. Override exit-handler to\n;; raise a tagged vector instead, then catch it with guard.\n\n(define my-exit-tag (vector 'my-exit))\n\n(define (run-subcommand thunk)\n  (let ([out-port (open-output-string)])\n    (guard (e [#t\n               (cond\n                 ;; Caught our exit-handler override\n                 [(and (vector? e)\n                       (= (vector-length e) 2)\n                       (eq? (vector-ref e 0) my-exit-tag))\n                  (values (get-output-string out-port)\n                          (vector-ref e 1))]  ; exit code\n                 ;; Any other error\n                 [else\n                  (values (string-append\n                            (get-output-string out-port)\n                            (call-with-string-output-port\n                              (lambda (p) (display-condition e p))))\n                          1)])])\n      (parameterize ([current-output-port out-port]\n                     [exit-handler\n                      (lambda args\n                        (raise (vector my-exit-tag\n                                 (if (pair? args) (car args) 0))))])\n        (thunk)\n        (values (get-output-string out-port) 0)))))\n\n;; Usage:\n(let-values ([(output code) (run-subcommand\n                              (lambda () (display \"done\\n\") (exit 0)))])\n  (printf \"output=~s code=~a~n\" output code))\n;; => output=\"done\\n\" code=0",
+    "notes": "The exit-handler parameter is Chez-specific. The tag must be a fresh vector (use eq? identity), not a symbol, to avoid false matches. Always use guard (not with-exception-handler) so the continuation is abandoned. Combine with current-output-port parameterize to capture stdout while letting stderr flow to terminal.",
+    "related": [
+      "error-handling",
+      "capture-stdout-parameterize"
+    ]
+  },
+  {
+    "id": "shell-tokenize-quoted-args",
+    "title": "Tokenize shell-style arguments with single/double quotes and backslash escapes",
+    "tags": [
+      "tokenize",
+      "split",
+      "shell",
+      "arguments",
+      "quotes",
+      "parse",
+      "command-line"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Shell-style argument tokenizer: splits a string into tokens\n;; respecting single quotes, double quotes, and backslash escapes.\n;; \"pssm web-* 'df -h'\" => (\"pssm\" \"web-*\" \"df -h\")\n\n(define (tokenize-args str)\n  (let ([len (string-length str)])\n    (let loop ([i 0] [tokens '()] [current '()]\n               [in-sq #f] [in-dq #f] [escaped #f])\n      (cond\n        [(= i len)\n         (let ([tok (list->string (reverse current))])\n           (reverse (if (> (string-length tok) 0)\n                      (cons tok tokens)\n                      tokens)))]\n        [escaped\n         (loop (+ i 1) tokens (cons (string-ref str i) current)\n               in-sq in-dq #f)]\n        [(and (not in-sq) (not in-dq) (char=? (string-ref str i) #\\\\))\n         (loop (+ i 1) tokens current in-sq in-dq #t)]\n        [(and (not in-dq) (char=? (string-ref str i) #\\'))\n         (loop (+ i 1) tokens current (not in-sq) in-dq #f)]\n        [(and (not in-sq) (char=? (string-ref str i) #\\\"))\n         (loop (+ i 1) tokens current in-sq (not in-dq) #f)]\n        [(and (not in-sq) (not in-dq)\n              (char-whitespace? (string-ref str i)))\n         (let ([tok (list->string (reverse current))])\n           (loop (+ i 1)\n                 (if (> (string-length tok) 0)\n                   (cons tok tokens) tokens)\n                 '() #f #f #f))]\n        [else\n         (loop (+ i 1) tokens (cons (string-ref str i) current)\n               in-sq in-dq #f)]))))\n\n;; Examples:\n(tokenize-args \"ls -la /tmp\")        ;=> (\"ls\" \"-la\" \"/tmp\")\n(tokenize-args \"echo 'hello world'\") ;=> (\"echo\" \"hello world\")\n(tokenize-args \"cmd \\\"a b\\\" c\")      ;=> (\"cmd\" \"a b\" \"c\")\n(tokenize-args \"path\\\\ name\")        ;=> (\"path name\")",
+    "notes": "Pure Scheme, no dependencies. Uses tail-recursive loop with character-by-character state machine. Does NOT handle nested quotes or $variable expansion — this is intentional for simple meta-command parsing. For full POSIX shell parsing, use an external tool."
   }
 ]
