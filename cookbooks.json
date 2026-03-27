@@ -2971,5 +2971,52 @@
     "imports": [],
     "code": ";; WRONG: Patch 23 matches text added by Patch 30 (mux imports not yet applied)\n(patch-file! \"src/jsh/main.sls\"\n  \"(jsh recorder)\\n   (jsh mux-server)\"          ; doesn't exist yet!\n  \"(jsh recorder)\\n   (only (jsh prompt) git-branch-name)\\n   (jsh mux-server)\")\n\n;; RIGHT: Match text that exists at this point in the patch sequence\n(patch-file! \"src/jsh/main.sls\"\n  \"(jsh embed)\\n   (jsh recorder))\"               ; exists before mux patches\n  \"(jsh embed)\\n   (only (jsh prompt) git-branch-name)\\n   (jsh recorder))\")",
     "notes": "When using sequential patch-file! calls in a build script, each patch transforms the file for subsequent patches. A patch that matches text introduced by a LATER patch will silently fail (no match found). Always verify your match string exists at the point in the sequence where your patch runs. Common gotcha: patches in different sections (e.g., recording section vs multiplexer section) run in file order, not logical grouping order."
+  },
+  {
+    "id": "sort-symbols-chez",
+    "title": "Sort a list of symbols alphabetically (Chez Scheme)",
+    "tags": [
+      "sort",
+      "symbol",
+      "list-sort",
+      "alphabetical",
+      "environment-symbols",
+      "chez"
+    ],
+    "imports": [],
+    "code": ";; symbol<? does NOT exist in Chez Scheme. Use an inline comparator:\n(list-sort (lambda (a b)\n             (string<? (symbol->string a) (symbol->string b)))\n           '(zebra apple mango banana))\n;; => (apple banana mango zebra)\n\n;; Common use: sort module exports for display\n(let ([syms (environment-symbols (environment '(std sort)))])\n  (list-sort (lambda (a b)\n               (string<? (symbol->string a) (symbol->string b)))\n             syms))",
+    "notes": "symbol<? is NOT a Chez builtin — it does not exist. This is a common hallucination. Always use the lambda comparator with string<? and symbol->string. The same pattern works with list-sort from (chezscheme) or sort from (std sort)."
+  },
+  {
+    "id": "ergo-list-of-predicate-factory",
+    "title": "list-of? and maybe are predicate factories (arity 1)",
+    "tags": [
+      "ergo",
+      "list-of?",
+      "maybe",
+      "predicate",
+      "contract",
+      "type-check"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; list-of? takes ONE argument (the element predicate)\n;; and RETURNS a predicate. It does NOT take the list directly.\n\n;; WRONG: (list-of? number? '(1 2 3))   — arity error!\n;; RIGHT:\n((list-of? number?) '(1 2 3))    ;; => #t\n((list-of? string?) '(1 2 3))    ;; => #f\n\n;; maybe works the same way — predicate factory\n((maybe string?) \"hello\")         ;; => #t\n((maybe string?) #f)              ;; => #t  (accepts #f)\n((maybe string?) 42)              ;; => #f\n\n;; Use in contracts\n(def (process-numbers (xs : (list-of? number?)))\n  (apply + xs))",
+    "notes": "list-of? and maybe from (std ergo) are predicate FACTORIES. They each take 1 argument (a predicate) and return a new predicate. Calling (list-of? pred lst) is a common mistake that gives a wrong-number-of-arguments error."
+  },
+  {
+    "id": "introspect-module-exports-chez",
+    "title": "Introspect module exports at runtime with environment-symbols",
+    "tags": [
+      "environment",
+      "exports",
+      "introspect",
+      "module",
+      "symbols",
+      "reflection"
+    ],
+    "imports": [],
+    "code": ";; Get all symbols exported by a module\n(let* ([mod-env (environment '(std sort))]\n       [syms (environment-symbols mod-env)]\n       [sorted (list-sort\n                 (lambda (a b)\n                   (string<? (symbol->string a) (symbol->string b)))\n                 syms)])\n  (for-each (lambda (s) (display s) (newline)) sorted))\n\n;; Classify each export (procedure, value, macro)\n(let ([mod-env (environment '(std result))])\n  (for-each\n    (lambda (sym)\n      (guard (e [else (void)])\n        (let ([val (eval sym mod-env)])\n          (display sym)\n          (display \" : \")\n          (display (cond [(procedure? val) \"procedure\"]\n                         [(boolean? val) \"boolean\"]\n                         [else \"value\"]))\n          (newline))))\n    (environment-symbols mod-env)))",
+    "notes": "environment-symbols and environment are Chez builtins from (chezscheme). The module path must be quoted: (environment '(std sort)). Use eval with the module environment to inspect individual exports. Guard against macros which can't be eval'd."
   }
 ]

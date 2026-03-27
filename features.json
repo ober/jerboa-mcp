@@ -191,7 +191,7 @@
     "use_case": "When iterating on library code while the prelude has a known issue. compile_check should still work on libraries that don't depend on the prelude.",
     "example_scenario": "The prelude has an invalid (except (std sugar) ... while ...) clause. Running jerboa_compile_check on lib/std/misc/list.sls (which imports only (chezscheme)) fails with the prelude error instead of checking list.sls. Had to fall back to running scheme directly via bash to verify the module compiled.",
     "estimated_token_reduction": "~300 tokens per failed compile-check that forces bash fallback",
-    "votes": 1
+    "votes": 2
   },
   {
     "id": "compile-check-chez-reader",
@@ -314,6 +314,23 @@
     "use_case": "When adding new post-build patches to build-jerboa.ss or similar build scripts with 20+ sequential patch-file! calls targeting the same file.",
     "example_scenario": "Added patch 23 to insert a git-branch-name import into main.sls, matching '(jsh recorder)\\n   (jsh mux-server)'. But mux-server import is added by patch 30 in the Multiplexer section. The build completed without error but the import was silently missing, causing a runtime crash. Took multiple debug cycles to discover the ordering bug.",
     "estimated_token_reduction": "~500 tokens per patch ordering bug — eliminates build/crash/debug cycle that typically takes 2-3 rounds",
+    "votes": 0
+  },
+  {
+    "id": "mcp-prelude-export-diff",
+    "title": "Diff prelude exports against stdlib modules",
+    "description": "A tool that compares what (jerboa prelude) exports vs what each imported stdlib module exports, showing symbols that are imported but not re-exported. Helps ensure new features added to stdlib modules are surfaced in the prelude. Currently requires manually reading both prelude.sls and each module, comparing export lists — error-prone and token-heavy.",
+    "impact": "medium",
+    "tags": [
+      "prelude",
+      "export",
+      "diff",
+      "module",
+      "sync"
+    ],
+    "use_case": "When adding new exports to stdlib modules (like std/misc/list or std/result), to verify they're also re-exported from (jerboa prelude). Prevents the recurring problem of features being available only via direct module import.",
+    "example_scenario": "Added string-match?, string-find, string-find-all to (std misc string) but forgot to add them to (jerboa prelude). Users writing .ss files with (import (jerboa prelude)) couldn't access the new functions. A diff tool would have caught this immediately.",
+    "estimated_token_reduction": "~400 tokens per prelude sync — eliminates manual cross-referencing of export lists across 15+ modules",
     "votes": 0
   }
 ]
