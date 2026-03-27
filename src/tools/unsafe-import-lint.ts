@@ -110,7 +110,7 @@ export function registerUnsafeImportLintTool(server: McpServer): void {
       inputSchema: {
         file_path: z.string().optional().describe('Single file to lint'),
         project_path: z.string().optional().describe('Project directory to lint recursively'),
-        warnings_only: z.boolean().optional().describe('Only show warnings, not info-level suggestions (default: false)'),
+        warnings_only: z.coerce.boolean().optional().describe('Only show warnings, not info-level suggestions (default: false)'),
       },
     },
     async ({ file_path, project_path, warnings_only }) => {

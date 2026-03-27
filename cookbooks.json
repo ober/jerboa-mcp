@@ -2939,5 +2939,37 @@
     "imports": [],
     "code": ";; Key chords should be case-sensitive and use UPPERCASE characters.\n;; This ensures lowercase typing in terminals has zero interference.\n;;\n;; Registration (case-sensitive, both orderings):\n(def (key-chord-define-global two-char-str cmd)\n  (let ((c1 (string-ref two-char-str 0))\n        (c2 (string-ref two-char-str 1)))\n    (hash-put! *chord-map* (string c1 c2) cmd)\n    (when (not (char=? c1 c2))\n      (hash-put! *chord-map* (string c2 c1) cmd))\n    (hash-put! *chord-first-chars* c1 #t)\n    (hash-put! *chord-first-chars* c2 #t)))\n\n;; Example bindings (all uppercase):\n;; chord MT vterm\n;; chord EE eshell\n;; chord GG keyboard-quit\n\n;; IMPORTANT: During chord detection, IGNORE bare modifier key releases\n;; (Shift, Ctrl, Alt, Meta). When typing uppercase TM, the Shift release\n;; arrives between T and M. Without filtering, it cancels the chord.\n;; Qt key codes for modifiers: #x01000020 to #x01000025, #x01000053, #x01000054",
     "notes": "The deferred callback queue drains every ~10ms. With a 100-200ms chord timeout, both chord keys must arrive within that window. The 10ms event loop (reduced from 50ms) ensures reliable chord detection. Bare modifier releases (Shift/Ctrl/Alt/Meta) must be ignored in Case 1 of the chord FSM, but real keys (M-x, C-s) must still cancel the chord and be processed normally."
+  },
+  {
+    "id": "git-branch-from-dotgit-head",
+    "title": "Read git branch name from .git/HEAD without external commands",
+    "tags": [
+      "git",
+      "branch",
+      "file-exists",
+      "read-line",
+      "directory-walk",
+      "prompt"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": "(define (git-branch-name)\n  (let loop ([dir (current-directory)])\n    (let ([head-path (string-append dir \"/.git/HEAD\")])\n      (if (file-exists? head-path)\n          (guard (e [#t #f])\n            (let* ([content (call-with-input-file head-path read-line)]\n                   [prefix \"ref: refs/heads/\"])\n              (if (and (string? content)\n                       (>= (string-length content) (string-length prefix))\n                       (string=? prefix (substring content 0 (string-length prefix))))\n                  (substring content (string-length prefix) (string-length content))\n                  ;; Detached HEAD — show short hash\n                  (if (and (string? content) (>= (string-length content) 7))\n                      (substring content 0 7)\n                      #f))))\n          ;; Walk up to parent directory\n          (let ([parent (path-directory dir)])\n            (if (or (not parent) (string=? parent dir) (string=? parent \"/\"))\n                #f\n                (loop parent)))))))",
+    "notes": "Walks parent directories to find .git/HEAD (works in subdirs of a repo). Returns #f if not in a git repo. Handles both branch refs and detached HEAD (returns short 7-char hash). No subprocess spawned — pure file I/O. Useful for shell prompts where you want git info without forking git/grep/sed."
+  },
+  {
+    "id": "patch-file-ordering-dependency",
+    "title": "Post-build patch ordering: match text that exists at patch time",
+    "tags": [
+      "patch-file",
+      "build",
+      "ordering",
+      "post-build",
+      "string-match",
+      "build-jerboa"
+    ],
+    "imports": [],
+    "code": ";; WRONG: Patch 23 matches text added by Patch 30 (mux imports not yet applied)\n(patch-file! \"src/jsh/main.sls\"\n  \"(jsh recorder)\\n   (jsh mux-server)\"          ; doesn't exist yet!\n  \"(jsh recorder)\\n   (only (jsh prompt) git-branch-name)\\n   (jsh mux-server)\")\n\n;; RIGHT: Match text that exists at this point in the patch sequence\n(patch-file! \"src/jsh/main.sls\"\n  \"(jsh embed)\\n   (jsh recorder))\"               ; exists before mux patches\n  \"(jsh embed)\\n   (only (jsh prompt) git-branch-name)\\n   (jsh recorder))\")",
+    "notes": "When using sequential patch-file! calls in a build script, each patch transforms the file for subsequent patches. A patch that matches text introduced by a LATER patch will silently fail (no match found). Always verify your match string exists at the point in the sequence where your patch runs. Common gotcha: patches in different sections (e.g., recording section vs multiplexer section) run in file order, not logical grouping order."
   }
 ]

@@ -23,7 +23,7 @@ export function registerSandboxParityTool(server: McpServer): void {
       annotations: { readOnlyHint: true, idempotentHint: true },
       inputSchema: {
         jerboa_home: z.string().optional().describe('Path to Jerboa home directory'),
-        show_all_exports: z.boolean().optional().describe('Show all exports, not just parity differences (default: false)'),
+        show_all_exports: z.coerce.boolean().optional().describe('Show all exports, not just parity differences (default: false)'),
       },
     },
     async ({ jerboa_home, show_all_exports }) => {

@@ -55,10 +55,10 @@ export function registerRustMuslBuildTool(server: McpServer): void {
       inputSchema: {
         crate_path: z.string().describe('Path to the Rust crate directory (containing Cargo.toml)'),
         target: z.string().optional().describe('Rust target triple (default: x86_64-unknown-linux-musl)'),
-        release: z.boolean().optional().describe('Build in release mode (default: true)'),
+        release: z.coerce.boolean().optional().describe('Build in release mode (default: true)'),
         features: z.array(z.string()).optional().describe('Cargo features to enable'),
         lib_type: z.enum(['staticlib', 'cdylib']).optional().describe('Crate type to build (default: staticlib)'),
-        dry_run: z.boolean().optional().describe('Only check prerequisites, do not build (default: false)'),
+        dry_run: z.coerce.boolean().optional().describe('Only check prerequisites, do not build (default: false)'),
       },
     },
     async ({ crate_path, target, release, features, lib_type, dry_run }) => {

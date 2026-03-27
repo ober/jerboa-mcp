@@ -32,7 +32,7 @@ export function registerSpliceFormTool(server: McpServer): void {
           .int()
           .describe('Line number (1-based) where the form to splice starts'),
         keep_children: z
-          .array(z.number().int())
+          .array(z.coerce.number().int())
           .optional()
           .describe(
             'Which children to keep (1-based indices). Default: all except index 1 (the head). ' +

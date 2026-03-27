@@ -86,7 +86,7 @@ export function registerImportPolicyCheckTool(server: McpServer): void {
       annotations: { readOnlyHint: true, idempotentHint: true },
       inputSchema: {
         project_path: z.string().describe('Project directory to scan'),
-        include_libraries: z.boolean().optional().describe('Also scan .sls files (default: false, they need low-level access)'),
+        include_libraries: z.coerce.boolean().optional().describe('Also scan .sls files (default: false, they need low-level access)'),
         extra_forbidden: z.array(z.object({
           pattern: z.string().describe('Regex pattern to match'),
           rule: z.string().describe('Rule ID'),

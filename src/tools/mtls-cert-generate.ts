@@ -39,7 +39,7 @@ export function registerMtlsCertGenerateTool(server: McpServer): void {
       inputSchema: {
         output_dir: z.string().optional().describe('Directory to write cert.pem and key.pem (default: creates temp dir)'),
         common_name: z.string().optional().describe('CN for the certificate (default: "localhost")'),
-        days: z.number().optional().describe('Certificate validity in days (default: 365)'),
+        days: z.coerce.number().optional().describe('Certificate validity in days (default: 365)'),
         key_type: z.enum(['ed25519', 'rsa2048', 'rsa4096', 'ec256', 'ec384']).optional().describe('Key algorithm (default: ed25519)'),
         san: z.array(z.string()).optional().describe('Subject Alternative Names (default: ["DNS:localhost", "IP:127.0.0.1"])'),
       },

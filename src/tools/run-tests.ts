@@ -19,7 +19,7 @@ export function registerRunTestsTool(server: McpServer): void {
         directory: z.string().optional().describe('Directory to search for *-test.ss files'),
         filter: z.string().optional().describe('Filter test names containing this string'),
         jerboa_home: z.string().optional(),
-        timeout: z.number().optional().describe('Timeout per test file in ms (default: 120000)'),
+        timeout: z.coerce.number().optional().describe('Timeout per test file in ms (default: 120000)'),
       },
     },
     async ({ file_path, directory, filter, jerboa_home, timeout }) => {

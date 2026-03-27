@@ -129,7 +129,7 @@ export function registerBuildAndReportTool(server: McpServer): void {
       inputSchema: {
         project_path: z.string().describe('Path to project directory'),
         target: z.string().optional().describe('Make target (default: "build")'),
-        timeout: z.number().optional().describe('Timeout in ms (default: 120000)'),
+        timeout: z.coerce.number().optional().describe('Timeout in ms (default: 120000)'),
       },
     },
     async ({ project_path, target, timeout }) => {

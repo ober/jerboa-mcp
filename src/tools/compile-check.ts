@@ -54,8 +54,8 @@ export function registerCompileCheckTool(server: McpServer): void {
         file_path: z.string().optional().describe('Path to a .ss or .sls file to check'),
         code: z.string().optional().describe('Code string to check directly'),
         jerboa_home: z.string().optional().describe('Path to Jerboa home directory'),
-        force_chez_reader: z.boolean().optional().describe('Force use of Chez reader instead of jerboa-read'),
-        force_isolated: z.boolean().optional().describe('Force isolated compilation (no prelude import)'),
+        force_chez_reader: z.coerce.boolean().optional().describe('Force use of Chez reader instead of jerboa-read'),
+        force_isolated: z.coerce.boolean().optional().describe('Force isolated compilation (no prelude import)'),
       },
     },
     async ({ file_path, code, jerboa_home, force_chez_reader, force_isolated }) => {

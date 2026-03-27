@@ -298,5 +298,22 @@
     "example_scenario": "Tree-sitter highlighting was activated but all 19 style colors were gray (#d8d8d8). face-fg-rgb fell back to default for every face. Spent 30+ minutes diagnosing before discovering face-get returned #f in the static binary. Workaround: read colors directly from theme alist via theme-get instead of face-get.",
     "estimated_token_reduction": "~500 tokens per face debugging session — eliminates multiple rounds of REPL probing",
     "votes": 0
+  },
+  {
+    "id": "patch-file-dependency-validator",
+    "title": "Validate patch-file! ordering dependencies in build scripts",
+    "description": "A tool that analyzes a build script containing sequential patch-file! calls and detects ordering bugs — where a patch's match string depends on text introduced by a later patch. Parses each patch-file! call, simulates the transformation sequence, and reports patches whose old_string doesn't exist at their position in the sequence. Would also detect duplicate match strings and patches that silently fail (no match found).",
+    "impact": "medium",
+    "tags": [
+      "patch-file",
+      "build",
+      "ordering",
+      "validation",
+      "dependency"
+    ],
+    "use_case": "When adding new post-build patches to build-jerboa.ss or similar build scripts with 20+ sequential patch-file! calls targeting the same file.",
+    "example_scenario": "Added patch 23 to insert a git-branch-name import into main.sls, matching '(jsh recorder)\\n   (jsh mux-server)'. But mux-server import is added by patch 30 in the Multiplexer section. The build completed without error but the import was silently missing, causing a runtime crash. Took multiple debug cycles to discover the ordering bug.",
+    "estimated_token_reduction": "~500 tokens per patch ordering bug — eliminates build/crash/debug cycle that typically takes 2-3 rounds",
+    "votes": 0
   }
 ]

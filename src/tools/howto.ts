@@ -708,14 +708,14 @@ export function registerHowtoTool(server: McpServer): void {
             'Absolute path to a JSON cookbook file with additional recipes to merge (e.g. "/home/user/project/.claude/cookbooks.json")',
           ),
         compact: z
-          .boolean()
+          .coerce.boolean()
           .optional()
           .describe(
             'If true, return only id, title, and tags for each match (no code). ' +
             'Use jerboa_howto_get to fetch full recipe by id. Default: false.',
           ),
         max_results: z
-          .number()
+          .coerce.number()
           .optional()
           .describe(
             'Maximum number of results to return (default: 5).',

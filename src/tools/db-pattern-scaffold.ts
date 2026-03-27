@@ -25,7 +25,7 @@ export function registerDbPatternScaffoldTool(server: McpServer): void {
                 z.object({
                   name: z.string().describe('Column name'),
                   type: z.string().describe('SQL type (TEXT, INTEGER, etc.)'),
-                  primary_key: z.boolean().optional(),
+                  primary_key: z.coerce.boolean().optional(),
                 }),
               ).describe('Column definitions'),
             }),

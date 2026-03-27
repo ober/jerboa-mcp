@@ -89,7 +89,7 @@ export function registerBisectCrashTool(server: McpServer): void {
       inputSchema: {
         file_path: z.string().describe('Path to the crashing .ss/.sls file'),
         jerboa_home: z.string().optional().describe('Path to Jerboa home directory'),
-        timeout: z.number().optional().describe('Timeout per run in ms (default: 15000)'),
+        timeout: z.coerce.number().optional().describe('Timeout per run in ms (default: 15000)'),
       },
     },
     async ({ file_path, jerboa_home, timeout: timeoutMs }) => {
