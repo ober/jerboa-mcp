@@ -29,7 +29,7 @@ export function registerModuleCatalogTool(server: McpServer): void {
 
 (guard (e [else (display "${ERROR_MARKER}\\n") (display-condition e (current-output-port))])
   (let* ([mod-env (environment '${normalized})]
-         [syms (list-sort symbol<? (environment-symbols mod-env))])
+         [syms (list-sort (lambda (a b) (string<? (symbol->string a) (symbol->string b))) (environment-symbols mod-env))])
     (for-each
       (lambda (sym)
         (guard (e [else

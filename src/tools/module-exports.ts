@@ -22,7 +22,8 @@ export function registerModuleExportsTool(server: McpServer): void {
       const script = buildPreamble() + `
 (guard (e [else (display "${ERROR_MARKER}\\n") (display-condition e (current-output-port))])
   (let ([syms (environment-symbols (environment '${normalized}))])
-    (for-each (lambda (s) (display s) (newline)) (list-sort symbol<? syms))))
+    (for-each (lambda (s) (display s) (newline))
+              (list-sort (lambda (a b) (string<? (symbol->string a) (symbol->string b))) syms))))
 `;
 
       const result = await runChez(script, { jerboaHome: jerboa_home });
