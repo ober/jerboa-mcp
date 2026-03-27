@@ -2779,5 +2779,165 @@
     ],
     "code": ";; Shell-style argument tokenizer: splits a string into tokens\n;; respecting single quotes, double quotes, and backslash escapes.\n;; \"pssm web-* 'df -h'\" => (\"pssm\" \"web-*\" \"df -h\")\n\n(define (tokenize-args str)\n  (let ([len (string-length str)])\n    (let loop ([i 0] [tokens '()] [current '()]\n               [in-sq #f] [in-dq #f] [escaped #f])\n      (cond\n        [(= i len)\n         (let ([tok (list->string (reverse current))])\n           (reverse (if (> (string-length tok) 0)\n                      (cons tok tokens)\n                      tokens)))]\n        [escaped\n         (loop (+ i 1) tokens (cons (string-ref str i) current)\n               in-sq in-dq #f)]\n        [(and (not in-sq) (not in-dq) (char=? (string-ref str i) #\\\\))\n         (loop (+ i 1) tokens current in-sq in-dq #t)]\n        [(and (not in-dq) (char=? (string-ref str i) #\\'))\n         (loop (+ i 1) tokens current (not in-sq) in-dq #f)]\n        [(and (not in-sq) (char=? (string-ref str i) #\\\"))\n         (loop (+ i 1) tokens current in-sq (not in-dq) #f)]\n        [(and (not in-sq) (not in-dq)\n              (char-whitespace? (string-ref str i)))\n         (let ([tok (list->string (reverse current))])\n           (loop (+ i 1)\n                 (if (> (string-length tok) 0)\n                   (cons tok tokens) tokens)\n                 '() #f #f #f))]\n        [else\n         (loop (+ i 1) tokens (cons (string-ref str i) current)\n               in-sq in-dq #f)]))))\n\n;; Examples:\n(tokenize-args \"ls -la /tmp\")        ;=> (\"ls\" \"-la\" \"/tmp\")\n(tokenize-args \"echo 'hello world'\") ;=> (\"echo\" \"hello world\")\n(tokenize-args \"cmd \\\"a b\\\" c\")      ;=> (\"cmd\" \"a b\" \"c\")\n(tokenize-args \"path\\\\ name\")        ;=> (\"path name\")",
     "notes": "Pure Scheme, no dependencies. Uses tail-recursive loop with character-by-character state machine. Does NOT handle nested quotes or $variable expansion — this is intentional for simple meta-command parsing. For full POSIX shell parsing, use an external tool."
+  },
+  {
+    "id": "file-write",
+    "title": "Write string to file (with overwrite support)",
+    "tags": [
+      "file",
+      "write",
+      "string",
+      "io",
+      "output",
+      "save",
+      "overwrite",
+      "replace"
+    ],
+    "imports": [],
+    "code": ";; Write to a NEW file (errors if file exists):\n(call-with-output-file \"output.txt\"\n  (lambda (port)\n    (display \"hello world\" port)\n    (newline port)))\n\n;; OVERWRITE an existing file (use 'replace mode):\n(let ((port (open-output-file \"output.txt\" 'replace)))\n  (display \"hello world\" port)\n  (close-port port))\n\n;; GOTCHA: In Chez Scheme (R6RS), call-with-output-file raises\n;; \"file already exists\" if the file exists. You MUST use\n;; open-output-file with 'replace to overwrite.",
+    "notes": "call-with-output-file is R6RS-strict and fails on existing files. For save-buffer style operations, always use open-output-file with 'replace. The 'replace option is Chez-specific (not R6RS standard). Other options: 'truncate (same effect), 'append, 'error (default).",
+    "related": [
+      "file-read"
+    ]
+  },
+  {
+    "id": "qt-process-events-responsiveness",
+    "title": "Pump Qt event queue during long operations for UI responsiveness",
+    "tags": [
+      "qt",
+      "process-events",
+      "responsive",
+      "event-loop",
+      "freeze",
+      "ui",
+      "blocking"
+    ],
+    "imports": [],
+    "code": ";; When a long-running operation blocks the Qt event loop (e.g. terminal\n;; rendering with many FFI calls), the UI becomes unresponsive — M-x,\n;; keyboard shortcuts, etc. stop working.\n;;\n;; Fix: call qt-app-process-events! periodically to pump pending events.\n\n;; Store a global reference to the Qt application:\n(def *qt-app-ref* #f)\n;; Set it during init:\n(set! *qt-app-ref* qt-app)\n\n;; Then in your long-running loop or after heavy processing:\n(when *qt-app-ref*\n  (qt-app-process-events! *qt-app-ref*))\n\n;; Real example: vterm rendering after vtscreen-feed! (3840+ FFI calls\n;; for row-diff + per-cell colors). Without process-events, keystrokes\n;; queue up and M-x never fires during flooding commands like `find ~/ -ls`.\n\n;; Also useful in minibuffer polling loops:\n;; (let loop ()\n;;   (qt-app-process-events! app)\n;;   (when (not done?) (loop)))",
+    "notes": "qt-app-process-events! dispatches all pending events (key presses, mouse, paint, timers). Call it between chunks of work, not inside tight inner loops (each call has FFI overhead). Combine with a byte/time budget to cap how much work happens per tick before pumping events."
+  },
+  {
+    "id": "pty-batch-budget-throttle",
+    "title": "Cap PTY data per timer tick with a byte budget for responsiveness",
+    "tags": [
+      "pty",
+      "terminal",
+      "vterm",
+      "throttle",
+      "budget",
+      "batch",
+      "responsiveness"
+    ],
+    "imports": [],
+    "code": ";; When a PTY reader thread posts data chunks to a channel, the main-thread\n;; timer tick drains all available chunks. For flooding commands (find ~/ -ls),\n;; this can accumulate megabytes per tick, blocking the event loop.\n;;\n;; Fix: set a byte budget per tick. Process up to the budget, then stop\n;; and let the next tick handle the rest.\n\n(def *pty-batch-budget* 65536)  ;; 64KB per tick\n\n(let drain ((chunks []) (bytes 0) (done-msg #f))\n  (if (and (> bytes 0) (>= bytes *pty-batch-budget*))\n    ;; Budget exhausted — render what we have, leave rest for next tick\n    (let ((combined (apply string-append (reverse chunks))))\n      (process-batch! combined))\n    ;; Try to get more data (non-blocking)\n    (let ((msg (channel-try-get ch)))\n      (cond\n        ((not msg)\n         ;; Channel empty — render accumulated chunks\n         (unless (null? chunks)\n           (let ((combined (apply string-append (reverse chunks))))\n             (process-batch! combined))))\n        ((string? msg)\n         (drain (cons msg chunks)\n                (+ bytes (string-length msg))\n                done-msg))\n        (else\n         ;; Control message (e.g. process-done sentinel)\n         (drain chunks bytes msg))))))",
+    "notes": "The byte budget alone may not be sufficient for UI responsiveness if the rendering step itself is expensive (e.g. vtscreen row-diff with per-cell FFI color calls). Combine with qt-app-process-events! (see qt-process-events-responsiveness recipe) to pump the event queue between render batches.",
+    "related": [
+      "qt-process-events-responsiveness"
+    ]
+  },
+  {
+    "id": "fd-capture-stdout-stderr",
+    "title": "Capture stdout+stderr at fd level using dup2 and fresh Scheme ports",
+    "tags": [
+      "fd",
+      "dup2",
+      "capture",
+      "stdout",
+      "stderr",
+      "redirect",
+      "output",
+      "open-fd-output-port"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Capture stdout (fd 1) and stderr (fd 2) to a file at the OS level.\n;; Subprocesses (fork/exec) inherit the redirected fds and CANNOT escape.\n;; Uses fresh Scheme ports to avoid position-tracking conflicts with the\n;; old terminal-backed ports.\n;;\n;; Requires: ffi-dup, ffi-dup2, ffi-close-fd, ffi-open-raw from (jsh ffi)\n;; O_WRONLY=1, O_CREAT=64, O_TRUNC=512 → bitwise-ior = 577\n\n(let* ((file-fd (ffi-open-raw \"/tmp/captured.txt\" 577 438))  ;; O_WRONLY|O_CREAT|O_TRUNC, mode 0666\n       (saved-out-port (current-output-port))\n       (saved-err-port (current-error-port)))\n  ;; Flush existing ports before redirecting their underlying fd\n  (flush-output-port saved-out-port)\n  (flush-output-port saved-err-port)\n  ;; Save original fds\n  (let ((saved-1 (ffi-dup 1))\n        (saved-2 (ffi-dup 2)))\n    ;; Redirect fd 1 and fd 2 to the file\n    (ffi-dup2 file-fd 1)\n    (ffi-dup2 file-fd 2)\n    (ffi-close-fd file-fd)\n    ;; Create FRESH Scheme ports on dup'd copies of the redirected fds.\n    ;; Critical: do NOT reuse the old ports — their internal position\n    ;; tracking was for a terminal (non-seekable) and will corrupt file\n    ;; writes when executor.sls calls output-port-byte-position to sync.\n    (let* ((cap-port (transcoded-port\n                       (open-fd-output-port (ffi-dup 1) (buffer-mode line))\n                       (make-transcoder (utf-8-codec))))\n           (err-port (transcoded-port\n                       (open-fd-output-port (ffi-dup 2) (buffer-mode line))\n                       (make-transcoder (utf-8-codec)))))\n      (current-output-port cap-port)\n      (current-error-port err-port)\n      ;; === Run your command here ===\n      ;; (run-cmd cmd-str)  ;; or any code that writes to stdout/stderr\n      ;; === Cleanup ===\n      (flush-output-port cap-port)\n      (flush-output-port err-port)\n      (close-port cap-port)\n      (close-port err-port)\n      ;; Restore original fds and ports\n      (ffi-dup2 saved-1 1)\n      (ffi-dup2 saved-2 2)\n      (ffi-close-fd saved-1)\n      (ffi-close-fd saved-2)\n      (current-output-port saved-out-port)\n      (current-error-port saved-err-port))))",
+    "notes": "GOTCHA 1: Do NOT use (open-output-file \"/dev/fd/1\") after dup2 — Chez raises 'file exists' because its port tracker sees a conflict with /dev/fd/1.\n\nGOTCHA 2: Do NOT reuse the old (current-output-port) after dup2'ing fd 1 to a file. The old port was created for a terminal (non-seekable). When executor.sls calls (output-port-byte-position port end-pos) after waitpid to sync Scheme's position with fd-level writes, the stale port position overwrites earlier data in the file. Fresh ports via open-fd-output-port start at position 0 and stay in sync.\n\nGOTCHA 3: Use (ffi-dup 1) for the port fd, not fd 1 directly. close-port closes its fd — using a dup prevents accidentally closing fd 1 itself.\n\nGOTCHA 4: O_WRONLY|O_CREAT|O_TRUNC = 577 (decimal). Mode 438 = 0666 octal. These are Linux x86_64 values."
+  },
+  {
+    "id": "qscintilla-force-font-after-lexer",
+    "title": "Force font family+size on all QScintilla styles after setting a lexer",
+    "tags": [
+      "qscintilla",
+      "font",
+      "lexer",
+      "style",
+      "split-window",
+      "font-size",
+      "SCI_STYLESETFONT"
+    ],
+    "imports": [],
+    "code": ";; PITFALL: QsciLexer::setLexer() resets the font on all 128 styles\n;; to the lexer's default. If the user set a custom font size (e.g. 20pt),\n;; the lexer overrides it back to the default (often 10pt or 12pt).\n;;\n;; Fix: After any call to qt-scintilla-set-lexer-language!, re-force\n;; the font family and size on all 128 styles:\n\n(let loop ((i 0))\n  (when (&lt;= i 127)\n    (sci-send/string ed SCI_STYLESETFONT *default-font-family* i)\n    (sci-send ed SCI_STYLESETSIZE i *default-font-size*)\n    (loop (+ i 1))))\n\n;; Also restore margin colors (the font loop may corrupt line-number style):\n(let ((ln-face (face-get 'line-number)))\n  (when (and ln-face (face-bg ln-face))\n    (let-values (((r g b) (parse-hex-color (face-bg ln-face))))\n      (sci-send ed SCI_STYLESETBACK STYLE_LINENUMBER (rgb->sci r g b))\n      (sci-send ed 2260 0 (rgb->sci r g b))))  ;; 2260 = SCI_SETFOLDMARGINCOLOUR\n  (when (and ln-face (face-fg ln-face))\n    (let-values (((r g b) (parse-hex-color (face-fg ln-face))))\n      (sci-send ed SCI_STYLESETFORE STYLE_LINENUMBER (rgb->sci r g b)))))",
+    "notes": "This applies to split-window (qt-make-new-window!), buffer switching (post-buffer-attach-hook), and any path that calls qt-scintilla-set-lexer-language!. The 128 styles (0-127) cover all Scintilla style IDs including STYLE_DEFAULT(32) and STYLE_LINENUMBER(33). See also: apply-font-to-all-editors! in commands-config.ss for the global set-font-size command.",
+    "related": [
+      "qscintilla-lexer-per-widget"
+    ]
+  },
+  {
+    "id": "tree-sitter-activate-highlighting",
+    "title": "Activate tree-sitter as primary syntax highlighter (replacing Scintilla lexer)",
+    "tags": [
+      "tree-sitter",
+      "syntax-highlighting",
+      "scintilla",
+      "lexer",
+      "SCI_SETILEXER",
+      "ts-buffer-init"
+    ],
+    "imports": [],
+    "code": ";; To use tree-sitter instead of Scintilla's Lexilla lexer:\n;; 1. Disable the built-in lexer (SCI_SETILEXER = 4033)\n(sci-send ed 4033 0)\n\n;; 2. Initialize tree-sitter parser + compile highlight query\n(when (not (ts-buffer-state buf))\n  (ts-buffer-init! buf ts-name))  ;; ts-name = \\\"c\\\", \\\"python\\\", \\\"bash\\\", etc.\n\n;; 3. Configure face colors for TS style IDs 1-19\n(ts-setup-styles! ed)\n\n;; 4. Force font on all 128 styles (no lexer to reset them)\n(let loop ((i 0))\n  (when (<= i 127)\n    (sci-send/string ed SCI_STYLESETFONT *default-font-family* i)\n    (sci-send ed SCI_STYLESETSIZE i *default-font-size*)\n    (loop (+ i 1))))\n\n;; 5. Initial parse + highlight\n(let ((text (qt-plain-text-edit-text ed)))\n  (when text (ts-buffer-reparse! buf text ed)))\n\n;; KEY BENEFIT: Tree-sitter uses SCI_STARTSTYLING/SCI_SETSTYLING directly.\n;; No setLexer() call = fonts are NEVER reset. Eliminates the recurring\n;; font-size bug for all TS-supported languages.",
+    "notes": "14 grammars available: c, cpp, python, javascript, rust, go, bash, json, ruby, java, css, html, lua, scheme. The 150ms periodic reparse tick in app.ss auto-activates once ts-buffer-init! is called. ts-setup-styles! must read colors from the theme alist (theme-get) not from face-get — face-get can fail in static binaries.",
+    "related": [
+      "qscintilla-lexer-per-widget",
+      "qscintilla-force-font-after-lexer"
+    ]
+  },
+  {
+    "id": "scintilla-async-document-safety",
+    "title": "Safe async text writes to Scintilla: switch to target document first",
+    "tags": [
+      "scintilla",
+      "async",
+      "document",
+      "SCI_SETDOCPOINTER",
+      "set-text",
+      "buffer-switch"
+    ],
+    "imports": [],
+    "code": ";; PITFALL: qt-plain-text-edit-set-text! writes to whatever Scintilla\n;; document is currently active on the editor widget. In async callbacks,\n;; the user may have switched buffers, so the active document is WRONG.\n;;\n;; WRONG — writes into whatever buffer is currently displayed:\n;; (async-read-file! path\n;;   (lambda (text)\n;;     (let ((ed (qt-current-editor fr)))\n;;       (qt-plain-text-edit-set-text! ed text))))  ;; BUG!\n;;\n;; CORRECT — temporarily switch to the target document:\n(let ((target-doc (buffer-doc-pointer target-buf)))\n  (async-read-file! path\n    (lambda (text)\n      (let* ((ed (qt-current-editor (app-state-frame app)))\n             (current-doc (sci-send ed SCI_GETDOCPOINTER 0)))\n        ;; Switch to target document\n        (sci-send ed SCI_SETDOCPOINTER 0 target-doc)\n        (qt-plain-text-edit-set-text! ed text)\n        ;; Switch back\n        (sci-send ed SCI_SETDOCPOINTER 0 current-doc)))))",
+    "notes": "Same pattern applies to ANY async or timer callback that writes text to a Scintilla editor. The vterm render path has a related issue: qt-app-process-events! can process switch-buffer events mid-render, changing the active document. Always re-check window-buffer association after processEvents."
+  },
+  {
+    "id": "qt-process-events-recheck-state",
+    "title": "Re-check mutable state after qt-app-process-events! (can trigger buffer switches)",
+    "tags": [
+      "qt",
+      "process-events",
+      "state",
+      "reentrant",
+      "buffer-switch",
+      "race-condition"
+    ],
+    "imports": [],
+    "code": ";; PITFALL: qt-app-process-events! pumps the Qt event queue, which can\n;; fire key event callbacks. If a switch-buffer keystroke is queued, it\n;; fires MID-OPERATION, changing the editor's active document.\n;;\n;; WRONG — assumes state is unchanged after processEvents:\n;; (let ((ed (find-editor-for-terminal-buffer)))\n;;   (vtscreen-feed! vt data)\n;;   (qt-app-process-events! app)   ;; may fire switch-buffer!\n;;   (qt-plain-text-edit-set-text! ed rendered))  ;; writes to WRONG doc!\n;;\n;; CORRECT — re-check after processEvents:\n(let ((ed (qt-edit-window-editor win)))\n  (vtscreen-feed! vt data)\n  (qt-app-process-events! app)\n  ;; Re-check: window may now show a different buffer\n  (when (eq? (qt-edit-window-buffer win) terminal-buf)\n    (qt-plain-text-edit-set-text! ed rendered)))",
+    "notes": "This applies to ANY long-running operation that calls qt-app-process-events! for responsiveness. The processEvents call is necessary for UI responsiveness (M-x during vterm flood), but it introduces re-entrancy. Always re-validate mutable state after the call.",
+    "related": [
+      "qt-process-events-responsiveness"
+    ]
+  },
+  {
+    "id": "key-chord-case-sensitive-uppercase",
+    "title": "Case-sensitive key chords: use uppercase to avoid interfering with normal typing",
+    "tags": [
+      "key-chord",
+      "case-sensitive",
+      "uppercase",
+      "modifier-release",
+      "terminal",
+      "typing"
+    ],
+    "imports": [],
+    "code": ";; Key chords should be case-sensitive and use UPPERCASE characters.\n;; This ensures lowercase typing in terminals has zero interference.\n;;\n;; Registration (case-sensitive, both orderings):\n(def (key-chord-define-global two-char-str cmd)\n  (let ((c1 (string-ref two-char-str 0))\n        (c2 (string-ref two-char-str 1)))\n    (hash-put! *chord-map* (string c1 c2) cmd)\n    (when (not (char=? c1 c2))\n      (hash-put! *chord-map* (string c2 c1) cmd))\n    (hash-put! *chord-first-chars* c1 #t)\n    (hash-put! *chord-first-chars* c2 #t)))\n\n;; Example bindings (all uppercase):\n;; chord MT vterm\n;; chord EE eshell\n;; chord GG keyboard-quit\n\n;; IMPORTANT: During chord detection, IGNORE bare modifier key releases\n;; (Shift, Ctrl, Alt, Meta). When typing uppercase TM, the Shift release\n;; arrives between T and M. Without filtering, it cancels the chord.\n;; Qt key codes for modifiers: #x01000020 to #x01000025, #x01000053, #x01000054",
+    "notes": "The deferred callback queue drains every ~10ms. With a 100-200ms chord timeout, both chord keys must arrive within that window. The 10ms event loop (reduced from 50ms) ensures reliable chord detection. Bare modifier releases (Shift/Ctrl/Alt/Meta) must be ignored in Case 1 of the chord FSM, but real keys (M-x, C-s) must still cancel the chord and be processed normally."
   }
 ]

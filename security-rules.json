@@ -488,5 +488,56 @@
       "resource",
       "ffi"
     ]
+  },
+  {
+    "id": "call-with-output-file-overwrite-fail",
+    "title": "call-with-output-file silently fails on existing files (R6RS)",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "call-with-output-file",
+    "message": "call-with-output-file raises an exception if the file already exists (R6RS default behavior). This causes data loss if the caller expects overwrite semantics — the write silently fails and the user's data is not saved.",
+    "remediation": "Use (open-output-file path 'replace) with explicit close-port, or (with-output-to-file path thunk 'replace). The 'replace option is Chez-specific and safely overwrites existing files.",
+    "related_recipe": "file-write",
+    "tags": [
+      "file",
+      "write",
+      "overwrite",
+      "r6rs",
+      "data-loss"
+    ]
+  },
+  {
+    "id": "async-callback-wrong-document",
+    "title": "Async callback writes to wrong Scintilla document after buffer switch",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "async-read-file!.*lambda.*qt-current-editor",
+    "message": "Async callback uses qt-current-editor at callback time, not at registration time. If the user switches buffers during the async operation, set-text! writes into the wrong Scintilla document, causing data corruption (file content written into terminal doc or vice versa).",
+    "remediation": "Capture the target buffer's doc pointer at registration time. In the callback, temporarily switch to the target document via SCI_SETDOCPOINTER before writing, then switch back. See recipe scintilla-async-document-safety.",
+    "related_recipe": "scintilla-async-document-safety",
+    "tags": [
+      "async",
+      "scintilla",
+      "document",
+      "buffer-switch",
+      "data-corruption"
+    ]
+  },
+  {
+    "id": "process-events-state-mutation",
+    "title": "qt-app-process-events! can mutate state mid-operation (re-entrancy)",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "qt-app-process-events!",
+    "message": "qt-app-process-events! pumps the Qt event queue, which can fire key event callbacks. A queued switch-buffer keystroke will change the editor's active document mid-operation, causing subsequent writes to corrupt the wrong buffer. Any mutable state (window-buffer associations, editor document pointers) may change.",
+    "remediation": "After calling qt-app-process-events!, re-validate all mutable state before using it. Re-check window-buffer associations, document pointers, and buffer identity. See recipe qt-process-events-recheck-state.",
+    "related_recipe": "qt-process-events-recheck-state",
+    "tags": [
+      "qt",
+      "process-events",
+      "reentrant",
+      "state-mutation",
+      "buffer"
+    ]
   }
 ]

@@ -66,7 +66,7 @@
     "use_case": "When adding or removing FFI functions from a Rust or C library linked into a static Chez binary. Missing Sforeign_symbol calls only fail at runtime when the foreign-procedure is first called, making them hard to catch.",
     "example_scenario": "User adds 5 new Rust FFI functions but only registers 4 of them with Sforeign_symbol. The tool reports the missing registration before the binary is even run, saving a debugging cycle.",
     "estimated_token_reduction": 600,
-    "votes": 2
+    "votes": 3
   },
   {
     "id": "jerboa-safe-prelude-default",
@@ -208,7 +208,7 @@
     "use_case": "When writing or modifying any .sls library that uses brackets in syntax-case, define-syntax, or let bindings — which is nearly all of them.",
     "example_scenario": "Writing lib/std/ergo.sls with a define-syntax using syntax-case and [(_ expr type) ...] patterns. jerboa_compile_check returns 'invalid syntax-case clause (list (_ expr type) ...)' because [...] was read as (list ...). Had to skip compile_check entirely and rely on make build, losing the fast feedback loop.",
     "estimated_token_reduction": "~200 tokens per compile-check call that fails spuriously, plus eliminates need to run bash make as workaround. Affects nearly every .sls file edit session.",
-    "votes": 0
+    "votes": 1
   },
   {
     "id": "ipc-repl-command-trace",
@@ -225,7 +225,7 @@
     "use_case": "When an editing command silently does nothing in a specific buffer type, trace which cond branch fired (or failed to fire) without manually querying each predicate.",
     "example_scenario": "User reports backspace doesn't work in shell script files. Root cause: shell-buffer? returns #t (lexer-lang=shell), but no shell-state entry exists, so all cond branches in cmd-backward-delete-char fail silently. Diagnosing this required 5+ separate nc REPL queries to check each predicate and state variable one at a time.",
     "estimated_token_reduction": "~300 tokens per debug session (eliminates 4-6 sequential REPL probe calls)",
-    "votes": 0
+    "votes": 1
   },
   {
     "id": "static-boot-library-audit",
@@ -243,6 +243,60 @@
     "use_case": "When adding a new library dependency to a static Chez binary. Missing a single transitive dependency from the boot file causes a runtime error that only manifests when the code path is hit, making it hard to catch before deployment.",
     "example_scenario": "Added (jerboa-aws pssm) to the boot file but forgot its transitive dependency (jerboa-coreutils common security). The binary built fine but crashed at runtime when pssm tried to import security. Had to debug by trial and error, adding missing libraries one at a time. This tool would have reported all missing transitive deps in one pass.",
     "estimated_token_reduction": "~1000 tokens per missing-library debugging cycle — eliminates 3-5 rounds of build/run/crash/add-library",
+    "votes": 1
+  },
+  {
+    "id": "check-balance-accurate-tracking",
+    "title": "jerboa_check_balance should track nesting depth accurately for complex files",
+    "description": "jerboa_check_balance reports heuristic mismatches that don't correspond to actual errors. In this session, it reported 'Mismatched ] at line X — expected ) to close ( at line Y' for code that was actually off by one paren in a different place. The error messages point to wrong locations, making it hard to fix. A more accurate tracker that counts nesting depth per-form and reports 'expected N closing delimiters but found M' with the exact open positions would be more actionable. The tool should also handle mixed [/( usage (common in Chez cond clauses) without false positives.",
+    "impact": "medium",
+    "tags": [
+      "balance",
+      "paren",
+      "bracket",
+      "nesting",
+      "accuracy"
+    ],
+    "use_case": "When editing large Scheme files with deeply nested cond clauses using mixed [ and ( delimiters, and the balance is off by 1. The current tool reports misleading locations.",
+    "example_scenario": "Added a 100-line cond clause to jsh.ss with 12 levels of nesting. Was off by one paren. jerboa_check_balance said 'Mismatched ] at line 1607 — expected ) to close ( at line 1520' but the actual fix was adding one ) before the ] at line 1607. Had to manually trace all opens/closes to find the issue, defeating the purpose of the tool.",
+    "estimated_token_reduction": "~300 tokens per balance-fixing cycle — eliminates manual paren counting",
+    "votes": 0
+  },
+  {
+    "id": "verify-static-binary-launch",
+    "title": "Post-build static binary launch verification tool",
+    "description": "A tool that runs a static binary with --version (or a configurable flag) after make static-qt and verifies it exits cleanly without exceptions. Currently, `make static-qt` succeeds but the binary can still crash at launch due to missing libraries, unresolved symbols, or stale compiled artifacts. The tool would run the binary, capture stderr, and report any Chez exceptions or segfaults — catching issues that only manifest at runtime in the static build.",
+    "impact": "high",
+    "tags": [
+      "static",
+      "binary",
+      "verify",
+      "launch",
+      "docker",
+      "build",
+      "post-build"
+    ],
+    "use_case": "After every make static-qt, automatically verify the binary launches without exceptions. Currently this is a manual step that Claude must remember to do (and has forgotten in the past, leading to broken deliverables).",
+    "example_scenario": "Claude fixes a bug in highlight.ss, runs make build && make static-qt (both succeed), but the static binary crashes with 'attempt to reference unbound identifier restore-margin-colors!' because a cross-module reference wasn't available in the WPO build. Without the verification step, Claude would have reported the fix as done. The tool catches this before the user even tries.",
+    "estimated_token_reduction": "~300 tokens per build cycle — eliminates the need to manually remember and run the verification step, and prevents wasted debugging cycles from broken binaries",
+    "votes": 1
+  },
+  {
+    "id": "face-registry-static-binary-debug",
+    "title": "Diagnose face registry binding failures in static Chez binaries",
+    "description": "A diagnostic tool that checks if face-get returns #f for standard font-lock faces (font-lock-keyword-face, font-lock-string-face, etc.) and reports the face registry state. In WPO static builds, module-level bindings can fail silently — face-get returns #f even though load-theme! was called. The tool would dump *faces* hash table contents, verify theme loading, and compare against the expected theme definition. Currently diagnosing this required manual REPL queries that couldn't access module-private variables.",
+    "impact": "medium",
+    "tags": [
+      "face",
+      "theme",
+      "static-binary",
+      "wpo",
+      "debug",
+      "highlight"
+    ],
+    "use_case": "When tree-sitter or Scintilla highlighting shows all-gray text in the static binary but works in interpreted mode. The face registry is populated by load-theme! but face-get returns #f for all faces.",
+    "example_scenario": "Tree-sitter highlighting was activated but all 19 style colors were gray (#d8d8d8). face-fg-rgb fell back to default for every face. Spent 30+ minutes diagnosing before discovering face-get returned #f in the static binary. Workaround: read colors directly from theme alist via theme-get instead of face-get.",
+    "estimated_token_reduction": "~500 tokens per face debugging session — eliminates multiple rounds of REPL probing",
     "votes": 0
   }
 ]
