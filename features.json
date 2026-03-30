@@ -174,7 +174,7 @@
     "use_case": "When adding new sandbox features, to verify parity across platforms. Currently requires manually reading each platform module and comparing exports/presets.",
     "example_scenario": "User adds a new seccomp preset on Linux. Tool shows that FreeBSD/Capsicum has a matching preset but macOS/Seatbelt does not, prompting the user to add the Seatbelt equivalent.",
     "estimated_token_reduction": 500,
-    "votes": 0
+    "votes": 1
   },
   {
     "id": "compile-check-direct-module",
@@ -279,7 +279,7 @@
     "use_case": "After every make static-qt, automatically verify the binary launches without exceptions. Currently this is a manual step that Claude must remember to do (and has forgotten in the past, leading to broken deliverables).",
     "example_scenario": "Claude fixes a bug in highlight.ss, runs make build && make static-qt (both succeed), but the static binary crashes with 'attempt to reference unbound identifier restore-margin-colors!' because a cross-module reference wasn't available in the WPO build. Without the verification step, Claude would have reported the fix as done. The tool catches this before the user even tries.",
     "estimated_token_reduction": "~300 tokens per build cycle — eliminates the need to manually remember and run the verification step, and prevents wasted debugging cycles from broken binaries",
-    "votes": 1
+    "votes": 2
   },
   {
     "id": "face-registry-static-binary-debug",
@@ -331,6 +331,25 @@
     "use_case": "When adding new exports to stdlib modules (like std/misc/list or std/result), to verify they're also re-exported from (jerboa prelude). Prevents the recurring problem of features being available only via direct module import.",
     "example_scenario": "Added string-match?, string-find, string-find-all to (std misc string) but forgot to add them to (jerboa prelude). Users writing .ss files with (import (jerboa prelude)) couldn't access the new functions. A diff tool would have caught this immediately.",
     "estimated_token_reduction": "~400 tokens per prelude sync — eliminates manual cross-referencing of export lists across 15+ modules",
+    "votes": 0
+  },
+  {
+    "id": "binary-hardening-check",
+    "title": "Verify binary hardening properties (PIE, RELRO, stack canaries, CET)",
+    "description": "A tool that reads an ELF binary and reports its security hardening status: PIE (position-independent executable), Full RELRO (BIND_NOW), stack canaries (__stack_chk_fail references), NX stack, CET (shadow stack / IBT via PT_GNU_PROPERTY), and FORTIFY_SOURCE. Returns a structured report with pass/fail per property and remediation advice for missing ones.",
+    "impact": "medium",
+    "tags": [
+      "security",
+      "hardening",
+      "ELF",
+      "PIE",
+      "RELRO",
+      "CET",
+      "static-binary"
+    ],
+    "use_case": "After building a hardened Chez Scheme or Jerboa static binary, verify all expected hardening properties are present. Currently requires manual readelf/nm invocations to check PIE (file command), RELRO (readelf -d | grep BIND_NOW), and stack canaries (nm | grep stack_chk).",
+    "example_scenario": "Building Chez with --enable-harden. After the build, need to verify that libkernel.a objects have stack canaries, the final binary is PIE, and RELRO is enabled. Required three separate bash commands (file, readelf -d, nm on individual .o files) — a single tool call returning a hardening report would replace all of these.",
+    "estimated_token_reduction": "~300 tokens per build verification — replaces 3-4 bash commands and result parsing",
     "votes": 0
   }
 ]
