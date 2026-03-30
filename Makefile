@@ -1,7 +1,11 @@
 .PHONY: build start test clean update
 
-build:
+build: node_modules
 	npm run build
+
+node_modules: package.json
+	npm install
+	@touch node_modules
 
 start:
 	node dist/index.js

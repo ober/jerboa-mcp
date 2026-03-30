@@ -3301,5 +3301,76 @@
       "ffi-output-pointer-void-not-u8",
       "regex-pattern"
     ]
+  },
+  {
+    "id": "freebsd-gmake-required",
+    "title": "Use gmake (GNU Make) on FreeBSD for Jerboa projects",
+    "tags": [
+      "freebsd",
+      "gmake",
+      "make",
+      "build",
+      "bsd-make",
+      "gnu-make"
+    ],
+    "imports": [],
+    "code": "# FreeBSD ships BSD make as /usr/bin/make, which is NOT GNU make.\n# Jerboa project Makefiles use GNU make syntax:\n#   $(CURDIR)        — BSD make uses .CURDIR instead\n#   $(wildcard ...)  — no BSD make equivalent\n#   $< in explicit rules — BSD make only supports $< in suffix rules\n#\n# Always use gmake on FreeBSD:\ngmake build\ngmake binary\ngmake clean\ngmake test",
+    "notes": "FreeBSD's default `make` is BSD make, which is incompatible with GNU make syntax used in Jerboa Makefiles. GNU make is available as `gmake` via the `devel/gmake` package (`pkg install gmake`). Common symptoms of using BSD make: 'Invalid character in variable name' for $(wildcard ...), 'don't know how to make' errors from unresolved $(CURDIR), and empty $< in explicit target rules."
+  },
+  {
+    "id": "chez-dir-freebsd",
+    "title": "Set CHEZ_DIR on FreeBSD for native binary builds",
+    "tags": [
+      "chez-dir",
+      "freebsd",
+      "binary",
+      "build",
+      "native",
+      "install-path"
+    ],
+    "imports": [],
+    "code": "# The build-binary.ss script needs CHEZ_DIR to find petite.boot,\n# scheme.boot, main.o, and libkernel.a.\n#\n# It auto-detects ~/.local/lib/csv*/  but on FreeBSD, Chez is\n# typically installed to /usr/local/lib/ by the pkg system.\n#\n# Find your Chez install:\nls /usr/local/lib/csv*/\n# e.g. /usr/local/lib/csv10.3.0/ta6fb/\n#\n# Verify it has the required files:\nls /usr/local/lib/csv10.3.0/ta6fb/{main.o,petite.boot,scheme.boot,scheme.h}\n#\n# Build with CHEZ_DIR:\nCHEZ_DIR=/usr/local/lib/csv10.3.0/ta6fb gmake binary",
+    "notes": "The build-binary.ss script only auto-detects Chez in ~/.local/lib/csv*/<machine-type>/. On FreeBSD (pkg install chez-scheme), Chez installs to /usr/local/lib/csv<version>/ta6fb/. The machine-type directory (ta6fb = threaded, a6 = amd64, fb = FreeBSD) varies by platform. Set CHEZ_DIR to the directory containing main.o, petite.boot, scheme.boot, and scheme.h.",
+    "related": [
+      "freebsd-gmake-required"
+    ]
+  },
+  {
+    "id": "freebsd-static-binary-link",
+    "title": "Link a static Chez Scheme binary on FreeBSD (no musl)",
+    "tags": [
+      "freebsd",
+      "static",
+      "binary",
+      "link",
+      "clang",
+      "libkernel",
+      "ta6fb"
+    ],
+    "imports": [
+      "(jerboa build)"
+    ],
+    "code": ";; FreeBSD static binary linking — key differences from Linux musl builds:\n;;\n;; 1. Find Chez static lib (ta6fb, not ta6le):\n;;    /usr/local/lib/csv10.3.0/ta6fb/libkernel.a\n;;\n;; 2. Use cc (clang), not musl-gcc:\n;;    cc -static -o myapp main.o static_boot.o ffi-shim.o \\\n;;       -L/usr/local/lib/csv10.3.0/ta6fb -lkernel \\\n;;       -lz -lm -lthr -liconv -lncurses -luuid -llz4 \\\n;;       -Wl,--allow-multiple-definition\n;;\n;; 3. __errno_location does not exist on FreeBSD — register a wrapper:\n;;    static int *freebsd_errno_location(void) { return &errno; }\n;;    Sforeign_symbol(\"__errno_location\", (void*)freebsd_errno_location);\n;;\n;; 4. memfd_create works on FreeBSD 13+ but use /dev/fd/N (not /proc/self/fd/N):\n;;    int fd = memfd_create(\"prog\", MFD_CLOEXEC);\n;;    snprintf(path, sizeof(path), \"/dev/fd/%d\", fd);\n;;\n;; 5. Exe path resolution via sysctl (no /proc/self/exe):\n;;    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };\n;;    sysctl(mib, 4, exe_buf, &exe_len, NULL, 0);\n;;\n;; 6. FreeBSD link libs (no -ldl, use -lthr not -lpthread):\n;;    -lz -lm -lthr -liconv -lncurses -luuid -llz4\n;;    OpenSSL from base: /usr/lib/libssl.a /usr/lib/libcrypto.a\n;;\n;; 7. FreeBSD sed uses -i '' (not -i without argument):\n;;    sed -i '' 's/old/new/g' file.sls\n\n;; Example: find Chez ta6fb directory programmatically\n(define chez-ta6fb\n  (let ([dirs (directory-list \"/usr/local/lib\")])\n    (let ([csv-dir (find (lambda (d) (string-prefix? \"csv\" d)) dirs)])\n      (if csv-dir\n        (format \"/usr/local/lib/~a/ta6fb\" csv-dir)\n        (error 'build \"Cannot find Chez ta6fb in /usr/local/lib\")))))",
+    "notes": "FreeBSD static builds do NOT need musl or glibc-compat shims. The system libc (FreeBSD libc) links statically cleanly. Key gotchas: (1) __errno_location is Linux-specific — must provide a wrapper. (2) /proc/self/fd/ and /proc/self/exe don't exist — use /dev/fd/ and sysctl KERN_PROC_PATHNAME. (3) sed -i requires '' as backup extension argument on FreeBSD. (4) Use -lthr not -lpthread on FreeBSD. (5) No -ldl needed (dlopen is in libc). (6) Chez platform is ta6fb (FreeBSD amd64), not ta6le (Linux).",
+    "related": [
+      "chez-dir-freebsd",
+      "rust-ffi-static-musl",
+      "chez-errno-access"
+    ]
+  },
+  {
+    "id": "chez-freebsd-build-from-source",
+    "title": "Build Chez Scheme from source on FreeBSD",
+    "tags": [
+      "chez",
+      "freebsd",
+      "build",
+      "gmake",
+      "configure",
+      "lz4"
+    ],
+    "imports": [],
+    "code": "# FreeBSD requires gmake — BSD make cannot parse lz4's GNU Makefile\n# (produces 'Invalid line \"ifeq ...\"' errors)\npkg install gmake\n\n# Configure with absolute installprefix (relative paths fail)\n./configure --installprefix=/home/user/chez-local --threads\n\n# Build and install using gmake\ngmake -j$(sysctl -n hw.ncpu)\nzuo ta6fb install        # or: gmake install (for older workareas)\n\n# With security hardening (--enable-harden):\n./configure --installprefix=/home/user/chez-secure --threads --enable-harden\n# Adds: -fstack-protector-strong -fstack-clash-protection -D_FORTIFY_SOURCE=2\n#       -fPIC (CFLAGS), -pie (mdlinkflags only), -Wl,-z,relro,-z,now (LDFLAGS)\n# On x86_64 Linux: also adds -fcf-protection=full (Intel CET)\n# On arm64: also adds -mbranch-protection=standard (ARM PAC+BTI)\n# Note: -pie goes in mdlinkflags, NOT LDFLAGS — LDFLAGS is inherited by\n#       ftype tests that compile shared objects and -pie conflicts with -shared\n\n# After configure, if you add --enable-harden and rebuild,\n# you must clean C objects manually (build system may not re-detect flag changes):\nfind ta6fb/c -name \"*.o\" -delete\nrm -f ta6fb/boot/ta6fb/main.o ta6fb/boot/ta6fb/libkernel.a\nrm -rf ta6fb/zlib ta6fb/lz4\ngmake\n\n# Verify hardening on the resulting binary:\nfile ta6fb/bin/ta6fb/scheme           # should say \"pie executable\"\nreadelf -d ta6fb/bin/ta6fb/scheme | grep -i \"flags\\|bind_now\"\n# FLAGS: BIND_NOW  and  FLAGS_1: NOW PIE  confirms full RELRO + ASLR\n\n# Machine type on FreeBSD amd64: ta6fb (threaded, a6=amd64, fb=FreeBSD)",
+    "notes": "lz4's Makefile uses GNU make conditionals (ifeq/else/endif) that BSD make rejects with 'Invalid line' errors. Always use gmake. The --enable-harden flag was added to the secure branch of ChezScheme (~/ChezScheme). The -pie vs -shared conflict: -pie in LDFLAGS breaks ftype tests which compile .so files using the same LDFLAGS; fix is to put -pie in mdlinkflags which is only used for the scheme executable link, not inherited by test compilation. Use -fPIC (not -fPIE) in CFLAGS since ftype tests also inherit CFLAGS and need -fPIC for shared object compilation."
   }
 ]

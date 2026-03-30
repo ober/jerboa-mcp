@@ -174,7 +174,7 @@
     "use_case": "When adding new sandbox features, to verify parity across platforms. Currently requires manually reading each platform module and comparing exports/presets.",
     "example_scenario": "User adds a new seccomp preset on Linux. Tool shows that FreeBSD/Capsicum has a matching preset but macOS/Seatbelt does not, prompting the user to add the Seatbelt equivalent.",
     "estimated_token_reduction": 500,
-    "votes": 0
+    "votes": 1
   },
   {
     "id": "compile-check-direct-module",
@@ -366,6 +366,25 @@
     "use_case": "When adding many scaffolded editor commands in bulk rounds — a common workflow for jerboa-emacs feature parity with GNU Emacs.",
     "example_scenario": "User asks to add 20 new Emacs commands per round. Each round requires reading 3 file endings, writing 10 function defs to modes.ss, 10 to final.ss, 20 register-command! lines to regs2.ss, and a 20-row markdown table to docs. With a batch tool, one call with [{name: \"foo-mode\", type: \"toggle\"}, {name: \"foo-bar\", type: \"echo\", msg: \"Foo: did bar\"}] generates all artifacts.",
     "estimated_token_reduction": "~2000 tokens per round (eliminates 4 large edit blocks of repetitive boilerplate)",
+    "votes": 0
+  },
+  {
+    "id": "binary-hardening-check",
+    "title": "Verify binary hardening properties (PIE, RELRO, stack canaries, CET)",
+    "description": "A tool that reads an ELF binary and reports its security hardening status: PIE (position-independent executable), Full RELRO (BIND_NOW), stack canaries (__stack_chk_fail references), NX stack, CET (shadow stack / IBT via PT_GNU_PROPERTY), and FORTIFY_SOURCE. Returns a structured report with pass/fail per property and remediation advice for missing ones.",
+    "impact": "medium",
+    "tags": [
+      "security",
+      "hardening",
+      "ELF",
+      "PIE",
+      "RELRO",
+      "CET",
+      "static-binary"
+    ],
+    "use_case": "After building a hardened Chez Scheme or Jerboa static binary, verify all expected hardening properties are present. Currently requires manual readelf/nm invocations to check PIE (file command), RELRO (readelf -d | grep BIND_NOW), and stack canaries (nm | grep stack_chk).",
+    "example_scenario": "Building Chez with --enable-harden. After the build, need to verify that libkernel.a objects have stack canaries, the final binary is PIE, and RELRO is enabled. Required three separate bash commands (file, readelf -d, nm on individual .o files) — a single tool call returning a hardening report would replace all of these.",
+    "estimated_token_reduction": "~300 tokens per build verification — replaces 3-4 bash commands and result parsing",
     "votes": 0
   }
 ]
