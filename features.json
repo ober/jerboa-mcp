@@ -66,7 +66,7 @@
     "use_case": "When adding or removing FFI functions from a Rust or C library linked into a static Chez binary. Missing Sforeign_symbol calls only fail at runtime when the foreign-procedure is first called, making them hard to catch.",
     "example_scenario": "User adds 5 new Rust FFI functions but only registers 4 of them with Sforeign_symbol. The tool reports the missing registration before the binary is even run, saving a debugging cycle.",
     "estimated_token_reduction": 600,
-    "votes": 3
+    "votes": 4
   },
   {
     "id": "jerboa-safe-prelude-default",
@@ -279,7 +279,7 @@
     "use_case": "After every make static-qt, automatically verify the binary launches without exceptions. Currently this is a manual step that Claude must remember to do (and has forgotten in the past, leading to broken deliverables).",
     "example_scenario": "Claude fixes a bug in highlight.ss, runs make build && make static-qt (both succeed), but the static binary crashes with 'attempt to reference unbound identifier restore-margin-colors!' because a cross-module reference wasn't available in the WPO build. Without the verification step, Claude would have reported the fix as done. The tool catches this before the user even tries.",
     "estimated_token_reduction": "~300 tokens per build cycle — eliminates the need to manually remember and run the verification step, and prevents wasted debugging cycles from broken binaries",
-    "votes": 1
+    "votes": 2
   },
   {
     "id": "face-registry-static-binary-debug",
@@ -331,6 +331,41 @@
     "use_case": "When adding new exports to stdlib modules (like std/misc/list or std/result), to verify they're also re-exported from (jerboa prelude). Prevents the recurring problem of features being available only via direct module import.",
     "example_scenario": "Added string-match?, string-find, string-find-all to (std misc string) but forgot to add them to (jerboa prelude). Users writing .ss files with (import (jerboa prelude)) couldn't access the new functions. A diff tool would have caught this immediately.",
     "estimated_token_reduction": "~400 tokens per prelude sync — eliminates manual cross-referencing of export lists across 15+ modules",
+    "votes": 0
+  },
+  {
+    "id": "qt-automation-screenshot-diff",
+    "title": "Visual regression testing via screenshot comparison",
+    "description": "A tool that captures two screenshots of the running jemacs-qt (via the automation bridge) and computes a pixel-level diff. Would highlight changed regions, report percentage difference, and optionally save a diff image. Currently Claude can take screenshots and view them, but has no way to programmatically detect visual artifacts (gaps, wrong colors, misaligned panes) without manual inspection.",
+    "impact": "medium",
+    "tags": [
+      "screenshot",
+      "diff",
+      "visual",
+      "regression",
+      "automation",
+      "testing"
+    ],
+    "use_case": "After fixing a flicker or rendering bug, verify that the fix didn't introduce new visual artifacts by comparing screenshots before and after an operation (e.g. split window, switch buffer, resize).",
+    "example_scenario": "Testing vterm alt-screen rendering: take screenshot of top output, wait 2 seconds for refresh, take another screenshot. Diff should show only the process list changing, not gaps or blank rows appearing. Currently requires manual viewing of each screenshot.",
+    "estimated_token_reduction": "~200 tokens per visual test — eliminates manual screenshot inspection and narrows focus to changed regions",
+    "votes": 0
+  },
+  {
+    "id": "batch-command-scaffold",
+    "title": "Batch command scaffolding tool for editor projects",
+    "description": "A tool that takes a list of command names and patterns (echo-message, toggle-mode, echo-read-string) and generates the complete scaffolded function definitions, register-command! lines, and markdown doc table rows in one call. Currently scaffolding 20 commands requires ~6 sequential tool calls (read file ends, edit modes.ss, edit final.ss, edit regs2.ss, edit docs, build) with substantial boilerplate repetition.",
+    "impact": "high",
+    "tags": [
+      "scaffold",
+      "batch",
+      "command",
+      "editor",
+      "codegen"
+    ],
+    "use_case": "When adding many scaffolded editor commands in bulk rounds — a common workflow for jerboa-emacs feature parity with GNU Emacs.",
+    "example_scenario": "User asks to add 20 new Emacs commands per round. Each round requires reading 3 file endings, writing 10 function defs to modes.ss, 10 to final.ss, 20 register-command! lines to regs2.ss, and a 20-row markdown table to docs. With a batch tool, one call with [{name: \"foo-mode\", type: \"toggle\"}, {name: \"foo-bar\", type: \"echo\", msg: \"Foo: did bar\"}] generates all artifacts.",
+    "estimated_token_reduction": "~2000 tokens per round (eliminates 4 large edit blocks of repetitive boilerplate)",
     "votes": 0
   }
 ]

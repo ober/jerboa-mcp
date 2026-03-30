@@ -539,5 +539,40 @@
       "state-mutation",
       "buffer"
     ]
+  },
+  {
+    "id": "hardcoded-pixel-width-terminal",
+    "title": "Hardcoded character pixel width in terminal column calculation",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "quotient.*widget.*[78]\\)",
+    "message": "Terminal column count calculated with hardcoded character width (7 or 8 pixels). At non-default font sizes, this produces incorrect column counts — terminal apps format output for the wrong width, causing lines to wrap or truncate incorrectly. Can cause information disclosure if sensitive data wraps onto visible lines unexpectedly.",
+    "remediation": "Use SCI_TEXTWIDTH (2275) to measure actual character width: (let ((char-w (max 1 (sci-send/string ed 2275 \\\"0\\\" 0)))) (quotient widget-w char-w)). See recipe scintilla-measure-char-width.",
+    "related_recipe": "scintilla-measure-char-width",
+    "tags": [
+      "terminal",
+      "column",
+      "width",
+      "font",
+      "hardcoded"
+    ]
+  },
+  {
+    "id": "ffi-u8-star-for-foreign-alloc",
+    "title": "Using u8* FFI type for foreign-alloc'd output pointers",
+    "severity": "high",
+    "scope": "ffi-boundary",
+    "pattern": "foreign-procedure\\s+\\\"[^\\\"]+\\\"\\s*\\([^)]*\\bu8\\*[^)]*\\)\\s*int",
+    "message": "foreign-procedure with u8* parameter may be incorrect for output pointer buffers. u8* expects a Scheme bytevector — passing a foreign-alloc'd pointer (fixnum) causes 'invalid foreign-procedure argument' at runtime. Use void* for output pointer parameters that receive foreign-alloc'd buffers.",
+    "remediation": "Review each u8* parameter: if the caller passes (foreign-alloc N) to it, change the type to void*. Keep u8* only for parameters that receive actual bytevectors from (string->utf8) or (make-bytevector).",
+    "related_recipe": "ffi-output-pointer-void-not-u8",
+    "tags": [
+      "ffi",
+      "foreign-procedure",
+      "u8",
+      "void-pointer",
+      "foreign-alloc",
+      "type-mismatch"
+    ]
   }
 ]

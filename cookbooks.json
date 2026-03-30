@@ -3018,5 +3018,288 @@
     "imports": [],
     "code": ";; Get all symbols exported by a module\n(let* ([mod-env (environment '(std sort))]\n       [syms (environment-symbols mod-env)]\n       [sorted (list-sort\n                 (lambda (a b)\n                   (string<? (symbol->string a) (symbol->string b)))\n                 syms)])\n  (for-each (lambda (s) (display s) (newline)) sorted))\n\n;; Classify each export (procedure, value, macro)\n(let ([mod-env (environment '(std result))])\n  (for-each\n    (lambda (sym)\n      (guard (e [else (void)])\n        (let ([val (eval sym mod-env)])\n          (display sym)\n          (display \" : \")\n          (display (cond [(procedure? val) \"procedure\"]\n                         [(boolean? val) \"boolean\"]\n                         [else \"value\"]))\n          (newline))))\n    (environment-symbols mod-env)))",
     "notes": "environment-symbols and environment are Chez builtins from (chezscheme). The module path must be quoted: (environment '(std sort)). Use eval with the module environment to inspect individual exports. Guard against macros which can't be eval'd."
+  },
+  {
+    "id": "scintilla-anti-flicker-techniques",
+    "title": "QScintilla anti-flicker: buffered draw, two-phase, update batching, opaque paint",
+    "tags": [
+      "scintilla",
+      "flicker",
+      "buffered-draw",
+      "two-phase",
+      "setUpdatesEnabled",
+      "WA_OpaquePaintEvent"
+    ],
+    "imports": [],
+    "code": ";; Four techniques to reduce QScintilla flicker:\n\n;; 1. Scintilla internal double-buffering (per editor, once at setup)\n(sci-send ed 2035 1)  ; SCI_SETBUFFEREDDRAW = on\n(sci-send ed 2284 1)  ; SCI_SETTWOPHASEDRAW = on\n\n;; 2. WA_OpaquePaintEvent — prevent Qt from clearing background before paint\n;; Qt::WA_OpaquePaintEvent = 4\n(qt-widget-set-attribute! ed 4 #t)\n\n;; 3. Batch multiple visual changes into one repaint\n;; Use around buffer-attach, split-window, or any multi-step UI change\n(qt-widget-set-updates-enabled! ed #f)\n;; ... doc swap, highlight, font loop, margin colors ...\n(qt-widget-set-updates-enabled! ed #t)  ;; single repaint here\n\n;; 4. For window splits, suppress on the main window (not just editor)\n(qt-widget-set-updates-enabled! main-win #f)\n;; ... create widget, add to splitter, set sizes ...\n(qt-widget-set-updates-enabled! main-win #t)",
+    "notes": "Qt6 automatically double-buffers all widgets via QBackingStore, but Scintilla has its own internal layer. SCI_SETBUFFEREDDRAW adds Scintilla-level buffering on top. SCI_SETTWOPHASEDRAW renders background first then text, smoother for syntax-highlighted code. WA_OpaquePaintEvent eliminates the \"white flash\" when widgets are created/resized. setUpdatesEnabled is the most impactful — batch ALL related visual changes.",
+    "related": [
+      "qt-process-events-responsiveness",
+      "qscintilla-force-font-after-lexer"
+    ]
+  },
+  {
+    "id": "scintilla-measure-char-width",
+    "title": "Measure actual character width in QScintilla (for terminal column calculation)",
+    "tags": [
+      "scintilla",
+      "SCI_TEXTWIDTH",
+      "character-width",
+      "font",
+      "terminal",
+      "columns"
+    ],
+    "imports": [],
+    "code": ";; PITFALL: Don't hardcode character width for terminal column calculations.\n;; At different font sizes, character widths vary significantly.\n;; Font 11pt → ~8px, Font 20pt → ~12px, Font 6pt → ~5px.\n;;\n;; WRONG — hardcoded pixel width:\n;; (let ((cols (quotient widget-width 8)))  ;; breaks at non-default font\n;;\n;; CORRECT — measure actual width using Scintilla:\n;; SCI_TEXTWIDTH(style, text) = 2275\n(let* ((char-w (max 1 (sci-send/string ed 2275 \"0\" 0)))\n       (cols (quotient widget-width char-w)))\n  ;; cols now correct for any font size\n  ...)",
+    "notes": "SCI_TEXTWIDTH measures the pixel width of a string in a given style. Style 0 is the default. Use \"0\" (zero) as the measurement character since it's a standard monospace width. Always max with 1 to avoid division by zero. This is critical for terminal emulators where column count must match the visible width."
+  },
+  {
+    "id": "vterm-alt-screen-full-render",
+    "title": "Vterm: use full set-text! for alt-screen programs (top, htop, vim)",
+    "tags": [
+      "vterm",
+      "alt-screen",
+      "top",
+      "htop",
+      "set-text",
+      "row-diff",
+      "gaps"
+    ],
+    "imports": [],
+    "code": ";; Alt-screen programs (top, htop, vim) refresh the entire screen.\n;; Per-line row-diff rendering leaves gaps when rows aren't marked dirty\n;; after screen clears (CSI 2J).\n;;\n;; WRONG — row-diff on alt-screen causes gaps:\n;; (vterm-replace-line! ed (+ offset r) new-text)  ;; only dirty rows\n;;\n;; CORRECT — full set-text for alt-screen, row-diff for normal:\n(if (vtscreen-alt-screen? vt)\n  ;; Alt-screen: full render (no pre-PTY prefix)\n  (begin\n    (qt-widget-set-updates-enabled! ed #f)\n    (qt-plain-text-edit-set-text! ed (vtscreen-render vt))\n    (qt-widget-set-updates-enabled! ed #t))\n  ;; Normal mode: per-line replacement for efficiency\n  (vterm-row-diff-render! ed vt ts))",
+    "notes": "The original reason for avoiding set-text! on alt-screen was visual bounce (scroll reset + cursor visible). The setUpdatesEnabled batching eliminates this. Full set-text! is more reliable because it doesn't depend on the vtscreen's dirty-row tracking, which can miss rows after screen clears.",
+    "related": [
+      "pty-batch-budget-throttle",
+      "scintilla-anti-flicker-techniques"
+    ]
+  },
+  {
+    "id": "gerbil-migration-sleep",
+    "title": "Gerbil→Jerboa: thread-sleep! replacement",
+    "tags": [
+      "gerbil",
+      "migration",
+      "thread-sleep",
+      "sleep",
+      "gambit",
+      "timer",
+      "delay"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Gambit/Gerbil: (thread-sleep! 2)  — DOES NOT EXIST in Chez\\n;; Chez equivalent:\\n(sleep (make-time 'time-duration 0 2))  ;; sleep 2 seconds\\n\\n;; For sub-second: nanoseconds first, then seconds\\n(sleep (make-time 'time-duration 500000000 0))  ;; sleep 0.5 seconds\\n\\n;; Helper if you need it often:\\n(define (sleep-seconds n)\\n  (sleep (make-time 'time-duration 0 n)))\\n(define (sleep-ms ms)\\n  (sleep (make-time 'time-duration (* ms 1000000) 0)))",
+    "notes": "thread-sleep! is Gambit. Chez's (sleep) takes a time object, not a number. The make-time args are: type, nanoseconds, seconds."
+  },
+  {
+    "id": "gerbil-migration-read-line",
+    "title": "Gerbil→Jerboa: read-line replacement",
+    "tags": [
+      "gerbil",
+      "migration",
+      "read-line",
+      "get-line",
+      "gambit",
+      "input",
+      "port"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Gambit/Gerbil: (read-line port)  — DOES NOT EXIST in Chez\\n;; Chez equivalent:\\n(get-line (current-input-port))  ;; read one line from stdin\\n(get-line port)                  ;; read one line from any port\\n\\n;; Returns string without newline, or eof object\\n;; Check for EOF:\\n(let ((line (get-line port)))\\n  (if (eof-object? line)\\n      (displayln \\\"end of input\\\")\\n      (displayln \\\"got: \\\" line)))",
+    "notes": "Gambit's read-line and Chez's get-line are functionally identical. Both strip the trailing newline."
+  },
+  {
+    "id": "gerbil-migration-path-expand",
+    "title": "Gerbil→Jerboa: path-expand replacement",
+    "tags": [
+      "gerbil",
+      "migration",
+      "path-expand",
+      "path-join",
+      "path",
+      "directory"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; Gerbil: (path-expand \\\"file.txt\\\" \\\"/home/user\\\")  — 2-arg version WRONG in Jerboa\\n;; Jerboa's path-expand takes 1 arg only.\\n\\n;; For joining paths (the common 2-arg use case):\\n(path-join \\\"/home/user\\\" \\\"file.txt\\\")  ;; → \\\"/home/user/file.txt\\\"\\n\\n;; For expanding ~ or relative paths (1-arg):\\n;; (path-expand \\\"~/file.txt\\\")  ;; if available in your prelude",
+    "notes": "Gerbil's path-expand takes (rel base). Jerboa's takes 1 arg. The 2-arg use case is covered by path-join. This arity mismatch has caused errors across multiple sessions."
+  },
+  {
+    "id": "gerbil-migration-hashtable",
+    "title": "Gerbil→Jerboa: hash table API translation",
+    "tags": [
+      "gerbil",
+      "migration",
+      "hash",
+      "hashtable",
+      "make-equal-hashtable",
+      "hash-table-set",
+      "racket"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; WRONG (R6RS/Racket/Gerbil):        CORRECT (Jerboa):\\n;; (make-equal-hashtable)           → (make-hash-table)\\n;; (make-eqv-hashtable)             → (make-hash-table)  ; default is equal\\n;; (hash-table-set! ht k v)         → (hash-put! ht k v)\\n;; (hash-table-ref ht k)            → (hash-ref ht k)    ; or (hash-get ht k) for #f default\\n;; (hash-table-ref ht k default)    → (hash-ref ht k default)\\n;; (hash-table-delete! ht k)        → (hash-remove! ht k)\\n;; (hash-table-contains? ht k)      → (hash-key? ht k)\\n;; (hash-has-key? ht k)             → (hash-key? ht k)   ; Racket name\\n;; (hash-table-keys ht)             → (hash-keys ht)\\n;; (hash-table-values ht)           → (hash-values ht)\\n;; (hash-table->alist ht)           → (hash->list ht)",
+    "notes": "Jerboa's hash API uses hash-put!/hash-ref/hash-get/hash-key?/hash-remove!. Both make-equal-hashtable (R6RS) and hash-has-key? (Racket) are common hallucinations. hash-get returns #f on missing key; hash-ref raises an error unless given a default."
+  },
+  {
+    "id": "gerbil-migration-process",
+    "title": "Gerbil→Jerboa: process-status and process API",
+    "tags": [
+      "gerbil",
+      "migration",
+      "process-status",
+      "open-process",
+      "spawn",
+      "shell",
+      "command"
+    ],
+    "imports": [
+      "(std misc process)"
+    ],
+    "code": ";; Gerbil: (process-status proc)  — DOES NOT EXIST in Chez\\n;; Gerbil: (open-process ...) — different API in Jerboa\\n\\n;; Jerboa: use (std misc process)\\n(import (std misc process))\\n\\n;; Run a command and get output:\\n(run-process/batch \\\"ls\\\" \\\"-la\\\")\\n;; Returns: (values stdout-string stderr-string exit-code)\\n\\n;; Run and capture just stdout:\\n(let-values (((out err code) (run-process/batch \\\"echo\\\" \\\"hello\\\")))\\n  (displayln \\\"output: \\\" out)\\n  (displayln \\\"exit code: \\\" code))",
+    "notes": "Gerbil's process API (open-process, process-status) does not exist in Chez. Jerboa provides run-process and run-process/batch in (std misc process). For low-level needs, Chez has open-process-ports."
+  },
+  {
+    "id": "gerbil-migration-condition-string",
+    "title": "Gerbil→Jerboa: condition/report-string replacement",
+    "tags": [
+      "gerbil",
+      "migration",
+      "condition",
+      "error",
+      "display-condition",
+      "exception",
+      "message"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Gerbil: (condition/report-string exn)  — DOES NOT EXIST in Chez\\n;; Chez equivalent:\\n(with-output-to-string\\n  (lambda () (display-condition exn)))\\n\\n;; Example in a catch block:\\n(try\\n  (error 'test \\\"something went wrong\\\" 42)\\n  (catch (e)\\n    (let ((msg (with-output-to-string\\n                (lambda () (display-condition e)))))\\n      (displayln \\\"Error: \\\" msg))))\\n;; → Error: Exception in test: something went wrong\\n;;   42",
+    "notes": "Gerbil's condition/report-string returns a human-readable string from a condition object. In Chez, use display-condition which writes to a port — wrap with with-output-to-string to get a string."
+  },
+  {
+    "id": "gerbil-migration-misc",
+    "title": "Gerbil→Jerboa: misc API translations",
+    "tags": [
+      "gerbil",
+      "migration",
+      "user-info-home",
+      "the-environment",
+      "force-output",
+      "random-integer",
+      "directory-exists"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Quick reference for common Gerbil/Gambit→Chez translations:\\n\\n;; (user-info-home (user-info (user-name)))  →  (getenv \\\"HOME\\\")\\n;; (the-environment)                         →  (interaction-environment)\\n;; (force-output port)                       →  (flush-output-port port)\\n;; (random-integer n)                        →  (random n)\\n;; (directory-exists? path)                  →  (file-directory? path)\\n;; (arithmetic-shift n k)                    →  (ash n k)  or (bitwise-arithmetic-shift n k)\\n;; (eql? a b)                                →  (eqv? a b)\\n;; (thread-yield!)                           →  (sleep (make-time 'time-duration 0 0))\\n;; (make-rwlock 'name)                       →  (make-rwlock)  ; 0 args in Jerboa!\\n;; (sort lst pred)                           →  (sort pred lst)  ; reversed arg order!",
+    "notes": "Collected from 52 session transcripts. These are the most frequently hallucinated Gerbil/Gambit APIs. Each one has caused actual build failures in past sessions. The sort arg order reversal is especially common."
+  },
+  {
+    "id": "gerbil-migration-sort-order",
+    "title": "Gerbil→Jerboa: sort argument order (pred list, NOT list pred)",
+    "tags": [
+      "gerbil",
+      "migration",
+      "sort",
+      "list-sort",
+      "argument-order",
+      "predicate"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; WRONG (Gerbil/SRFI order):    (sort '(3 1 2) <)     ;; list first\\n;; CORRECT (Chez/Jerboa order):  (sort < '(3 1 2))     ;; predicate first!\\n;; → (1 2 3)\\n\\n;; R6RS alternative (same order as Chez):\\n;; (list-sort < '(3 1 2))  → (1 2 3)\\n\\n;; Sorting strings:\\n(sort string<? '(\\\"banana\\\" \\\"apple\\\" \\\"cherry\\\"))\\n;; → (\\\"apple\\\" \\\"banana\\\" \\\"cherry\\\")\\n\\n;; Sorting by a key:\\n(sort (lambda (a b) (< (cdr a) (cdr b)))\\n      '((x . 3) (y . 1) (z . 2)))\\n;; → ((y . 1) (z . 2) (x . 3))",
+    "notes": "This is the #1 most confusing Gerbil→Chez difference. Gerbil uses (sort list pred), Chez uses (sort pred list). The Jerboa prelude re-exports Chez's sort. This has caused 80+ errors across sessions."
+  },
+  {
+    "id": "cage-lock-directory",
+    "title": "Lock current process to a directory with cage!",
+    "tags": [
+      "cage",
+      "sandbox",
+      "landlock",
+      "security",
+      "unveil",
+      "pledge",
+      "directory"
+    ],
+    "imports": [
+      "(std security cage)"
+    ],
+    "code": ";; Lock current process to a directory (IRREVERSIBLE)\n;; Network access is preserved. Child processes inherit the cage.\n\n;; Minimal — lock to project dir with auto-detected system paths\n(cage! (make-cage-config 'root: \"/home/user/project\"))\n\n;; Full options\n(cage! (make-cage-config\n  'root: \"/home/user/project\"      ;; read-write root (required)\n  'read-only: '(\"/usr/share/man\")  ;; extra read-only paths\n  'read-write: '(\"/tmp/scratch\")   ;; extra read-write paths\n  'execute: '(\"/opt/bin\")          ;; extra execute paths\n  'network: #t                     ;; allow network (default #t)\n  'system-paths: 'auto             ;; auto-detect runtime needs (default)\n  'temp-dir: \"/tmp\"))              ;; writable temp (default: /tmp)\n\n;; Check cage state\n(cage-active?)        ;; → #t after cage!\n(cage-root)           ;; → resolved root path\n(cage-allowed-paths)  ;; → alist of (mode . path)",
+    "notes": "Keywords must be quoted in .ss files: 'root: not root: (Jerboa reader turns root: into #:root keyword which isn't self-evaluating). cage! uses Landlock on Linux — requires kernel 5.13+. There is no uncage! — start a new process to escape. system-paths: 'auto includes /usr/lib, /lib, /etc/ssl, /dev/urandom, /proc, terminal paths, etc."
+  },
+  {
+    "id": "ffi-output-pointer-void-not-u8",
+    "title": "Use void* (not u8*) for foreign-alloc'd output pointer params in foreign-procedure",
+    "tags": [
+      "ffi",
+      "foreign-procedure",
+      "void-pointer",
+      "u8",
+      "foreign-alloc",
+      "output-buffer",
+      "rust"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; WRONG — u8* expects a bytevector, not a foreign-alloc'd pointer:\n;; (define c-compile (foreign-procedure \\\"my_compile\\\" (u8* size_t u8*) int))\n;;                                                              ^^^\n;; Passing (foreign-alloc 8) to a u8* param causes:\n;;   \\\"invalid foreign-procedure argument 140234567890\\\"\n\n;; CORRECT — use void* for foreign-alloc'd output buffers:\n(define c-compile\n  (foreign-procedure \\\"my_compile\\\"\n    (u8* size_t void*) int))\n;;  ^^^         ^^^^\n;;  input bv    output pointer\n\n;; Usage:\n(let ([input-bv (string->utf8 \\\"hello\\\")]\n      [out-buf  (foreign-alloc 8)])\n  (let ([rc (c-compile input-bv (bytevector-length input-bv) out-buf)])\n    (let ([result (foreign-ref 'unsigned-64 out-buf 0)])\n      (foreign-free out-buf)\n      result)))\n\n;; Rule of thumb:\n;;   u8*   → pass a Scheme bytevector (string->utf8, make-bytevector)\n;;   void* → pass a foreign-alloc'd raw pointer (fixnum)",
+    "notes": "This is a common mistake when writing FFI wrappers for functions that take both input bytevectors and output pointer buffers. The u8* type in Chez foreign-procedure expects a Scheme bytevector object — passing a foreign-alloc integer causes 'invalid foreign-procedure argument'. Use void* for any parameter that receives a raw pointer from foreign-alloc. The same applies to size_t output parameters.",
+    "related": [
+      "jerboa-ffi-foreign-procedure",
+      "jerboa-rust-ffi-handle-pattern",
+      "jerboa-rust-ffi-uptr-not-void"
+    ]
+  },
+  {
+    "id": "intercept-exit-list-arg-main",
+    "title": "Wrap a (main args-list) function as a shell builtin (non-variadic entry point)",
+    "tags": [
+      "exit",
+      "handler",
+      "builtin",
+      "main",
+      "variadic",
+      "apply",
+      "shell",
+      "coreutils"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Problem: make-coreutils-builtin uses (apply main-fn args) which spreads\n;; the arg list. This works for variadic (define (main . args) ...) but\n;; breaks for (define (main args) ...) which expects a single list argument.\n;;\n;; For variadic main (most coreutils):\n;;   (apply main-fn '(\\\"--flag\\\" \\\"file\\\"))  =>  (main \\\"--flag\\\" \\\"file\\\")  ✓\n;;\n;; For single-list main (e.g. jerboa-awk):\n;;   (apply main-fn '(\\\"'{print}'\\\"))  =>  (main \\\"'{print}'\\\")  ✗ (string, not list)\n;;   (main-fn '(\\\"'{print}'\\\"))        =>  (main '(\\\"'{print}'\\\"))  ✓\n\n;; Wrapper variant for single-list-arg main functions:\n(define (make-builtin/list name main-fn)\n  (lambda (args env)\n    (let ((status\n           (call/cc\n            (lambda (k)\n              (parameterize ([exit-handler (lambda (code) (k code))])\n                (guard (e [#t\n                  (guard (e2 [#t (values)])\n                    (display-condition e (current-error-port))\n                    (newline (current-error-port)))\n                  1])\n                  (main-fn args)   ;; ← direct call, NOT apply\n                  0))))))\n      (if (fixnum? status) status 0))))",
+    "notes": "When integrating external command modules as shell builtins, check the main function signature. Gerbil-style (def (main . args)) is variadic and works with apply. But some modules use (define (main args)) taking a single list. Using apply on a single-list main causes the list elements to become individual arguments, triggering 'not a pair' errors when the function tries to process them as a list. The fix is to call (main-fn args) directly instead of (apply main-fn args).",
+    "related": [
+      "intercept-exit-in-subcommand"
+    ]
+  },
+  {
+    "id": "rust-regex-pcre2-replacement",
+    "title": "Replace C PCRE2 with Rust regex via jerboa-native-rs FFI",
+    "tags": [
+      "regex",
+      "pcre2",
+      "rust",
+      "ffi",
+      "replace",
+      "grep",
+      "sed",
+      "static-build"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Rust FFI functions (from jerboa-native-rs/src/regex_native.rs):\n;;   jerboa_regex_compile_ex(pattern, len, flags, &handle) -> int\n;;   jerboa_regex_find_at(handle, text, len, start, &match_start, &match_end) -> int\n;;   jerboa_regex_captures(handle, text, len, start, ovector, capacity) -> int\n;;   jerboa_regex_group_count(handle) -> int\n;;   jerboa_regex_free(handle) -> int\n\n;; PCRE2 flag bitmask (maps to Rust inline flags):\n;;   0x8     = CASELESS   -> (?i)\n;;   0x20    = DOTALL     -> (?s)\n;;   0x400   = MULTILINE  -> (?m)\n;;   0x80000 = UTF        -> (ignored, Rust is always UTF-8)\n\n;; Scheme declarations — note void* for output pointer params:\n(define c-regex-compile-ex\n  (foreign-procedure \\\"jerboa_regex_compile_ex\\\"\n    (u8* size_t unsigned-32 void*) int))\n\n(define c-regex-find-at\n  (foreign-procedure \\\"jerboa_regex_find_at\\\"\n    (unsigned-64 u8* size_t size_t void* void*) int))\n\n(define c-regex-captures\n  (foreign-procedure \\\"jerboa_regex_captures\\\"\n    (unsigned-64 u8* size_t size_t void* size_t) int))\n\n;; Compile pattern:\n(define (pcre2-compile pattern flags)\n  (let ([handle-buf (foreign-alloc 8)])\n    (let ([rc (c-regex-compile-ex\n                (string->utf8 pattern)\n                (string-length pattern)\n                flags\n                handle-buf)])\n      (if (< rc 0)\n        (begin (foreign-free handle-buf)\n               (error 'pcre2-compile \\\"failed\\\" pattern))\n        (let ([h (foreign-ref 'unsigned-64 handle-buf 0)])\n          (foreign-free handle-buf) h)))))",
+    "notes": "This pattern replaces C PCRE2 (libpcre2-8) with the Rust regex crate already in libjerboa_native.a. The key advantage is eliminating a C dependency in static musl builds. The Rust regex crate doesn't support backreferences or lookahead/lookbehind (unlike PCRE2), but handles the vast majority of grep/sed use cases. PCRE2 flag constants are mapped to Rust inline flag syntax in the compile_ex function. For static builds, register the 4 new symbols via Sforeign_symbol in the C entry point.",
+    "related": [
+      "jerboa-rust-ffi-handle-pattern",
+      "ffi-output-pointer-void-not-u8",
+      "regex-pattern"
+    ]
   }
 ]
