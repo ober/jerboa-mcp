@@ -131,6 +131,77 @@ const ERROR_PATTERNS: Array<{
     ],
     cookbookTags: ['apply', 'procedure', 'call'],
   },
+  {
+    // make-time shadowed: prelude exports a datetime make-time, not Chez's SRFI-19 make-time
+    pattern: /\bmake-time\b/i,
+    type: 'Prelude-Shadowed Builtin: make-time',
+    explanation:
+      '(jerboa prelude) shadows Chez\'s SRFI-19 `make-time` with a datetime constructor that ' +
+      'takes different arguments. If you need the Chez `make-time` (e.g. for `sleep` or timers), ' +
+      'capture it before importing the prelude:\n\n' +
+      '  (define chez:make-time\n' +
+      '    (let () (import (only (chezscheme) make-time)) make-time))\n\n' +
+      'Then use `chez:make-time` for duration/monotonic time values:\n' +
+      '  (sleep (chez:make-time \'time-duration 0 1))  ; sleep 1 second',
+    suggestedTools: [
+      'jerboa_eval — test (make-time \'time-duration 0 1) to confirm the shadow',
+      'jerboa_function_signature — check the prelude\'s make-time arity',
+    ],
+    cookbookTags: ['make-time', 'sleep', 'prelude', 'shadow', 'duration'],
+  },
+  {
+    // sort shadowed: prelude uses (sort pred list), Gerbil/SRFI uses (sort list pred)
+    pattern: /\bsort\b.*wrong number|wrong number.*\bsort\b|\bsort\b.*type.*mismatch/i,
+    type: 'Prelude-Shadowed Builtin: sort',
+    explanation:
+      '(jerboa prelude) shadows Chez\'s `sort` with a version that takes arguments in ' +
+      'Chez order: `(sort predicate list)`. If you are seeing wrong-type or arity errors ' +
+      'with sort, check argument order. The Jerboa/Chez order is:\n\n' +
+      '  (sort < \'(3 1 2))  ; → (1 2 3)\n\n' +
+      'NOT the Gerbil/SRFI order (sort list pred). Also note the prelude\'s sort ' +
+      'expects a list, not a vector.',
+    suggestedTools: [
+      'jerboa_function_signature — check the prelude sort arity',
+      'jerboa_eval — test (sort < \'(3 1 2)) directly',
+    ],
+    cookbookTags: ['sort', 'prelude', 'shadow', 'order', 'predicate'],
+  },
+  {
+    // sleep shadowed: prelude may shadow Chez sleep
+    pattern: /\bsleep\b.*wrong|wrong.*\bsleep\b|\bsleep\b.*type/i,
+    type: 'Prelude-Shadowed Builtin: sleep',
+    explanation:
+      'If `sleep` fails with a type error, it may be that you are using the Chez `make-time` ' +
+      'form but the prelude\'s `make-time` is shadowing it. The correct pattern for sleeping ' +
+      'in Jerboa is:\n\n' +
+      '  ; Capture Chez make-time before the prelude shadows it:\n' +
+      '  (define chez:make-time\n' +
+      '    (let () (import (only (chezscheme) make-time)) make-time))\n' +
+      '  (sleep (chez:make-time \'time-duration 0 1))  ; 1 second\n\n' +
+      'Or simply use a numeric seconds value if the prelude\'s sleep accepts one.',
+    suggestedTools: [
+      'jerboa_eval — test (sleep ...) with different argument forms',
+      'jerboa_function_signature — check prelude sleep arity',
+    ],
+    cookbookTags: ['sleep', 'make-time', 'prelude', 'shadow', 'duration'],
+  },
+  {
+    // printf/fprintf shadowed: prelude re-exports improved versions
+    pattern: /\bprintf\b.*wrong|wrong.*\bprintf\b|\bfprintf\b.*wrong/i,
+    type: 'Prelude-Shadowed Builtin: printf/fprintf',
+    explanation:
+      '(jerboa prelude) re-exports improved versions of `printf` and `fprintf` that may have ' +
+      'different behavior from the raw Chez builtins. If you need the exact Chez printf, ' +
+      'use: (let () (import (only (chezscheme) printf)) printf)\n\n' +
+      'Other prelude-shadowed Chez builtins: make-hash-table, hash-table?, sort, sort!, ' +
+      'path-extension, path-absolute?, with-input-from-string, with-output-to-string, ' +
+      'iota, 1+, 1-, partition, make-date, make-time.',
+    suggestedTools: [
+      'jerboa_eval — test the function directly to see which version is in scope',
+      'jerboa_module_exports — compare (jerboa prelude) vs (chezscheme) exports',
+    ],
+    cookbookTags: ['printf', 'fprintf', 'prelude', 'shadow', 'builtin'],
+  },
 ];
 
 function loadCookbookRecipes(): Recipe[] {
