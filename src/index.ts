@@ -120,6 +120,7 @@ import { registerPreludeExportDiffTool } from './tools/prelude-export-diff.js';
 import { registerBatchCommandScaffoldTool } from './tools/batch-command-scaffold.js';
 import { registerQtOwnershipLintTool } from './tools/qt-ownership-lint.js';
 import { registerFaceRegistryDebugTool } from './tools/face-registry-debug.js';
+import { registerScreenshotDiffTool } from './tools/screenshot-diff.js';
 
 const INSTRUCTIONS = `You have access to a live Jerboa Scheme environment via this MCP server. Use these tools proactively when working with Jerboa Scheme code.
 
@@ -627,6 +628,7 @@ registerMtlsCertGenerateTool(server);
 registerCommandTraceTool(server);
 registerQtOwnershipLintTool(server);
 registerFaceRegistryDebugTool(server);
+registerScreenshotDiffTool(server);
 registerVerifyStaticBinaryTool(server);
 registerBinaryHardeningCheckTool(server);
 registerPatchFileValidatorTool(server);
