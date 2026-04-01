@@ -118,6 +118,7 @@ import { registerBinaryHardeningCheckTool } from './tools/binary-hardening-check
 import { registerPatchFileValidatorTool } from './tools/patch-file-validator.js';
 import { registerPreludeExportDiffTool } from './tools/prelude-export-diff.js';
 import { registerBatchCommandScaffoldTool } from './tools/batch-command-scaffold.js';
+import { registerQtOwnershipLintTool } from './tools/qt-ownership-lint.js';
 
 const INSTRUCTIONS = `You have access to a live Jerboa Scheme environment via this MCP server. Use these tools proactively when working with Jerboa Scheme code.
 
@@ -623,6 +624,7 @@ registerMtlsCertGenerateTool(server);
 
 // Debugging
 registerCommandTraceTool(server);
+registerQtOwnershipLintTool(server);
 registerVerifyStaticBinaryTool(server);
 registerBinaryHardeningCheckTool(server);
 registerPatchFileValidatorTool(server);
