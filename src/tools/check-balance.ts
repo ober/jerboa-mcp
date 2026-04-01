@@ -210,8 +210,12 @@ export function checkBalance(source: string): BalanceResult {
             openerCol: top.col,
             openerChar: top.char,
           });
+          // On mismatch, pop the opener to recover and continue scanning.
+          // This avoids cascading false errors for the rest of the file.
+          stack.pop();
+        } else {
+          stack.pop();
         }
-        stack.pop();
       }
       // Count top-level forms when stack returns to depth 0
       if (stack.length === 0 && errors.length === 0) {
@@ -276,33 +280,65 @@ function formatBalanceResult(result: BalanceResult): string {
 
   const lines: string[] = [];
 
-  for (const err of result.errors) {
-    switch (err.kind) {
-      case 'unclosed':
-        lines.push(
-          `Unclosed '${err.char}' at line ${err.line}, col ${err.col}` +
-            (err.context ? ` (near '${err.context}')` : ''),
-        );
-        break;
-      case 'unexpected':
-        lines.push(
-          `Unexpected closer '${err.char}' at line ${err.line}, col ${err.col}` +
-            ' — no matching opener',
-        );
-        break;
-      case 'mismatch':
-        lines.push(
-          `Mismatched '${err.char}' at line ${err.line}, col ${err.col}` +
-            ` — expected '${err.expected}' to close '${err.openerChar}'` +
-            ` opened at line ${err.openerLine}, col ${err.openerCol}`,
-        );
-        break;
-    }
+  // Separate errors by kind for better reporting
+  const unclosed = result.errors.filter((e) => e.kind === 'unclosed');
+  const unexpected = result.errors.filter((e) => e.kind === 'unexpected');
+  const mismatched = result.errors.filter((e) => e.kind === 'mismatch');
+
+  // Summary line first
+  const parts: string[] = [];
+  if (unclosed.length > 0) parts.push(`${unclosed.length} unclosed`);
+  if (unexpected.length > 0) parts.push(`${unexpected.length} unexpected closer(s)`);
+  if (mismatched.length > 0) parts.push(`${mismatched.length} mismatch(es)`);
+  lines.push(`Balance errors: ${parts.join(', ')}`);
+  lines.push('');
+
+  for (const err of mismatched) {
+    lines.push(
+      `Mismatch at line ${err.line}, col ${err.col}: got '${err.char}' but expected '${err.expected}'`,
+    );
+    lines.push(
+      `  Opened with '${err.openerChar}' at line ${err.openerLine}, col ${err.openerCol}`,
+    );
+    lines.push(
+      `  Tip: In Chez/Jerboa, ( and [ are interchangeable — if the opener was ( the closer must be ),`,
+    );
+    lines.push(`  and vice versa. Check the matching pair at lines ${err.openerLine}–${err.line}.`);
+    lines.push('');
   }
 
-  lines.push('');
+  for (const err of unexpected) {
+    lines.push(
+      `Unexpected '${err.char}' at line ${err.line}, col ${err.col} — no matching opener on stack`,
+    );
+    lines.push(`  There is one extra '${err.char}' that has no matching opener before it.`);
+    lines.push('');
+  }
+
+  if (unclosed.length > 0) {
+    lines.push(`${unclosed.length} unclosed opener(s) (nesting depth ${unclosed.length} at EOF):`);
+    for (const err of unclosed) {
+      lines.push(
+        `  '${err.char}' at line ${err.line}, col ${err.col}` +
+          (err.context ? ` — opened form: '${err.context}'` : ''),
+      );
+    }
+    lines.push('');
+    // Actionable depth summary
+    if (unclosed.length === 1) {
+      lines.push(
+        `Action: add exactly 1 closing '${unclosed[0].char === '(' ? ')' : unclosed[0].char === '[' ? ']' : '}'}' ` +
+        `somewhere after line ${unclosed[0].line}.`,
+      );
+    } else {
+      const closers = unclosed.map((e) => (e.char === '(' ? ')' : e.char === '[' ? ']' : '}')).join('');
+      lines.push(`Action: add ${unclosed.length} closing delimiter(s): ${closers} (innermost first).`);
+    }
+    lines.push('');
+  }
+
   lines.push(
-    'Note: This is a heuristic check. Use jerboa_read_forms or jerboa_check_syntax for definitive validation.',
+    'Note: This is a heuristic scanner. Use jerboa_check_syntax for definitive validation.',
   );
 
   return lines.join('\n');
