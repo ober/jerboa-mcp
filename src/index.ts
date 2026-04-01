@@ -114,6 +114,7 @@ import { registerSandboxParityTool } from './tools/sandbox-parity.js';
 import { registerMtlsCertGenerateTool } from './tools/mtls-cert-generate.js';
 import { registerCommandTraceTool } from './tools/command-trace.js';
 import { registerVerifyStaticBinaryTool } from './tools/verify-static-binary.js';
+import { registerBinaryHardeningCheckTool } from './tools/binary-hardening-check.js';
 
 const INSTRUCTIONS = `You have access to a live Jerboa Scheme environment via this MCP server. Use these tools proactively when working with Jerboa Scheme code.
 
@@ -619,6 +620,7 @@ registerMtlsCertGenerateTool(server);
 // Debugging
 registerCommandTraceTool(server);
 registerVerifyStaticBinaryTool(server);
+registerBinaryHardeningCheckTool(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

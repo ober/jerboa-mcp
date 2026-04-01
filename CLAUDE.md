@@ -255,7 +255,7 @@ Format for `cookbooks.json`:
 
 ## Tool Count
 
-Currently **112 tools** are registered in `src/index.ts`. The tool names follow
+Currently **113 tools** are registered in `src/index.ts`. The tool names follow
 the prefix `jerboa_`.
 
 Tools are grouped in `src/index.ts` registrations by category:
