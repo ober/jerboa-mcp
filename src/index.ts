@@ -117,6 +117,7 @@ import { registerVerifyStaticBinaryTool } from './tools/verify-static-binary.js'
 import { registerBinaryHardeningCheckTool } from './tools/binary-hardening-check.js';
 import { registerPatchFileValidatorTool } from './tools/patch-file-validator.js';
 import { registerPreludeExportDiffTool } from './tools/prelude-export-diff.js';
+import { registerBatchCommandScaffoldTool } from './tools/batch-command-scaffold.js';
 
 const INSTRUCTIONS = `You have access to a live Jerboa Scheme environment via this MCP server. Use these tools proactively when working with Jerboa Scheme code.
 
@@ -571,6 +572,7 @@ registerHttpdHandlerScaffoldTool(server);
 registerActorEnsembleScaffoldTool(server);
 registerDbPatternScaffoldTool(server);
 registerGracefulShutdownScaffoldTool(server);
+registerBatchCommandScaffoldTool(server);
 registerTranslateSchemeTool(server);
 
 // Performance
