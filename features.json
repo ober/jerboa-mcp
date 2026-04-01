@@ -48,7 +48,7 @@
     "use_case": "When integrating a Rust crate as a static library into a Chez Scheme musl binary. Currently requires manually finding the right rustup toolchain, setting env vars, and verifying target installation.",
     "example_scenario": "User wants to add a new Rust crate (e.g., argon2 for password hashing) to their Chez Scheme project. The tool detects rustup's active toolchain, ensures musl target is installed, builds the crate, and reports the .a file location ready for linking.",
     "estimated_token_reduction": 400,
-    "votes": 2
+    "votes": 3
   },
   {
     "id": "chez-static-symbol-audit",
@@ -84,24 +84,6 @@
     "use_case": "Every time Claude writes Jerboa code, it imports (jerboa prelude). If that gives it the safe APIs by default, all generated code is automatically type-checked and resource-safe without Claude knowing about the safety modules.",
     "example_scenario": "Claude writes (import (jerboa prelude)) then (sqlite-open \"db\") — this silently calls safe-sqlite-open which validates types, and (with-resource ...) is the documented pattern. No separate (import (std safe)) needed.",
     "estimated_token_reduction": 200,
-    "votes": 1
-  },
-  {
-    "id": "jerboa-finalizer-safety-net",
-    "title": "GC finalizer warning for unclosed resources",
-    "description": "Register Chez guardians on resource-acquiring functions (sqlite-open, tcp-connect, open-input-file). When a resource is garbage collected without being closed, log a warning with the allocation site. This catches resource leaks that with-resource would have prevented, without crashing.",
-    "impact": "high",
-    "tags": [
-      "resource",
-      "gc",
-      "guardian",
-      "finalizer",
-      "leak",
-      "warning"
-    ],
-    "use_case": "Claude-generated code forgets with-resource and uses bare (let ([db (sqlite-open ...)]). The connection leaks silently. With a finalizer safety net, a warning appears in the log so the leak is noticed during testing.",
-    "example_scenario": "A test run shows 'WARNING: sqlite handle 7 GC'd without close at line 42 of handler.ss'. Developer wraps the sqlite-open in with-resource. Bug fixed before production.",
-    "estimated_token_reduction": 300,
     "votes": 1
   },
   {
@@ -243,7 +225,7 @@
     "use_case": "When adding a new library dependency to a static Chez binary. Missing a single transitive dependency from the boot file causes a runtime error that only manifests when the code path is hit, making it hard to catch before deployment.",
     "example_scenario": "Added (jerboa-aws pssm) to the boot file but forgot its transitive dependency (jerboa-coreutils common security). The binary built fine but crashed at runtime when pssm tried to import security. Had to debug by trial and error, adding missing libraries one at a time. This tool would have reported all missing transitive deps in one pass.",
     "estimated_token_reduction": "~1000 tokens per missing-library debugging cycle — eliminates 3-5 rounds of build/run/crash/add-library",
-    "votes": 1
+    "votes": 2
   },
   {
     "id": "check-balance-accurate-tracking",
@@ -279,7 +261,7 @@
     "use_case": "After every make static-qt, automatically verify the binary launches without exceptions. Currently this is a manual step that Claude must remember to do (and has forgotten in the past, leading to broken deliverables).",
     "example_scenario": "Claude fixes a bug in highlight.ss, runs make build && make static-qt (both succeed), but the static binary crashes with 'attempt to reference unbound identifier restore-margin-colors!' because a cross-module reference wasn't available in the WPO build. Without the verification step, Claude would have reported the fix as done. The tool catches this before the user even tries.",
     "estimated_token_reduction": "~300 tokens per build cycle — eliminates the need to manually remember and run the verification step, and prevents wasted debugging cycles from broken binaries",
-    "votes": 2
+    "votes": 3
   },
   {
     "id": "face-registry-static-binary-debug",
@@ -385,6 +367,42 @@
     "use_case": "After building a hardened Chez Scheme or Jerboa static binary, verify all expected hardening properties are present. Currently requires manual readelf/nm invocations to check PIE (file command), RELRO (readelf -d | grep BIND_NOW), and stack canaries (nm | grep stack_chk).",
     "example_scenario": "Building Chez with --enable-harden. After the build, need to verify that libkernel.a objects have stack canaries, the final binary is PIE, and RELRO is enabled. Required three separate bash commands (file, readelf -d, nm on individual .o files) — a single tool call returning a hardening report would replace all of these.",
     "estimated_token_reduction": "~300 tokens per build verification — replaces 3-4 bash commands and result parsing",
+    "votes": 0
+  },
+  {
+    "id": "prelude-shadow-builtin-detection",
+    "title": "Detect prelude-shadowed Chez builtins causing unexpected errors",
+    "description": "When evaluating Jerboa code that uses Chez builtins like `make-time`, `sort`, `printf`, etc., detect when the prelude has shadowed the builtin with an incompatible version and the call fails with a confusing type/arity error. Should report \"Note: (jerboa prelude) shadows `make-time` — use `(let () (import (only (chezscheme) make-time)) make-time)` to capture the original.\" Currently Claude must know the full shadow list from CLAUDE.md and recognize the pattern manually.",
+    "impact": "medium",
+    "tags": [
+      "prelude",
+      "shadow",
+      "builtin",
+      "make-time",
+      "sleep",
+      "chez"
+    ],
+    "use_case": "When a standalone Jerboa prelude script tries to use `sleep` with `make-time 'time-duration`, it gets a cryptic error because the prelude's `make-time` expects datetime args. The detection would explain the shadow and point to the capture pattern.",
+    "example_scenario": "Script has `(sleep (make-time 'time-duration 0 1))` — fails with wrong-type argument. The error message mentions `make-time` but gives no hint that the prelude shadowed it. Claude spent 2 tool-call round trips discovering the shadow and the fix pattern.",
+    "estimated_token_reduction": "~400 tokens per occurrence — eliminates 2-3 jerboa_eval probe calls to discover the shadow",
+    "votes": 0
+  },
+  {
+    "id": "qt-parent-child-ownership-lint",
+    "title": "Detect Qt parent-child double-free: explicit destroy after parent destroy",
+    "description": "In Qt, destroying a QObject parent automatically destroys all child widgets. If code explicitly destroys a child widget after destroying its parent, this causes a double-free SIGSEGV (manifests as `QBindingStorage::clear()` crash in Qt 6). The tool should detect patterns in `vendor/qt_shim.cpp` or Scheme FFI call sequences where a child widget pointer is passed to `qt_widget_destroy` after its parent has already been destroyed in the same scope/path.",
+    "impact": "high",
+    "tags": [
+      "qt",
+      "double-free",
+      "widget",
+      "destroy",
+      "parent-child",
+      "sigsegv"
+    ],
+    "use_case": "When refactoring Qt window management code that destroys splitter hierarchies. Qt's implicit child cleanup is easy to miss — the bug is silent until the stress test hits the specific code path.",
+    "example_scenario": "In `qt-frame-delete-window!`, destroying `parent-spl` (a QSplitter) automatically destroys `container` (its child QWidget). Then the code unconditionally called `qt-widget-destroy! container` — double-free, SIGSEGV in `QBindingStorage::clear()`. Fix: set `container = #f` before destroying parent so the conditional destroy is skipped.",
+    "estimated_token_reduction": "~800 tokens per crash investigation — Qt double-free crashes are very hard to trace without the pattern; eliminates multiple stress-burn-static runs and backtrace analysis",
     "votes": 0
   }
 ]
