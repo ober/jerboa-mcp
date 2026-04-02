@@ -225,7 +225,7 @@
     "use_case": "When adding a new library dependency to a static Chez binary. Missing a single transitive dependency from the boot file causes a runtime error that only manifests when the code path is hit, making it hard to catch before deployment.",
     "example_scenario": "Added (jerboa-aws pssm) to the boot file but forgot its transitive dependency (jerboa-coreutils common security). The binary built fine but crashed at runtime when pssm tried to import security. Had to debug by trial and error, adding missing libraries one at a time. This tool would have reported all missing transitive deps in one pass.",
     "estimated_token_reduction": "~1000 tokens per missing-library debugging cycle — eliminates 3-5 rounds of build/run/crash/add-library",
-    "votes": 2
+    "votes": 3
   },
   {
     "id": "check-balance-accurate-tracking",
@@ -261,7 +261,7 @@
     "use_case": "After every make static-qt, automatically verify the binary launches without exceptions. Currently this is a manual step that Claude must remember to do (and has forgotten in the past, leading to broken deliverables).",
     "example_scenario": "Claude fixes a bug in highlight.ss, runs make build && make static-qt (both succeed), but the static binary crashes with 'attempt to reference unbound identifier restore-margin-colors!' because a cross-module reference wasn't available in the WPO build. Without the verification step, Claude would have reported the fix as done. The tool catches this before the user even tries.",
     "estimated_token_reduction": "~300 tokens per build cycle — eliminates the need to manually remember and run the verification step, and prevents wasted debugging cycles from broken binaries",
-    "votes": 3
+    "votes": 5
   },
   {
     "id": "face-registry-static-binary-debug",
@@ -403,6 +403,23 @@
     "use_case": "When refactoring Qt window management code that destroys splitter hierarchies. Qt's implicit child cleanup is easy to miss — the bug is silent until the stress test hits the specific code path.",
     "example_scenario": "In `qt-frame-delete-window!`, destroying `parent-spl` (a QSplitter) automatically destroys `container` (its child QWidget). Then the code unconditionally called `qt-widget-destroy! container` — double-free, SIGSEGV in `QBindingStorage::clear()`. Fix: set `container = #f` before destroying parent so the conditional destroy is skipped.",
     "estimated_token_reduction": "~800 tokens per crash investigation — Qt double-free crashes are very hard to trace without the pattern; eliminates multiple stress-burn-static runs and backtrace analysis",
+    "votes": 0
+  },
+  {
+    "id": "cross-repo-impl-compare",
+    "title": "Compare two implementations of the same feature across repos",
+    "description": "A tool that takes two file paths (or repo paths + feature names) and produces a structured diff of their capabilities — exported functions, supported features, known limitations, and architectural differences. Could work by running jerboa_file_summary and jerboa_module_exports on both sides and presenting a comparison table.",
+    "impact": "medium",
+    "tags": [
+      "compare",
+      "cross-repo",
+      "diff",
+      "feature",
+      "architecture"
+    ],
+    "use_case": "When evaluating whether to adopt a new library or replace an existing one — e.g. comparing two terminal emulator backends to decide what the current implementation is missing.",
+    "example_scenario": "User asks: \"what does ~/mine/emacs-libgterm offer over our current vterm?\" Required: exploring both repos with separate Explore agents (two parallel subagent spawns, ~3000 tokens combined), then manually synthesizing the comparison. A dedicated tool taking two paths and a topic would return a structured table in one call.",
+    "estimated_token_reduction": "~2000 tokens per comparison — replaces two parallel Explore agent spawns and manual synthesis",
     "votes": 0
   }
 ]

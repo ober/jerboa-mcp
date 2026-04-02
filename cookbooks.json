@@ -3372,5 +3372,209 @@
     "imports": [],
     "code": "# FreeBSD requires gmake — BSD make cannot parse lz4's GNU Makefile\n# (produces 'Invalid line \"ifeq ...\"' errors)\npkg install gmake\n\n# Configure with absolute installprefix (relative paths fail)\n./configure --installprefix=/home/user/chez-local --threads\n\n# Build and install using gmake\ngmake -j$(sysctl -n hw.ncpu)\nzuo ta6fb install        # or: gmake install (for older workareas)\n\n# With security hardening (--enable-harden):\n./configure --installprefix=/home/user/chez-secure --threads --enable-harden\n# Adds: -fstack-protector-strong -fstack-clash-protection -D_FORTIFY_SOURCE=2\n#       -fPIC (CFLAGS), -pie (mdlinkflags only), -Wl,-z,relro,-z,now (LDFLAGS)\n# On x86_64 Linux: also adds -fcf-protection=full (Intel CET)\n# On arm64: also adds -mbranch-protection=standard (ARM PAC+BTI)\n# Note: -pie goes in mdlinkflags, NOT LDFLAGS — LDFLAGS is inherited by\n#       ftype tests that compile shared objects and -pie conflicts with -shared\n\n# After configure, if you add --enable-harden and rebuild,\n# you must clean C objects manually (build system may not re-detect flag changes):\nfind ta6fb/c -name \"*.o\" -delete\nrm -f ta6fb/boot/ta6fb/main.o ta6fb/boot/ta6fb/libkernel.a\nrm -rf ta6fb/zlib ta6fb/lz4\ngmake\n\n# Verify hardening on the resulting binary:\nfile ta6fb/bin/ta6fb/scheme           # should say \"pie executable\"\nreadelf -d ta6fb/bin/ta6fb/scheme | grep -i \"flags\\|bind_now\"\n# FLAGS: BIND_NOW  and  FLAGS_1: NOW PIE  confirms full RELRO + ASLR\n\n# Machine type on FreeBSD amd64: ta6fb (threaded, a6=amd64, fb=FreeBSD)",
     "notes": "lz4's Makefile uses GNU make conditionals (ifeq/else/endif) that BSD make rejects with 'Invalid line' errors. Always use gmake. The --enable-harden flag was added to the secure branch of ChezScheme (~/ChezScheme). The -pie vs -shared conflict: -pie in LDFLAGS breaks ftype tests which compile .so files using the same LDFLAGS; fix is to put -pie in mdlinkflags which is only used for the scheme executable link, not inherited by test compilation. Use -fPIC (not -fPIE) in CFLAGS since ftype tests also inherit CFLAGS and need -fPIC for shared object compilation."
+  },
+  {
+    "id": "jerbuild-prelude-conflict-workaround",
+    "title": "Avoid (jerboa prelude) in .ss files when jerbuild causes multiple-definition conflicts",
+    "tags": [
+      "jerbuild",
+      "prelude",
+      "import",
+      "conflict",
+      "multiple-definitions",
+      "match",
+      "static-build"
+    ],
+    "imports": [
+      "(std sugar)",
+      "(std sort)",
+      "(except (std srfi srfi-13) string-pad-right)"
+    ],
+    "code": ";; PROBLEM: jerbuild auto-adds (jerboa core) and (jerboa runtime) to all .sls imports.\n;; If the updated (jerboa prelude) re-exports symbols from (jerboa core) (e.g. match),\n;; using (import (jerboa prelude)) in .ss files causes \"multiple definitions\" errors\n;; because jerbuild adds (jerboa core) AND your .ss imports (jerboa prelude) which\n;; re-exports the same symbols.\n;;\n;; SOLUTION: Import individual std modules instead of (jerboa prelude):\n\n(import\n  (std sugar)          ;; def, defrule, try/catch, etc.\n  (std sort)           ;; sort\n  (except (std srfi srfi-13) string-pad-right)  ;; string-join, string-prefix?, etc.\n  ;; Add only what you need:\n  ;; (std text json)   ;; JSON parsing\n  ;; (std misc string) ;; string-empty?, etc.\n  ;; (std misc ports)  ;; read-file-lines, etc.\n)\n\n;; NOTE: (except ...) is needed when a module re-exports something\n;; already provided by jerbuild's auto-added (jerboa core).\n;; Common conflicts: string-pad-right, match",
+    "notes": "This only affects .ss files processed by jerbuild. Direct .sls files don't have this issue. The conflict appears when (jerboa prelude) is updated to re-export new symbols from (jerboa core). If you see 'multiple definitions for X', check if X is in both (jerboa core) and the module you're importing."
+  },
+  {
+    "id": "rust-musl-rustup-vs-homebrew",
+    "title": "Build Rust static library with rustup when Homebrew rustc shadows it",
+    "tags": [
+      "rust",
+      "musl",
+      "rustup",
+      "homebrew",
+      "linuxbrew",
+      "static",
+      "cargo",
+      "RUSTC"
+    ],
+    "imports": [],
+    "code": ";; PROBLEM: When both Homebrew (linuxbrew) and rustup install Rust,\n;; Homebrew's rustc appears first in PATH. It lacks the musl target\n;; even though `rustup target add x86_64-unknown-linux-musl` succeeded\n;; (rustup installs to its own toolchain, not Homebrew's).\n;;\n;; SYMPTOM: error[E0463]: can't find crate for `core`\n;;          note: the `x86_64-unknown-linux-musl` target may not be installed\n;;\n;; DIAGNOSIS:\n;;   which rustc          → /home/linuxbrew/.linuxbrew/bin/rustc (WRONG)\n;;   rustup which rustc   → ~/.rustup/toolchains/stable-.../bin/rustc (RIGHT)\n;;\n;; FIX: Set RUSTC explicitly to use rustup's toolchain:\n;;\n;; RUSTC=~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc \\\n;;   ~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo \\\n;;   build --release --target x86_64-unknown-linux-musl",
+    "notes": "This affects any system with both Homebrew and rustup installed. The musl stdlib files exist at ~/.rustup/toolchains/stable-.../lib/rustlib/x86_64-unknown-linux-musl/lib/ but Homebrew's rustc can't find them. Always verify with `which rustc` vs `rustup which rustc` when musl builds fail."
+  },
+  {
+    "id": "docker-volume-mount-nonexistent-file",
+    "title": "Docker creates directories when volume-mounting nonexistent files",
+    "tags": [
+      "docker",
+      "volume",
+      "mount",
+      "directory",
+      "file",
+      "static-build",
+      "gotcha"
+    ],
+    "imports": [],
+    "code": ";; PROBLEM: Docker `-v /path/to/file.a:/container/file.a:ro` creates a DIRECTORY\n;; at the host path if the file doesn't exist yet. This persists as a root-owned\n;; directory, blocking future builds even after the file is created.\n;;\n;; SYMPTOM: `file libjsh_coreutils.a` → \"directory\"\n;;          `ls -la libjsh_coreutils.a` → shows \"drwxr-xr-x 2 root root\"\n;;\n;; DIAGNOSIS: The .a file was referenced in a Makefile Docker volume mount\n;; before it was built. Docker created a directory at that path.\n;;\n;; FIX: Remove the bogus directory (root-owned, needs Docker or sudo):\n;;   docker run --rm -v /path/to/parent:/target alpine \\\n;;     rm -rf /target/libjsh_coreutils.a\n;;\n;; Or fix ownership of all root-owned files in a tree:\n;;   docker run --rm -v /path/to/target:/target alpine \\\n;;     sh -c 'find /target -user root -exec chown 1000:1000 {} +'\n;;\n;; PREVENTION: Verify the source file exists before running Docker:\n;;   test -f $(JSH_COREUTILS_LIB) || { echo \"Build rust-coreutils first\"; exit 1; }",
+    "notes": "This is a well-known Docker footgun. Always check that volume-mount source paths for files (not directories) actually exist before running docker. Root-owned artifacts left behind require Docker or sudo to clean up."
+  },
+  {
+    "id": "thread-sleep-prelude-script",
+    "title": "thread-sleep! in standalone prelude scripts (capture shadowed make-time)",
+    "tags": [
+      "thread-sleep",
+      "sleep",
+      "make-time",
+      "prelude",
+      "shadow",
+      "duration",
+      "standalone"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; The (jerboa prelude) shadows Chez's make-time with a datetime constructor.\n;; Capture the original BEFORE the prelude can shadow it, using a local import.\n\n(def chez:make-time\n  (let () (import (only (chezscheme) make-time)) make-time))\n\n(def (thread-sleep! secs)\n  \"Sleep for SECS seconds (real number). Works in standalone Jerboa prelude scripts.\"\n  (let* ((diff (max 0 secs))\n         (s  (exact (floor diff)))\n         (ns (exact (floor (* (- diff s) 1000000000)))))\n    (sleep (chez:make-time 'time-duration ns s))))\n\n;; Usage:\n(thread-sleep! 0.5)   ;; sleep 500ms\n(thread-sleep! 2)     ;; sleep 2 seconds",
+    "notes": "The (jerboa prelude) re-exports `make-time` as a datetime constructor, shadowing the Chez `make-time` that `sleep` requires. The `(let () (import (only (chezscheme) make-time)) make-time)` trick captures the original binding before shadowing occurs — the same technique used in `chez-srfis/srfi/srfi-18.sls`. Note: arg order to `make-time` is `(make-time type nanoseconds seconds)`. Without this workaround, `(sleep (make-time 'time-duration 0 1))` fails because prelude's `make-time` expects a year/month/day signature."
+  },
+  {
+    "id": "scintilla-terminal-256color-style-alloc",
+    "title": "Scintilla dynamic style allocation for 256-color/truecolor terminal rendering",
+    "tags": [
+      "scintilla",
+      "terminal",
+      "256-color",
+      "truecolor",
+      "SCI_STYLESETFORE",
+      "SCI_STYLESETBACK",
+      "vterm",
+      "color"
+    ],
+    "imports": [],
+    "code": ";; Scintilla has 256 styles (0-255). Layout for terminal use:\n;;   0-63  : editor/syntax styles\n;;   64-79 : 16 pre-allocated ANSI colors (set up at terminal init)\n;;   80-249 : dynamically allocated for (fg . bg) pairs — 170 slots\n;;   250-255 : reserve\n\n(def *vterm-next-style* 80)\n(def *vterm-color-to-style* (make-hash-table))  ;; (fg . bg) -> style-id\n(def *vterm-max-styles* 250)\n(def *term-default-bg* #x181818)  ;; terminal background\n(def *term-default-fg* #xc5c8c6)  ;; terminal default fg (for reverse-video)\n\n(def (vterm-get-or-alloc-style! ed fg bg)\n  \"Get or allocate a Scintilla style for a (fg, bg) color pair.\n   fg and bg are packed 0x00RRGGBB or -1 for default.\n   Returns style index, or 0 if out of slots.\"\n  (let ((key (cons fg bg)))\n    (or (hash-ref *vterm-color-to-style* key #f)\n        (if (>= *vterm-next-style* *vterm-max-styles*)\n          0  ;; fallback to default style\n          (let ((style *vterm-next-style*))\n            (set! *vterm-next-style* (+ style 1))\n            (when (not (= fg -1))\n              (sci-send ed SCI_STYLESETFORE style fg))\n            (sci-send ed SCI_STYLESETBACK style\n                      (if (= bg -1) *term-default-bg* bg))\n            (hash-put! *vterm-color-to-style* key style)\n            style)))))\n\n;; Per-cell rendering loop (in vterm-apply-row-colors!):\n;; Read both fg and bg per cell, handle reverse-video attribute (bit 4).\n(let* ((fg    (vtscreen-cell-fg vt row c))    ;; packed 0x00RRGGBB or -1\n       (bg    (vtscreen-cell-bg vt row c))    ;; packed 0x00RRGGBB or -1\n       (attrs (vtscreen-cell-attrs vt row c)) ;; packed bits — see notes\n       (bold?    (not (= 0 (bitwise-and attrs 1))))\n       (reverse? (not (= 0 (bitwise-and attrs 16))))\n       ;; Reverse video: swap fg/bg, substituting defaults with concrete colors\n       (eff-fg (if reverse? (if (= bg -1) *term-default-bg* bg) fg))\n       (eff-bg (if reverse? (if (= fg -1) *term-default-fg* fg) bg))\n       (style\n        (cond\n          ((and (= eff-fg -1) (= eff-bg -1))\n           (if bold? (+ *term-style-base* 15) 0))\n          (else\n           (vterm-get-or-alloc-style! ed eff-fg eff-bg)))))\n  ...)",
+    "notes": "libvterm already converts indexed (256-color) and RGB (truecolor) to packed 0x00RRGGBB via vterm_screen_convert_color_to_rgb in the C shim — vtscreen-cell-fg/bg always return resolved RGB values, never raw indices.\n\nCell attribute bit positions (from vterm_shim.c jvt_get_cell_attrs):\n  bit 0: bold\n  bit 1: underline (any type)\n  bit 2: italic\n  bit 3: blink\n  bit 4: reverse video\n  bit 5: strikethrough\n  bit 6: conceal\n\nKey on (cons fg bg) not just fg — styles encode BOTH fg and bg in Scintilla. 170 slots covers all 256 indexed colors plus typical RGB usage without collision.\n\nMulti-editor caveat: *vterm-color-to-style* is global, so style 85 allocated for editor A will be returned for editor B without re-configuring it on B. Fine for single-terminal use; for multiple terminals consider tracking configured (editor . style) pairs.",
+    "related": [
+      "scintilla-measure-char-width",
+      "vterm-alt-screen-full-render"
+    ]
+  },
+  {
+    "id": "jerbuild-defstruct-limitations",
+    "title": "jerbuild defstruct: positional constructors only, no transparent:",
+    "tags": [
+      "defstruct",
+      "jerbuild",
+      "constructor",
+      "positional",
+      "transparent",
+      "keyword-args"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; WRONG — jerbuild defstruct does NOT support transparent: keyword:\n;; (defstruct point (x y) transparent: #t)   ;; ERROR at compile time\n\n;; CORRECT — just omit it:\n(defstruct point (x y))\n\n;; WRONG — jerbuild generates POSITIONAL constructors, not keyword ones.\n;; Keyword args like (make-point x: 1 y: 2) get quoted as extra positional\n;; args, causing \"incorrect argument count\" at runtime:\n;; (make-point x: 1 y: 2)   ;; ERROR: passes 4 args instead of 2\n\n;; CORRECT — always use positional args:\n(def p (make-point 1 2))   ;; x=1, y=2\n\n;; When initializing a struct with many fields, use comments for clarity:\n(defstruct state (columns entries filtered sort-col sort-asc? filter-str padding))\n\n(make-state\n  columns    ;; columns\n  '()        ;; entries\n  '()        ;; filtered\n  #f         ;; sort-col\n  #t         ;; sort-asc?\n  #f         ;; filter-str\n  2)         ;; padding",
+    "notes": "Two jerbuild-specific defstruct limitations that cause runtime errors: (1) transparent: keyword is silently ignored or causes build errors — always remove it. (2) The generated constructor is positional-only. Calling (make-foo key: val ...) makes jerbuild quote each keyword as a symbol and pass it as a positional arg, resulting in 2x the expected argument count and an 'incorrect argument count' error at runtime. This is not obvious because Gerbil's defstruct supports keyword constructors.",
+    "related": [
+      "jerboa-defstruct",
+      "jerbuild-migration-gotchas"
+    ]
+  },
+  {
+    "id": "std-sort-import-shadows-prelude",
+    "title": "(std sort) import shadows prelude's sort with Gerbil arg order",
+    "tags": [
+      "sort",
+      "std sort",
+      "import",
+      "shadow",
+      "argument-order",
+      "prelude"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; The prelude's sort uses Chez order: (sort predicate list)\n(sort < '(3 1 2))  ;; → (1 2 3)  CORRECT\n\n;; DANGER: importing (std sort) shadows the prelude's sort with\n;; Gerbil/SRFI order: (sort list predicate)\n;; This causes a runtime crash — the list is passed as the comparator:\n;;\n;; (import (std sort))\n;; (sort < '(3 1 2))\n;; → Exception in list-sort: (3 1 2) is not a procedure\n;;\n;; The error is confusing because the list appears in the \"not a procedure\"\n;; message — it's being used as the predicate arg to the underlying list-sort.\n\n;; FIX: Never import (std sort) unless you deliberately want Gerbil order\n;; and flip all call sites to (sort list predicate).\n;; In .ss files processed by jerbuild, just use the prelude's sort directly.\n\n;; If you see \"is not a procedure\" in list-sort with a list as the argument,\n;; check all imports for (std sort) or :std/sort shadowing the prelude.",
+    "notes": "This caused a silent UI-QUEUE-ERROR in a tabulated-list sort — the callback crashed silently and the buffer just stayed stuck showing \"Fetching...\". The error message 'Exception in list-sort: (...list of items...) is not a procedure' is the key signature: the list appears where a procedure is expected because (std sort) swapped the args. The fix is to remove the (std sort) import entirely and rely on the prelude's sort.",
+    "related": [
+      "gerbil-migration-sort-order",
+      "jerboa-sort"
+    ]
+  },
+  {
+    "id": "std-crypto-native-sha256-hmac",
+    "title": "Native SHA256 and HMAC-SHA256 with std/crypto/native",
+    "tags": [
+      "crypto",
+      "sha256",
+      "hmac",
+      "digest",
+      "native",
+      "evp",
+      "static"
+    ],
+    "imports": [
+      "(std crypto native)"
+    ],
+    "code": ";; SHA256 hash of string or bytevector\n(import (std crypto native))\n\n(define (sha256 data)\n  (native-digest 'sha256\n    (if (string? data) (string->utf8 data) data)))\n\n;; HMAC-SHA256 — key and data can be strings or bytevectors\n(define (hmac-sha256 key data)\n  (native-hmac-sha256\n    (if (string? key)  (string->utf8 key)  key)\n    (if (string? data) (string->utf8 data) data)))\n\n;; Returns bytevectors. To get hex string:\n(define (bytes->hex bv)\n  (apply string-append\n    (map (lambda (b) (format \"~2,'0x\" b))\n         (bytevector->u8-list bv))))\n\n(bytes->hex (sha256 \"hello world\"))\n;; => \"b94d27b9934d3e08a52e52d7da7dabfac484efe04294e576fbc9a08f\"...",
+    "notes": "Use this instead of shelling out to `openssl dgst`. The subprocess approach (open-process-ports \"openssl dgst -sha256 ...\") fails in static binaries and is vulnerable to PATH manipulation. native-digest and native-hmac-sha256 use EVP FFI directly — zero subprocess overhead, works in static builds. This is how jerboa-aws/crypto should be replaced for static build compatibility (see vendor/jerboa-aws-crypto-native.sls pattern)."
+  },
+  {
+    "id": "jerboa-aws-ec2-describe-instances",
+    "title": "Fetch EC2 instances with native jerboa-aws (no subprocess)",
+    "tags": [
+      "aws",
+      "ec2",
+      "instances",
+      "jerboa-aws",
+      "https",
+      "describe-instances"
+    ],
+    "imports": [
+      "(jerboa-aws ec2 api)",
+      "(jerboa-aws ec2 instances)"
+    ],
+    "code": ";; Create a per-region EC2 client and fetch running instances\n(import (jerboa-aws ec2 api))\n(import (jerboa-aws ec2 instances))\n\n;; Create client for a region\n(def client (EC2Client 'region: \"us-east-1\"))\n\n;; Call describe-instances — returns parsed response as Chez hashtables\n;; Keys are Chez symbols (not strings): 'instanceId, 'instanceType, etc.\n(def response (describe-instances client))\n\n;; Navigate the response structure:\n;;   response → hashtable with 'reservationSet\n;;   reservationSet → list of reservations\n;;   each reservation → 'instancesSet → list of instance hashtables\n(def (parse-running-instances response)\n  (let ((reservation-set (hashtable-ref response 'reservationSet '())))\n    (filter-map\n      (lambda (reservation)\n        (let* ((instances-set (hashtable-ref reservation 'instancesSet '()))\n               (instances (if (list? instances-set) instances-set (list instances-set))))\n          (filter\n            (lambda (inst)\n              (let* ((state (hashtable-ref inst 'instanceState #f))\n                     (name  (and state (hashtable-ref state 'name #f))))\n                (equal? name \"running\")))\n            instances)))\n      (if (list? reservation-set)\n          reservation-set\n          (list reservation-set)))))\n\n;; Get a tag value from an instance\n(def (instance-tag inst tag-name)\n  (let ((tag-set (hashtable-ref inst 'tagSet '())))\n    (let loop ((tags (if (list? tag-set) tag-set (list tag-set))))\n      (cond\n        ((null? tags) #f)\n        ((equal? (hashtable-ref (car tags) 'key #f) tag-name)\n         (hashtable-ref (car tags) 'value #f))\n        (else (loop (cdr tags)))))))\n\n;; Example: get Name tag\n(def instances (parse-running-instances response))\n(for-each\n  (lambda (inst)\n    (displayln (hashtable-ref inst 'instanceId \"?\")\n               \" \" (or (instance-tag inst \"Name\") \"-\")))\n  instances)",
+    "notes": "All hashtable keys are Chez symbols, not strings. Use hashtable-ref (not hash-ref) because these are native Chez equal-hashtables. reservationSet and instancesSet may be a single hash (not a list) when there's exactly one item — always normalize with (if (list? x) x (list x)). tagSet has the same single-vs-list issue. Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN env vars or ~/.aws/credentials. The EC2Client constructor takes 'region: keyword arg."
+  },
+  {
+    "id": "jemacs-spawn-worker-ui-queue",
+    "title": "Background worker delivering results to jemacs UI thread via ui-queue-push!",
+    "tags": [
+      "async",
+      "spawn-worker",
+      "ui-queue-push",
+      "thread",
+      "background",
+      "jemacs"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; jemacs pattern: spawn background work, deliver result back to UI thread\n;; spawn-worker: runs thunk in a background thread (non-blocking)\n;; ui-queue-push!: schedules a thunk to run on the Qt/UI main thread\n\n;; Counter for pending work (modified only from UI thread)\n(def *pending-count* 0)\n(def *results* '())\n\n(def (fetch-all-items! items callback)\n  (set! *pending-count* (length items))\n  (set! *results* '())\n  (for-each\n    (lambda (item)\n      (spawn-worker 'fetch-item\n        (lambda ()\n          ;; This runs on a background thread — can do blocking I/O\n          (with-catch\n            (lambda (e)\n              ;; On error: return to UI thread to decrement counter\n              (ui-queue-push!\n                (lambda ()\n                  (set! *pending-count* (- *pending-count* 1))\n                  (check-complete! callback))))\n            (lambda ()\n              (let ((result (do-blocking-work item)))\n                ;; Deliver result to UI thread\n                (ui-queue-push!\n                  (lambda ()\n                    (set! *results* (cons result *results*))\n                    (set! *pending-count* (- *pending-count* 1))\n                    (check-complete! callback))))))))\n    items))\n\n(def (check-complete! callback)\n  ;; Called from UI thread — safe to access UI state\n  (when (= *pending-count* 0)\n    (callback *results*)))",
+    "notes": "CRITICAL: *pending-count* and *results* must only be read/written from within ui-queue-push! thunks (UI thread). Never mutate shared state directly from spawn-worker — only from ui-queue-push! callbacks. with-catch around the background work ensures the counter decrements even on error, preventing a permanent \"loading\" state. This pattern drives aws-ec2-ssh mode fetching EC2 instances across 16 regions in parallel."
+  },
+  {
+    "id": "static-vendor-module-override",
+    "title": "Override a third-party module for static binary compatibility via vendor/",
+    "tags": [
+      "static",
+      "vendor",
+      "override",
+      "load-shared-object",
+      "JEMACS_STATIC",
+      "build"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Pattern: vendor/chez-ssl-static.sls\n;; Copy the upstream module's .sls to vendor/, then guard load-shared-object\n;; so the static binary skips it (symbols already registered via Sforeign_symbol).\n\n;; In vendor/chez-ssl-static.sls (library declaration matches original):\n;; (library (chez-ssl) ...)\n;;   ...same body as upstream...\n;;   BUT replace:\n;;     (load-shared-object \"libssl.so\")\n;;     (load-shared-object \"libcrypto.so\")\n;;     (load-shared-object \"chez_ssl_shim.so\")\n;;   WITH:\n\n(define load-libs\n  (let ([static (getenv \"JEMACS_STATIC\")])\n    (if (and static\n             (not (string=? static \"\"))\n             (not (string=? static \"0\")))\n      (void)   ;; static binary: symbols pre-registered, skip load\n      (begin\n        (load-shared-object \"libssl.so\")\n        (load-shared-object \"libcrypto.so\")\n        (load-shared-object \"chez_ssl_shim.so\")))))\n\n;; The static binary sets JEMACS_STATIC=1 in the build script.\n;; The override file lives in vendor/ which comes BEFORE the upstream\n;; lib dir in --libdirs, so it shadows the original.\n\n;; In Makefile, add vendor/ to LIBDIRS before the upstream path:\n;;   LIBDIRS = vendor:$(CSSL):...\n;;\n;; In Docker container setup, copy the override into place:\n;;   cp vendor/chez-ssl-static.sls /deps/chez-ssl/src/chez-ssl.sls",
+    "notes": "Use this when a third-party library calls load-shared-object at module load time and you can't modify the upstream source. The override file is only compiled into the Docker container — development mode still uses the upstream. The JEMACS_STATIC check is a 3-way guard: (and static (not empty) (not \"0\")) so unsetting the var reverts to dynamic loading. Alpine's openssl-dev only ships shared .so files — if you need static libssl.a, you must build OpenSSL from source inside the container. See also: chez-load-shared-object-static for the simpler guard-only pattern."
   }
 ]

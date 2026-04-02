@@ -574,5 +574,42 @@
       "foreign-alloc",
       "type-mismatch"
     ]
+  },
+  {
+    "id": "qt-double-free-parent-child",
+    "title": "Qt parent-child double-free: explicit child destroy after parent destroy",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "qt-widget-destroy![\\s\\S]{0,200}qt-widget-destroy!",
+    "message": "Two qt-widget-destroy! calls in close proximity may double-free a Qt child widget. Qt automatically destroys all children when a parent QObject/QWidget is destroyed. Explicitly destroying a child after its parent has been destroyed causes a double-free SIGSEGV (appears as QBindingStorage::clear() crash in Qt 6).",
+    "remediation": "Before destroying a parent widget, set the child variable to #f so any subsequent conditional destroy is skipped. Example: (set! container #f) before (qt-widget-destroy! parent-spl). Guard all child destroy calls with (when child ...) and clear the variable before destroying the parent.",
+    "related_recipe": "thread-sleep-prelude-script",
+    "tags": [
+      "qt",
+      "double-free",
+      "widget",
+      "sigsegv",
+      "parent-child",
+      "ownership"
+    ]
+  },
+  {
+    "id": "subprocess-crypto-openssl-dgst",
+    "title": "Subprocess openssl dgst for cryptographic operations",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "open-process-ports.*openssl.*dgst|open-process.*openssl.*dgst|async-process.*openssl.*dgst",
+    "message": "Calling `openssl dgst` via subprocess for SHA256/HMAC is unsafe: (1) vulnerable to PATH hijacking if attacker controls PATH, (2) fails in static binaries where subprocess spawning may be disabled, (3) leaks HMAC key material as a command-line argument visible in /proc, (4) high overhead for bulk operations.",
+    "remediation": "Use (std crypto native) instead: (native-digest 'sha256 data) for hashing, (native-hmac-sha256 key data) for HMAC. Both accept strings or bytevectors. For static builds, ensure (std crypto native) is included in the WPO boot file list.",
+    "related_recipe": "std-crypto-native-sha256-hmac",
+    "tags": [
+      "crypto",
+      "subprocess",
+      "openssl",
+      "hmac",
+      "sha256",
+      "static",
+      "path-injection"
+    ]
   }
 ]
