@@ -23,9 +23,9 @@ npm run build
 npm start
 ```
 
-### MCP Client Configuration
+### Claude Code
 
-Add to your MCP client config (e.g. Claude Code `settings.json`):
+Add to your Claude Code `settings.json`:
 
 ```json
 {
@@ -36,6 +36,67 @@ Add to your MCP client config (e.g. Claude Code `settings.json`):
     }
   }
 }
+```
+
+### OpenCode
+
+OpenCode reads MCP configuration from `opencode.json` files. Configuration is merged from multiple sources in priority order:
+
+1. **Global config**: `~/.config/opencode/opencode.json`
+2. **Project-local config**: `opencode.json` in the project root (or walked up from cwd)
+3. **Project `.opencode/` directory**: `.opencode/opencode.json`
+
+#### Global setup (all projects)
+
+Create or edit `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "jerboa": {
+      "type": "local",
+      "command": ["node", "/absolute/path/to/jerboa-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+#### Project-local setup (single project)
+
+Create `opencode.json` in your project root:
+
+```json
+{
+  "mcp": {
+    "jerboa": {
+      "type": "local",
+      "command": ["node", "/absolute/path/to/jerboa-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+To verify the configuration is loaded, run `opencode debug config` and check that the `mcp` section includes the `jerboa` entry.
+
+To auto-load Jerboa-specific instructions, copy the example file to your project:
+
+```sh
+mkdir -p .opencode
+cp /path/to/jerboa-mcp/CLAUDE.md.jerboa-example .opencode/AGENTS.md
+```
+
+Or for global instructions across all projects:
+
+```sh
+cp /path/to/jerboa-mcp/CLAUDE.md.jerboa-example ~/.config/opencode/AGENTS.md
+```
+
+### Other MCP clients
+
+Any MCP-compatible client can connect using the stdio transport. The server reads JSON-RPC from stdin and writes to stdout:
+
+```sh
+node /path/to/jerboa-mcp/dist/index.js
 ```
 
 ## Tool Categories
