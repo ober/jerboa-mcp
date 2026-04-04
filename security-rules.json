@@ -267,7 +267,7 @@
     "scope": "scheme",
     "pattern": "\\((?:system|open-output-file|open-input-file|delete-file)\\s+(?!.*check-untainted|.*safe-)",
     "message": "Dangerous operation (system, file I/O, delete) called with potentially tainted user input without a taint check.",
-    "remediation": "Use safe-open-input-file, safe-open-output-file, safe-system, safe-delete-file from (std security taint). These automatically reject tainted values."
+    "remediation": "Validate and sanitize file paths before use. For system() calls, prefer run-process with an argument list to avoid shell injection. For file operations, verify the path does not escape expected directories."
   },
   {
     "id": "direct-chezscheme-import-user-code",
@@ -357,7 +357,7 @@
     "scope": "scheme",
     "pattern": "\\(fasl-read\\s",
     "message": "Raw fasl-read can deserialize arbitrary objects including procedures. An attacker who controls the FASL input can inject executable closures that run when the object is used. This is equivalent to pickle deserialization attacks in Python.",
-    "remediation": "Use (std safe-fasl) safe-fasl-read instead, which validates the deserialized object graph and rejects procedures and unregistered record types. Register expected record types with register-safe-record-type!. Set *fasl-max-object-count* and *fasl-max-byte-size* to prevent billion-laughs attacks."
+    "remediation": "Never fasl-read data from untrusted sources. FASL is a serialization format for internal use only — treat it like pickle in Python. If you must deserialize external data, use JSON or another safe format. For trusted internal FASL (boot files, caches), ensure the source is integrity-checked (e.g., HMAC or embedded)."
   },
   {
     "id": "resource-no-cleanup",

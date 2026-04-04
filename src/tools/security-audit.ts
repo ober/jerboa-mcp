@@ -113,7 +113,7 @@ const AUDIT_RULES: Array<{
       return !surrounding.includes('restrict') && !surrounding.includes('sandbox');
     },
     message: 'copy-environment without restrict. The copied environment inherits all bindings including dangerous ones.',
-    remediation: 'Use (restrict env allowed-symbols) after copy-environment to limit available bindings.',
+    remediation: 'After copy-environment, manually remove dangerous bindings (system, eval, load, foreign-procedure) from the environment, or use (eval expr (environment \'(only (rnrs) ...))) with an explicit allowlist.',
   },
   // Privilege separation
   {

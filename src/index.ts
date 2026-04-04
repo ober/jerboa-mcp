@@ -97,7 +97,7 @@ import { registerMacroPatternDetectorTool } from './tools/macro-pattern-detector
 import { registerBoilerplateConverterTool } from './tools/boilerplate-converter.js';
 import { registerMacroTemplateLibraryTool } from './tools/macro-template-library.js';
 import { registerSignalTraceTool } from './tools/signal-trace.js';
-import { registerEventSystemGuideTool } from './tools/event-system-guide.js';
+// REMOVED: event-system-guide — static docs disguised as a tool, not actual analysis
 import { registerStaleStaticTool } from './tools/stale-static.js';
 import { registerProjectHealthCheckTool } from './tools/project-health-check.js';
 import { registerPackageInfoTool } from './tools/package-info.js';
@@ -118,8 +118,8 @@ import { registerBinaryHardeningCheckTool } from './tools/binary-hardening-check
 import { registerPatchFileValidatorTool } from './tools/patch-file-validator.js';
 import { registerPreludeExportDiffTool } from './tools/prelude-export-diff.js';
 import { registerBatchCommandScaffoldTool } from './tools/batch-command-scaffold.js';
-import { registerQtOwnershipLintTool } from './tools/qt-ownership-lint.js';
-import { registerFaceRegistryDebugTool } from './tools/face-registry-debug.js';
+// REMOVED: qt-ownership-lint — Qt/C++ tool, irrelevant to Scheme language server
+// REMOVED: face-registry-debug — Emacs face registry tool, irrelevant to Scheme language server
 import { registerScreenshotDiffTool } from './tools/screenshot-diff.js';
 
 const INSTRUCTIONS = `You have access to a live Jerboa Scheme environment via this MCP server. Use these tools proactively when working with Jerboa Scheme code.
@@ -597,8 +597,7 @@ registerSignalTraceTool(server);
 // Tracing
 registerTraceEvalTool(server);
 
-// Concurrency and event guide
-registerEventSystemGuideTool(server);
+// REMOVED: registerEventSystemGuideTool (static docs, not a real tool)
 
 // Feature tracking
 registerSuggestFeatureTool(server);
@@ -626,8 +625,8 @@ registerMtlsCertGenerateTool(server);
 
 // Debugging
 registerCommandTraceTool(server);
-registerQtOwnershipLintTool(server);
-registerFaceRegistryDebugTool(server);
+// REMOVED: registerQtOwnershipLintTool (Qt/C++ — wrong domain)
+// REMOVED: registerFaceRegistryDebugTool (Emacs — wrong domain)
 registerScreenshotDiffTool(server);
 registerVerifyStaticBinaryTool(server);
 registerBinaryHardeningCheckTool(server);
