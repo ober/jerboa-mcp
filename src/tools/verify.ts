@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runChez, buildSyntaxCheckScript, ERROR_MARKER, VALID_MARKER } from '../chez.js';
 import { readFile } from 'node:fs/promises';
+import { injectHallucinationHints } from './shared-hallucinations.js';
 
 export function registerVerifyTool(server: McpServer): void {
   server.registerTool(
@@ -46,12 +47,14 @@ export function registerVerifyTool(server: McpServer): void {
       const errorIdx = stdout.indexOf(ERROR_MARKER);
       if (errorIdx !== -1) {
         const errorMsg = stdout.slice(errorIdx + ERROR_MARKER.length).trim();
-        return { content: [{ type: 'text' as const, text: `✗ ${label}:\n${errorMsg}` }], isError: true };
+        const hintMsg = injectHallucinationHints(errorMsg);
+        return { content: [{ type: 'text' as const, text: `✗ ${label}:\n${hintMsg}` }], isError: true };
       }
 
       const errOut = result.stderr.trim();
       if (errOut) {
-        return { content: [{ type: 'text' as const, text: `✗ ${label}:\n${errOut}` }], isError: true };
+        const hintErrOut = injectHallucinationHints(errOut);
+        return { content: [{ type: 'text' as const, text: `✗ ${label}:\n${hintErrOut}` }], isError: true };
       }
 
       return { content: [{ type: 'text' as const, text: `Unexpected output:\n${stdout.trim()}` }], isError: true };

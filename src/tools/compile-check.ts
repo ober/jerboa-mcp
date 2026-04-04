@@ -8,6 +8,7 @@ import {
   VALID_MARKER,
 } from '../chez.js';
 import { readFile } from 'node:fs/promises';
+import { injectHallucinationHints } from './shared-hallucinations.js';
 
 /**
  * Detect whether source code should use the Chez reader instead of jerboa-read.
@@ -105,12 +106,14 @@ export function registerCompileCheckTool(server: McpServer): void {
       const errorIdx = stdout.indexOf(ERROR_MARKER);
       if (errorIdx !== -1) {
         const errorMsg = stdout.slice(errorIdx + ERROR_MARKER.length).trim();
-        return { content: [{ type: 'text' as const, text: `Error (mode: ${mode}):\n${errorMsg}` }], isError: true };
+        const hintMsg = injectHallucinationHints(errorMsg);
+        return { content: [{ type: 'text' as const, text: `Error (mode: ${mode}):\n${hintMsg}` }], isError: true };
       }
 
       const errOut = result.stderr.trim();
       if (errOut) {
-        return { content: [{ type: 'text' as const, text: `Error (mode: ${mode}):\n${errOut}` }], isError: true };
+        const hintErrOut = injectHallucinationHints(errOut);
+        return { content: [{ type: 'text' as const, text: `Error (mode: ${mode}):\n${hintErrOut}` }], isError: true };
       }
 
       return { content: [{ type: 'text' as const, text: `Unexpected output (mode: ${mode}):\n${stdout.trim()}` }], isError: true };
