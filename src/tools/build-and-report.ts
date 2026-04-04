@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runMake } from '../chez.js';
+import { injectHallucinationHints } from './shared-hallucinations.js';
 
 interface Diagnostic {
   file?: string;
@@ -168,7 +169,7 @@ export function registerBuildAndReportTool(server: McpServer): void {
       if (diagnostics.length > 0) {
         parts.push('');
         for (const d of diagnostics) {
-          parts.push(formatDiagnostic(d));
+          parts.push(injectHallucinationHints(formatDiagnostic(d)));
         }
       }
 
