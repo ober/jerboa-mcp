@@ -46,7 +46,7 @@ Enables Jerboa's extended reader macros:
 
 ;; Now you can write:
 {name "Alice" age 30}   ; => hash table
-[1 2 3]                  ; => list (1 2 3)
+;; Brackets are plain parens (like Gerbil/Chez), use freely in let/match/cond
 ```
 
 ### `(jerboa core)` — Core Macros Only

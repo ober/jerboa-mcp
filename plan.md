@@ -40,7 +40,7 @@ scheme --libdirs lib --script your-file.ss
 ```
 
 **Architecture layers:**
-1. Reader: `[1 2 3]` → `(list ...)`, `{method obj}` → `(~ obj method)`, `:std/sort` → `(std sort)`
+1. Reader: `[...]` = plain parens (like Gerbil/Chez), `{method obj}` → `(~ obj method)`, `:std/sort` → `(std sort)`
 2. Core macros: `def`, `defstruct`, `match`, `try/catch` → standard Chez
 3. Runtime: hash tables, method dispatch, keywords
 4. Standard library: sort, JSON, paths, strings, crypto, net, db, etc.
@@ -1176,7 +1176,7 @@ All pure TS, no Chez subprocess needed.
 10. `assertion-violation` — check preconditions
 11. `hash-ref-missing-key` — returns #!void (not error) → use hash-get with default
 12. `keyword-mismatch` — positional vs keyword confusion
-13. `reader-bracket-error` — need jerboa reader for `[...]` syntax
+13. `reader-bracket-error` — brackets are plain parens (like Gerbil/Chez), no special reader needed
 14. `foreign-procedure-error` — FFI type mismatch
 15. `condition-handler` — guard vs with-exception-handler patterns
 
