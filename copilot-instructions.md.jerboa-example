@@ -24,21 +24,20 @@ Run with: `scheme --libdirs lib --script file.ss`
 ### Reader Syntax Extensions
 
 ```
-[1 2 3]              → (list 1 2 3)     — ALWAYS becomes list, NOT binding forms
+[...]                → plain parentheses — same as Gerbil and Chez Scheme
 {method obj args}    → (~ obj 'method args)  — method dispatch
 name:                → keyword #:name
 :std/sort            → (std sort)        — Gerbil-style module path
 #<<END ... END       → heredoc string
 ```
 
-**CRITICAL**: Because `[...]` becomes `(list ...)`, macros like `for/collect` and `match` use `((...))` not `([...])` when run through the Jerboa reader:
+Square brackets `[...]` are interchangeable with `(...)`, exactly like Gerbil and stock Chez Scheme. You can freely use them in bindings, match clauses, and anywhere you'd use parentheses:
 ```scheme
-;; CORRECT in .ss files:
-(for/collect ((x (in-range 5))) (* x x))
-(match val ((list a b) (+ a b)))
-
-;; WRONG — [ ] becomes (list ...) and breaks the macro:
-;; (for/collect ([x (in-range 5)]) (* x x))
+;; All of these are correct:
+(let ([x 1] [y 2]) (+ x y))
+(for/collect ([x (in-range 5)]) (* x x))
+(match val ([list a b] (+ a b)))
+(cond [(> x 0) "positive"] [else "non-positive"])
 ```
 
 ### CRITICAL: Things That DO NOT EXIST in Chez Scheme
