@@ -421,5 +421,70 @@
     "example_scenario": "User asks: \"what does ~/mine/emacs-libgterm offer over our current vterm?\" Required: exploring both repos with separate Explore agents (two parallel subagent spawns, ~3000 tokens combined), then manually synthesizing the comparison. A dedicated tool taking two paths and a topic would return a structured table in one call.",
     "estimated_token_reduction": "~2000 tokens per comparison — replaces two parallel Explore agent spawns and manual synthesis",
     "votes": 0
+  },
+  {
+    "id": "ai-prompt-to-jerboa-code",
+    "title": "jerboa_prompt_to_code: Generate verified Jerboa from natural language prompts",
+    "description": "Tool that takes pseudocode/prompts, generates Jerboa via LLM, then verifies with eval/syntax_check/verify loop, iterating until passing. Outputs working .ss snippet.",
+    "impact": "high",
+    "tags": [
+      "ai",
+      "codegen",
+      "verification",
+      "prompt"
+    ],
+    "use_case": "AI assistants generating safe, executable Scheme from user descriptions without manual fixes.",
+    "example_scenario": "User: \"Write a function to sort a list and compute sum.\" Tool: Generates def/sort/sum code, verifies, returns verified snippet.",
+    "estimated_token_reduction": "~800 tokens per code gen session (auto-verify reduces back-and-forth).",
+    "votes": 0
+  },
+  {
+    "id": "jerboa-ai-scaffold-ml",
+    "title": "jerboa_ai_scaffold: Generate ML/AI patterns from Rust crates",
+    "description": "Scaffold Jerboa FFI wrappers for Rust ML libs (e.g., tch-rs tensors, ndarray stats); auto-generates safe bindings with type checks and examples.",
+    "impact": "high",
+    "tags": [
+      "ai",
+      "ml",
+      "ffi",
+      "rust",
+      "scaffold"
+    ],
+    "use_case": "Prototyping AI models in Jerboa without manual FFI boilerplate.",
+    "example_scenario": "User: \"Scaffold tensor ops from tch-rs.\" Tool: Generates foreign-procedure defs, safe wrappers, test suite.",
+    "estimated_token_reduction": "~1200 tokens (avoids explaining/generating FFI from scratch).",
+    "votes": 0
+  },
+  {
+    "id": "jerboa-parallel-tool-batch",
+    "title": "Enhance parallel tool execution for multi-step AI reasoning",
+    "description": "Allow batching 5+ independent tools in one call (e.g., lint + verify + security_scan); return structured results for faster AI workflows.",
+    "impact": "medium",
+    "tags": [
+      "parallel",
+      "batch",
+      "performance",
+      "ai"
+    ],
+    "use_case": "AI analyzing codebases: Run full audit (syntax, deps, security) in one round-trip.",
+    "example_scenario": "Batch: verify + dead_code + import_policy_check on project; AI gets all results at once.",
+    "estimated_token_reduction": "~400 tokens (fewer sequential calls).",
+    "votes": 0
+  },
+  {
+    "id": "jerboa-semantic-search-stdlib",
+    "title": "jerboa_semantic_search: Embeddings-based search over stdlib and cookbooks",
+    "description": "Vector search for functions/patterns by intent (e.g., \"safe file read\"); uses simple embeddings on docstrings/exports for code discovery.",
+    "impact": "high",
+    "tags": [
+      "search",
+      "semantic",
+      "ai",
+      "discovery"
+    ],
+    "use_case": "AI finding relevant APIs without exact name knowledge.",
+    "example_scenario": "Query: \"Handle JSON errors safely.\" Returns: json-parse with try/catch examples from cookbook.",
+    "estimated_token_reduction": "~600 tokens (reduces grep/howto trial-and-error).",
+    "votes": 0
   }
 ]

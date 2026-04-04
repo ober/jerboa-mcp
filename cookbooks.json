@@ -3592,5 +3592,21 @@
     "imports": [],
     "code": ";; When auditing a Jerboa project, run all 5 security tools IN PARALLEL\n;; for maximum coverage. Each tool catches different classes of issues.\n;;\n;; Step 1: Run these 5 MCP tools simultaneously (single message, parallel calls):\n;;\n;;   jerboa_security_audit    — Rules: eval-injection, deserialization,\n;;                              sanitization, taint, capability, injection\n;;   jerboa_import_policy_check — Detects (import (chezscheme)),\n;;                              inline foreign-procedure, load-shared-object\n;;   jerboa_unsafe_import_lint  — Warns on unsafe raw APIs, suggests safe-* wrappers\n;;   jerboa_resource_leak_check — Finds open-*-file, sqlite-open, tcp-*\n;;                              without with-resource/unwind-protect cleanup\n;;   jerboa_safe_prelude_check  — Counts unsafe API calls (system, bare read,\n;;                              open-input-file) and suggests safe alternatives\n;;\n;; Step 2: For C/FFI files, also run:\n;;   jerboa_security_scan     — Rules for bare-read-untrusted, missing-eintr-retry,\n;;                              direct-chezscheme-import, foreign-alloc-no-free,\n;;                              ftype-buffer-overflow, load-shared-object-crash-static\n;;\n;; Step 3: Prioritize findings:\n;;   CRITICAL = code execution (eval injection, bare read, FASL deser)\n;;   HIGH = data exposure (path traversal, missing taint, shell injection)\n;;   MEDIUM = reliability (resource leaks, unchecked dimensions)\n;;   LOW = best practices (bare error, unstructured conditions)\n;;\n;; Step 4: Write report to PROJECT_DIR/security-report-DATE.md with:\n;;   - Executive summary (total counts by severity)\n;;   - Per-category sections with file:line references\n;;   - Positive security measures observed\n;;   - Prioritized recommendations (immediate/short-term/medium-term)\n;;   - Scope limitations (what was NOT tested)",
     "notes": "The key insight is running ALL 5 tools in a SINGLE message with parallel tool calls. This is ~3x faster than sequential and catches complementary issue classes. jerboa_security_audit is the broadest (12 rules, 1000+ findings typical). jerboa_resource_leak_check catches the most actionable issues for production use. jerboa_import_policy_check is essential for projects that enforce the Jerboa capability system. Always review C files manually for EINTR, explicit_bzero usage, and memfd sealing — these are not caught by the Scheme-level tools."
+  },
+  {
+    "id": "analyze-jerboa-for-ai",
+    "title": "Analyze Jerboa language for AI coding assistance",
+    "tags": [
+      "jerboa",
+      "ai",
+      "analysis",
+      "improvements",
+      "ml-integration"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": "(def (analyze-jerboa-for-ai)\n  (displayln \"Jerboa strengths: concise macros, prelude, Rust FFI.\")\n  (displayln \"Suggestions: Add ML crates via native backend, AI code gen tools.\"))",
+    "notes": "Use for reviewing Jerboa ecosystem; extend with semantic search over stdlib."
   }
 ]
