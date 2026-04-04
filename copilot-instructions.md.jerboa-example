@@ -40,11 +40,11 @@ Square brackets `[...]` are interchangeable with `(...)`, exactly like Gerbil an
 (cond [(> x 0) "positive"] [else "non-positive"])
 ```
 
-### CRITICAL: Things That DO NOT EXIST in Chez Scheme
+### AI Compatibility Aliases (these now work in the prelude)
+- `hash-has-key?`, `hash-table-set!`, `directory-exists?`, `eql?`, `random-integer`, `read-line`, `force-output`, `string-map` — all aliased to their Jerboa equivalents.
 
-Claude frequently hallucinates these — **NONE of them are real**:
+### CRITICAL: Things That Still DO NOT EXIST
 - `symbol<?` — use `(lambda (a b) (string<? (symbol->string a) (symbol->string b)))`
-- `hash-has-key?` — use `(hash-key? ht key)`
 - `string-contains?` — use `(string-contains str sub)` (returns index or #f)
 - `define-struct` — use `(defstruct name (fields ...))`
 - `raise` with a string — use `(error 'who "message" irritants ...)`

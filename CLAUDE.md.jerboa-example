@@ -45,36 +45,39 @@ Square brackets `[...]` are interchangeable with `(...)`, exactly like Gerbil an
 Claude frequently hallucinates these from Gerbil, Gambit, Racket, or R7RS training data.
 **NONE of them are real in Jerboa/Chez. STOP and use the correct form.**
 
-#### Hallucinated Functions (never existed)
+#### AI Compatibility Aliases (these now work in the prelude)
+The following names from other Scheme dialects are aliased in `(jerboa prelude)`:
+- `hash-has-key?` → `hash-key?` (Racket)
+- `hash-table-set!` → `hash-put!` (Racket)
+- `directory-exists?` → `file-directory?` (Gambit)
+- `eql?` → `eqv?` (Common Lisp)
+- `random-integer` → `random` (Gambit)
+- `read-line` → `get-line` wrapper (Gambit) — works with or without port arg
+- `force-output` → `flush-output-port` wrapper (Gambit) — works with or without port arg
+- `string-map` → char-level map (Racket/R7RS) — `(string-map f str)`
+
+#### Hallucinated Functions (still do NOT exist)
 - `symbol<?` — use `(lambda (a b) (string<? (symbol->string a) (symbol->string b)))`
-- `hash-has-key?` — use `(hash-key? ht key)`
 - `string-contains?` — use `(string-contains str sub)` (returns index or #f, NOT boolean)
 - `define-struct` — use `(defstruct name (fields ...))`
 - `raise` with a string — use `(error 'who "message" irritants ...)`
-- `string-map` — NOT in Chez. Use `(list->string (map f (string->list s)))`
-- `eql?` — Common Lisp. Use `eqv?` in Chez
 - `environment-bound?` — Gerbil-only. No direct Chez equivalent
-- `directory-exists?` — Gambit. Use `(file-directory? path)` in Chez
 
 #### Gerbil/Gambit-isms (from training data — wrong in Jerboa)
 - `time->seconds` — use `(time-second (current-time))` for epoch seconds
 - `thread-sleep!` — Gambit. Use `(sleep (make-time 'time-duration 0 seconds))`
 - `thread-yield` — no Chez equivalent. Use `(sleep (make-time 'time-duration 0 0))` as workaround
-- `read-line` — Gambit. Use `(get-line port)` in Chez
 - `path-expand` with 2 args — Gerbil takes `(path-expand rel base)`. Jerboa takes 1 arg. Use `(path-join base rel)` for 2-arg version
 - `process-status` — Gerbil. Use `(std misc process)` API in Jerboa
 - `user-info-home` — Gerbil. Use `(getenv "HOME")`
 - `the-environment` — Gerbil. Use `(interaction-environment)` in Chez
 - `condition/report-string` — Gerbil. Use `(with-output-to-string (lambda () (display-condition c)))`
-- `force-output` — Gambit. Use `(flush-output-port port)` in Chez
 - `make-class-type` — Gerbil. Use `(defstruct ...)` or `(defclass ...)` in Jerboa
 - `string-subst` — Gerbil. Not in prelude. Use `(string-replace str old new)` or implement manually
-- `random-integer` — Gambit. Use `(random n)` in Chez
 - `open-fd-pair` — Gambit. Does not exist in Chez; requires different API
 
 #### R6RS/Racket-isms (wrong variant)
 - `make-equal-hashtable` — R6RS. Use `(make-hash-table)` from Jerboa prelude
-- `hash-table-set!` — Racket. Use `(hash-put! ht key val)` in Jerboa
 - `arithmetic-shift` — Racket. Use `(bitwise-arithmetic-shift n k)` or `(ash n k)` in Chez
 - `pregexp-match` — Racket. Use `(std text regex)` or `(std pregexp)` API in Jerboa
 
