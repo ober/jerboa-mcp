@@ -112,15 +112,19 @@ import { registerResourceLeakCheckTool } from './tools/resource-leak-check.js';
 import { registerSafePreludeGeneratorTool } from './tools/safe-prelude-generator.js';
 import { registerSandboxParityTool } from './tools/sandbox-parity.js';
 import { registerMtlsCertGenerateTool } from './tools/mtls-cert-generate.js';
-import { registerCommandTraceTool } from './tools/command-trace.js';
 import { registerVerifyStaticBinaryTool } from './tools/verify-static-binary.js';
 import { registerBinaryHardeningCheckTool } from './tools/binary-hardening-check.js';
-import { registerPatchFileValidatorTool } from './tools/patch-file-validator.js';
 import { registerPreludeExportDiffTool } from './tools/prelude-export-diff.js';
-import { registerBatchCommandScaffoldTool } from './tools/batch-command-scaffold.js';
+import { registerPreludeShadowDetectTool } from './tools/prelude-shadow-detect.js';
+import { registerCrossRepoCompareTool } from './tools/cross-repo-compare.js';
+import { registerBatchAuditTool } from './tools/batch-audit.js';
+import { registerStdlibSearchTool } from './tools/stdlib-search.js';
+// REMOVED: command-trace — IPC REPL tool for jerboa-emacs, not a Scheme language server tool
+// REMOVED: patch-file-validator — build script patching tool for jerboa-emacs
+// REMOVED: batch-command-scaffold — editor command scaffolding for jerboa-emacs
+// REMOVED: screenshot-diff — Qt automation tool for jerboa-emacs
 // REMOVED: qt-ownership-lint — Qt/C++ tool, irrelevant to Scheme language server
 // REMOVED: face-registry-debug — Emacs face registry tool, irrelevant to Scheme language server
-import { registerScreenshotDiffTool } from './tools/screenshot-diff.js';
 
 const INSTRUCTIONS = `You have access to a live Jerboa Scheme environment via this MCP server. Use these tools proactively when working with Jerboa Scheme code.
 
@@ -308,15 +312,24 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 - jerboa_rust_musl_build: Automates building Rust static libraries for the musl target. Detects rustup toolchain, verifies target installation, sets CC=musl-gcc, runs cargo build. Reports output .a path. Use when integrating Rust crates into Chez static binaries.
 - jerboa_static_symbol_audit: Cross-references Sforeign_symbol() registration calls in C entry points against actual symbols from linked .a/.o files (via nm). Detects missing registrations (causes runtime "foreign-procedure not found") and dead registrations.
 - jerboa_boot_library_audit: Audits a Chez static build script's library list against the transitive import closure. Detects missing libraries (causes runtime "library not found") and dead-weight libraries (increase binary size without being used).
+- jerboa_verify_static_binary: Run a static binary with a flag (--version or custom) and verify it exits cleanly without Chez exceptions or segfaults. Catches missing library errors and WPO reference failures that only manifest at runtime.
+- jerboa_binary_hardening_check: Read an ELF binary and report security hardening status: PIE, Full RELRO, stack canaries, NX stack, CET. Returns pass/fail per property with remediation advice.
+
+## Language Diagnostics
+
+- jerboa_prelude_shadow_detect: Detect when (jerboa prelude) shadows a Chez builtin with incompatible semantics. Known breaking shadows: make-time (arg semantics inverted — prelude takes year/month/day, Chez takes type/ns/secs), sort/sort! (arg order inverted — prelude takes pred-first, Chez takes list-first), make-date. Provide a symbol name, code to scan, or list_all to see all shadows. Returns Chez vs Jerboa version, common mistake, and bypass pattern.
 
 ## Cross-Platform Tools
 
 - jerboa_sandbox_parity: Compares sandbox capabilities across Linux (seccomp/Landlock), FreeBSD (Capsicum), and macOS (Seatbelt) by introspecting actual module exports. Reports feature parity gaps and platform-specific capabilities.
 - jerboa_mtls_cert_generate: Generates self-signed Ed25519 (or RSA/EC) certificate and private key for mTLS testing. Returns file paths and example Jerboa code for rustls-server-ctx-new-mtls and rustls-connect-mtls.
 
-## Debugging Tools
 
-- jerboa_command_trace: Traces the dispatch path for a given editor command. Analyzes cmd-* function definitions to show cond/match branches, predicates tested, and which branch fires for a given buffer type. Helps diagnose "why does command X do nothing?" issues.
+## Analysis Utilities
+
+- jerboa_cross_repo_compare: Compare two module or file implementations side-by-side. Takes two file paths or Jerboa module paths, returns: exports unique to each, shared exports, definition counts, import lists, and a summary verdict. Useful for evaluating two libraries or auditing API parity.
+- jerboa_batch_audit: Run balance + lint + security_scan + import-conflict-detection in parallel for a project. Returns combined report with section headers, per-check issue counts, and overall health score. More comprehensive than jerboa_verify; complementary to jerboa_project_health_check.
+- jerboa_stdlib_search: Intent-based search over Jerboa's stdlib modules and cookbook recipes. Answers "what module/recipe do I use for X?" — e.g. "parse JSON", "safe file read", "concurrent threads", "sort list". Returns ranked module paths with key exports and matching cookbook entries.
 
 ## Feature Tracking
 
@@ -341,9 +354,12 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 - **Security audit**: jerboa_security_audit → jerboa_import_policy_check → jerboa_unsafe_import_lint
 - **Static build audit**: jerboa_static_symbol_audit → jerboa_boot_library_audit → jerboa_rust_musl_build
 - **Safe-by-default check**: jerboa_safe_prelude_check → jerboa_resource_leak_check → jerboa_safe_prelude_generate
-- **Debug editor command**: jerboa_command_trace with project_path and buffer_type
 - **Port from Gerbil**: jerboa_migration_check → jerboa_translate_scheme → jerboa_verify → jerboa_check_syntax
 - **Check project health**: jerboa_project_health_check → fix issues → jerboa_build_and_report
+- **Full project audit**: jerboa_batch_audit → fix errors → jerboa_project_health_check
+- **Find module for task**: jerboa_stdlib_search → jerboa_module_exports → jerboa_howto
+- **Compare two libs**: jerboa_cross_repo_compare → jerboa_module_quickstart for the winner
+- **Diagnose shadow error**: jerboa_prelude_shadow_detect → use bypass pattern or Jerboa version
 - **Learn a module**: jerboa_stdlib_source → jerboa_module_catalog → jerboa_module_quickstart
 - **Debug error**: jerboa_error_fix_lookup → jerboa_explain_error → jerboa_stack_trace_decode
 - **Write macros**: jerboa_howto "defrule" → write macro → jerboa_macro_hygiene_check → jerboa_macro_expansion_size
@@ -575,7 +591,6 @@ registerHttpdHandlerScaffoldTool(server);
 registerActorEnsembleScaffoldTool(server);
 registerDbPatternScaffoldTool(server);
 registerGracefulShutdownScaffoldTool(server);
-registerBatchCommandScaffoldTool(server);
 registerTranslateSchemeTool(server);
 
 // Performance
@@ -623,15 +638,25 @@ registerBootLibraryAuditTool(server);
 registerSandboxParityTool(server);
 registerMtlsCertGenerateTool(server);
 
-// Debugging
-registerCommandTraceTool(server);
-// REMOVED: registerQtOwnershipLintTool (Qt/C++ — wrong domain)
-// REMOVED: registerFaceRegistryDebugTool (Emacs — wrong domain)
-registerScreenshotDiffTool(server);
+// Static binary and hardening tools
+// REMOVED: registerCommandTraceTool (ipc-repl dispatch — jerboa-emacs only)
+// REMOVED: registerScreenshotDiffTool (Qt automation — jerboa-emacs only)
+// REMOVED: registerPatchFileValidatorTool (build script patching — jerboa-emacs only)
 registerVerifyStaticBinaryTool(server);
 registerBinaryHardeningCheckTool(server);
-registerPatchFileValidatorTool(server);
 registerPreludeExportDiffTool(server);
+
+// Prelude and language diagnostics
+registerPreludeShadowDetectTool(server);
+
+// Cross-implementation analysis
+registerCrossRepoCompareTool(server);
+
+// Batch audit
+registerBatchAuditTool(server);
+
+// Enhanced stdlib/cookbook search
+registerStdlibSearchTool(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

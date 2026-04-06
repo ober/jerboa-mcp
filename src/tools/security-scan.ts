@@ -79,7 +79,7 @@ const SKIP_DIRS = new Set([
   '.git', '.svn', 'node_modules', '.jerboa', '__pycache__', 'dist',
 ]);
 
-function loadSecurityRules(path: string): SecurityRule[] {
+export function loadSecurityRules(path: string): SecurityRule[] {
   try {
     const raw = readFileSync(path, 'utf-8');
     const parsed = JSON.parse(raw);
@@ -133,7 +133,7 @@ function hasUnwindProtect(lines: string[], lineIdx: number): boolean {
   return false;
 }
 
-function scanFileContent(
+export function scanFileContent(
   filePath: string,
   content: string,
   rules: SecurityRule[],

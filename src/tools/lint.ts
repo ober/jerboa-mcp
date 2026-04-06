@@ -7,7 +7,7 @@ import {
   type FileAnalysis,
 } from './parse-utils.js';
 
-interface LintDiagnostic {
+export interface LintDiagnostic {
   line: number | null;
   severity: 'error' | 'warning' | 'info';
   code: string;
@@ -55,6 +55,25 @@ const COMMON_STDLIB = new Set([
   'eq?',
   'eqv?',
 ]);
+
+/** Run all lint checks on source content and return diagnostics. */
+export function runLintChecks(filePath: string, content: string): LintDiagnostic[] {
+  const diagnostics: LintDiagnostic[] = [];
+  const analysis = parseDefinitions(content);
+  const lines = content.split('\n');
+  checkUnusedImports(content, analysis, diagnostics);
+  checkDuplicateDefinitions(analysis, diagnostics);
+  checkStyleIssues(lines, diagnostics);
+  checkShadowedBindings(analysis, diagnostics);
+  checkHashLiteralKeys(lines, diagnostics);
+  checkUnquoteOutsideQuasiquote(lines, diagnostics);
+  checkDotInBrackets(lines, diagnostics);
+  checkMissingExportedDefinitions(analysis, diagnostics);
+  checkUnsafeResourcePattern(lines, diagnostics);
+  checkCharByteIOMixing(lines, diagnostics);
+  checkMacroSuggestions(lines, diagnostics);
+  return diagnostics;
+}
 
 export function registerLintTool(server: McpServer): void {
   server.registerTool(
