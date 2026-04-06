@@ -71,7 +71,7 @@
   {
     "id": "jerboa-safe-prelude-default",
     "title": "Make safe APIs the default prelude exports",
-    "description": "The (jerboa prelude) should re-export safe-sqlite-open as sqlite-open, safe-tcp-connect as tcp-connect, etc. Claude and humans will always reach for the simplest import — if the safe version IS the default, nobody has to remember to use (std safe). Raw APIs should require explicit (import (std db sqlite-native)) opt-in.",
+    "description": "The (jerboa prelude) should re-export safe-sqlite-open as sqlite-open, safe-tcp-connect as tcp-connect, etc. Claude and humans will always reach for the simplest import \u2014 if the safe version IS the default, nobody has to remember to use (std safe). Raw APIs should require explicit (import (std db sqlite-native)) opt-in.",
     "impact": "critical",
     "tags": [
       "safety",
@@ -82,7 +82,7 @@
       "import"
     ],
     "use_case": "Every time Claude writes Jerboa code, it imports (jerboa prelude). If that gives it the safe APIs by default, all generated code is automatically type-checked and resource-safe without Claude knowing about the safety modules.",
-    "example_scenario": "Claude writes (import (jerboa prelude)) then (sqlite-open \"db\") — this silently calls safe-sqlite-open which validates types, and (with-resource ...) is the documented pattern. No separate (import (std safe)) needed.",
+    "example_scenario": "Claude writes (import (jerboa prelude)) then (sqlite-open \"db\") \u2014 this silently calls safe-sqlite-open which validates types, and (with-resource ...) is the documented pattern. No separate (import (std safe)) needed.",
     "estimated_token_reduction": 200,
     "votes": 1
   },
@@ -99,14 +99,14 @@
       "static-analysis"
     ],
     "use_case": "Code review automation. Before merging, lint catches unsafe patterns that Claude or humans introduced. Much cheaper than debugging runtime crashes.",
-    "example_scenario": "PR adds a module with (import (std net tcp-raw)). Lint says: 'WARNING: raw TCP import — use (std safe) safe-tcp-connect for type validation and port range checking'.",
+    "example_scenario": "PR adds a module with (import (std net tcp-raw)). Lint says: 'WARNING: raw TCP import \u2014 use (std safe) safe-tcp-connect for type validation and port range checking'.",
     "estimated_token_reduction": 400,
     "votes": 1
   },
   {
     "id": "safe-prelude-generator",
     "title": "Generate safe-by-default prelude module from unsafe module exports",
-    "description": "A tool that takes a list of unsafe modules and their safe wrapper module, then generates a prelude .ss file that re-exports the safe wrappers under the original (unsafe) names. Handles prefix stripping (safe-sqlite-open → sqlite-open), import/export generation, and excludes specified dangerous exports (c-lambda, foreign-procedure). Would automate the manual process of creating (jerboa prelude safe) style modules.",
+    "description": "A tool that takes a list of unsafe modules and their safe wrapper module, then generates a prelude .ss file that re-exports the safe wrappers under the original (unsafe) names. Handles prefix stripping (safe-sqlite-open \u2192 sqlite-open), import/export generation, and excludes specified dangerous exports (c-lambda, foreign-procedure). Would automate the manual process of creating (jerboa prelude safe) style modules.",
     "impact": "medium",
     "tags": [
       "prelude",
@@ -116,9 +116,9 @@
       "re-export",
       "generator"
     ],
-    "use_case": "When a project has raw FFI modules and safe wrapper modules, and wants to create a convenience prelude that shadows unsafe names with safe equivalents — common pattern for security-hardened Scheme libraries.",
+    "use_case": "When a project has raw FFI modules and safe wrapper modules, and wants to create a convenience prelude that shadows unsafe names with safe equivalents \u2014 common pattern for security-hardened Scheme libraries.",
     "example_scenario": "jerboa has (std db sqlite-native) with sqlite-open and (std safe) with safe-sqlite-open. Creating (jerboa prelude safe) required manually listing ~40 exports, writing define aliases for each (define sqlite-open safe:safe-sqlite-open), and carefully excluding raw FFI forms. A generator tool could produce this from a mapping spec in one call.",
-    "estimated_token_reduction": "~800 tokens per prelude module — eliminates manual export listing, alias writing, and import construction",
+    "estimated_token_reduction": "~800 tokens per prelude module \u2014 eliminates manual export listing, alias writing, and import construction",
     "votes": 0
   },
   {
@@ -161,7 +161,7 @@
   {
     "id": "compile-check-direct-module",
     "title": "compile_check should test module in isolation, not via prelude",
-    "description": "jerboa_compile_check currently seems to transitively import the prelude when checking a library. If the prelude itself has errors (e.g., invalid except clause), compile_check fails on unrelated modules like (std misc list) with the prelude's error. It should compile the target library in isolation, only loading its declared imports — not the full prelude chain. This would make compile_check reliable even when the prelude is broken.",
+    "description": "jerboa_compile_check currently seems to transitively import the prelude when checking a library. If the prelude itself has errors (e.g., invalid except clause), compile_check fails on unrelated modules like (std misc list) with the prelude's error. It should compile the target library in isolation, only loading its declared imports \u2014 not the full prelude chain. This would make compile_check reliable even when the prelude is broken.",
     "impact": "medium",
     "tags": [
       "compile-check",
@@ -178,7 +178,7 @@
   {
     "id": "compile-check-chez-reader",
     "title": "compile_check should use Chez reader for .sls files with #!chezscheme",
-    "description": "jerboa_compile_check uses the Jerboa reader (which converts [...] to (list ...)) even for .sls library files that start with #!chezscheme. This causes false compilation failures on any library using brackets in syntax-case patterns — including the existing (std typed) module. The tool should detect #!chezscheme at the top of a file and use the standard Chez reader instead of the Jerboa reader, matching what `scheme --libdirs` does at build time.",
+    "description": "jerboa_compile_check uses the Jerboa reader (which converts [...] to (list ...)) even for .sls library files that start with #!chezscheme. This causes false compilation failures on any library using brackets in syntax-case patterns \u2014 including the existing (std typed) module. The tool should detect #!chezscheme at the top of a file and use the standard Chez reader instead of the Jerboa reader, matching what `scheme --libdirs` does at build time.",
     "impact": "high",
     "tags": [
       "compile-check",
@@ -187,7 +187,7 @@
       "chezscheme",
       "sls"
     ],
-    "use_case": "When writing or modifying any .sls library that uses brackets in syntax-case, define-syntax, or let bindings — which is nearly all of them.",
+    "use_case": "When writing or modifying any .sls library that uses brackets in syntax-case, define-syntax, or let bindings \u2014 which is nearly all of them.",
     "example_scenario": "Writing lib/std/ergo.sls with a define-syntax using syntax-case and [(_ expr type) ...] patterns. jerboa_compile_check returns 'invalid syntax-case clause (list (_ expr type) ...)' because [...] was read as (list ...). Had to skip compile_check entirely and rely on make build, losing the fast feedback loop.",
     "estimated_token_reduction": "~200 tokens per compile-check call that fails spuriously, plus eliminates need to run bash make as workaround. Affects nearly every .sls file edit session.",
     "votes": 1
@@ -195,7 +195,7 @@
   {
     "id": "ipc-repl-command-trace",
     "title": "IPC REPL: trace command dispatch path for a given command name",
-    "description": "A tool or REPL helper that traces which branch of cmd-* dispatch fires for a given command in the current editor state — showing which buffer-type predicate matched, what guard conditions passed/failed, and which leaf function was called. Currently diagnosing \"why does backspace do nothing?\" requires manually querying (terminal-buffer? buf), (shell-buffer? buf), (hash-get *shell-state* buf) etc. one at a time via nc to the IPC REPL.",
+    "description": "A tool or REPL helper that traces which branch of cmd-* dispatch fires for a given command in the current editor state \u2014 showing which buffer-type predicate matched, what guard conditions passed/failed, and which leaf function was called. Currently diagnosing \"why does backspace do nothing?\" requires manually querying (terminal-buffer? buf), (shell-buffer? buf), (hash-get *shell-state* buf) etc. one at a time via nc to the IPC REPL.",
     "impact": "medium",
     "tags": [
       "debug",
@@ -224,13 +224,13 @@
     ],
     "use_case": "When adding a new library dependency to a static Chez binary. Missing a single transitive dependency from the boot file causes a runtime error that only manifests when the code path is hit, making it hard to catch before deployment.",
     "example_scenario": "Added (jerboa-aws pssm) to the boot file but forgot its transitive dependency (jerboa-coreutils common security). The binary built fine but crashed at runtime when pssm tried to import security. Had to debug by trial and error, adding missing libraries one at a time. This tool would have reported all missing transitive deps in one pass.",
-    "estimated_token_reduction": "~1000 tokens per missing-library debugging cycle — eliminates 3-5 rounds of build/run/crash/add-library",
-    "votes": 3
+    "estimated_token_reduction": "~1000 tokens per missing-library debugging cycle \u2014 eliminates 3-5 rounds of build/run/crash/add-library",
+    "votes": 4
   },
   {
     "id": "check-balance-accurate-tracking",
     "title": "jerboa_check_balance should track nesting depth accurately for complex files",
-    "description": "jerboa_check_balance reports heuristic mismatches that don't correspond to actual errors. In this session, it reported 'Mismatched ] at line X — expected ) to close ( at line Y' for code that was actually off by one paren in a different place. The error messages point to wrong locations, making it hard to fix. A more accurate tracker that counts nesting depth per-form and reports 'expected N closing delimiters but found M' with the exact open positions would be more actionable. The tool should also handle mixed [/( usage (common in Chez cond clauses) without false positives.",
+    "description": "jerboa_check_balance reports heuristic mismatches that don't correspond to actual errors. In this session, it reported 'Mismatched ] at line X \u2014 expected ) to close ( at line Y' for code that was actually off by one paren in a different place. The error messages point to wrong locations, making it hard to fix. A more accurate tracker that counts nesting depth per-form and reports 'expected N closing delimiters but found M' with the exact open positions would be more actionable. The tool should also handle mixed [/( usage (common in Chez cond clauses) without false positives.",
     "impact": "medium",
     "tags": [
       "balance",
@@ -240,14 +240,14 @@
       "accuracy"
     ],
     "use_case": "When editing large Scheme files with deeply nested cond clauses using mixed [ and ( delimiters, and the balance is off by 1. The current tool reports misleading locations.",
-    "example_scenario": "Added a 100-line cond clause to jsh.ss with 12 levels of nesting. Was off by one paren. jerboa_check_balance said 'Mismatched ] at line 1607 — expected ) to close ( at line 1520' but the actual fix was adding one ) before the ] at line 1607. Had to manually trace all opens/closes to find the issue, defeating the purpose of the tool.",
-    "estimated_token_reduction": "~300 tokens per balance-fixing cycle — eliminates manual paren counting",
+    "example_scenario": "Added a 100-line cond clause to jsh.ss with 12 levels of nesting. Was off by one paren. jerboa_check_balance said 'Mismatched ] at line 1607 \u2014 expected ) to close ( at line 1520' but the actual fix was adding one ) before the ] at line 1607. Had to manually trace all opens/closes to find the issue, defeating the purpose of the tool.",
+    "estimated_token_reduction": "~300 tokens per balance-fixing cycle \u2014 eliminates manual paren counting",
     "votes": 0
   },
   {
     "id": "verify-static-binary-launch",
     "title": "Post-build static binary launch verification tool",
-    "description": "A tool that runs a static binary with --version (or a configurable flag) after make static-qt and verifies it exits cleanly without exceptions. Currently, `make static-qt` succeeds but the binary can still crash at launch due to missing libraries, unresolved symbols, or stale compiled artifacts. The tool would run the binary, capture stderr, and report any Chez exceptions or segfaults — catching issues that only manifest at runtime in the static build.",
+    "description": "A tool that runs a static binary with --version (or a configurable flag) after make static-qt and verifies it exits cleanly without exceptions. Currently, `make static-qt` succeeds but the binary can still crash at launch due to missing libraries, unresolved symbols, or stale compiled artifacts. The tool would run the binary, capture stderr, and report any Chez exceptions or segfaults \u2014 catching issues that only manifest at runtime in the static build.",
     "impact": "high",
     "tags": [
       "static",
@@ -260,13 +260,13 @@
     ],
     "use_case": "After every make static-qt, automatically verify the binary launches without exceptions. Currently this is a manual step that Claude must remember to do (and has forgotten in the past, leading to broken deliverables).",
     "example_scenario": "Claude fixes a bug in highlight.ss, runs make build && make static-qt (both succeed), but the static binary crashes with 'attempt to reference unbound identifier restore-margin-colors!' because a cross-module reference wasn't available in the WPO build. Without the verification step, Claude would have reported the fix as done. The tool catches this before the user even tries.",
-    "estimated_token_reduction": "~300 tokens per build cycle — eliminates the need to manually remember and run the verification step, and prevents wasted debugging cycles from broken binaries",
+    "estimated_token_reduction": "~300 tokens per build cycle \u2014 eliminates the need to manually remember and run the verification step, and prevents wasted debugging cycles from broken binaries",
     "votes": 5
   },
   {
     "id": "face-registry-static-binary-debug",
     "title": "Diagnose face registry binding failures in static Chez binaries",
-    "description": "A diagnostic tool that checks if face-get returns #f for standard font-lock faces (font-lock-keyword-face, font-lock-string-face, etc.) and reports the face registry state. In WPO static builds, module-level bindings can fail silently — face-get returns #f even though load-theme! was called. The tool would dump *faces* hash table contents, verify theme loading, and compare against the expected theme definition. Currently diagnosing this required manual REPL queries that couldn't access module-private variables.",
+    "description": "A diagnostic tool that checks if face-get returns #f for standard font-lock faces (font-lock-keyword-face, font-lock-string-face, etc.) and reports the face registry state. In WPO static builds, module-level bindings can fail silently \u2014 face-get returns #f even though load-theme! was called. The tool would dump *faces* hash table contents, verify theme loading, and compare against the expected theme definition. Currently diagnosing this required manual REPL queries that couldn't access module-private variables.",
     "impact": "medium",
     "tags": [
       "face",
@@ -278,13 +278,13 @@
     ],
     "use_case": "When tree-sitter or Scintilla highlighting shows all-gray text in the static binary but works in interpreted mode. The face registry is populated by load-theme! but face-get returns #f for all faces.",
     "example_scenario": "Tree-sitter highlighting was activated but all 19 style colors were gray (#d8d8d8). face-fg-rgb fell back to default for every face. Spent 30+ minutes diagnosing before discovering face-get returned #f in the static binary. Workaround: read colors directly from theme alist via theme-get instead of face-get.",
-    "estimated_token_reduction": "~500 tokens per face debugging session — eliminates multiple rounds of REPL probing",
+    "estimated_token_reduction": "~500 tokens per face debugging session \u2014 eliminates multiple rounds of REPL probing",
     "votes": 0
   },
   {
     "id": "patch-file-dependency-validator",
     "title": "Validate patch-file! ordering dependencies in build scripts",
-    "description": "A tool that analyzes a build script containing sequential patch-file! calls and detects ordering bugs — where a patch's match string depends on text introduced by a later patch. Parses each patch-file! call, simulates the transformation sequence, and reports patches whose old_string doesn't exist at their position in the sequence. Would also detect duplicate match strings and patches that silently fail (no match found).",
+    "description": "A tool that analyzes a build script containing sequential patch-file! calls and detects ordering bugs \u2014 where a patch's match string depends on text introduced by a later patch. Parses each patch-file! call, simulates the transformation sequence, and reports patches whose old_string doesn't exist at their position in the sequence. Would also detect duplicate match strings and patches that silently fail (no match found).",
     "impact": "medium",
     "tags": [
       "patch-file",
@@ -295,13 +295,13 @@
     ],
     "use_case": "When adding new post-build patches to build-jerboa.ss or similar build scripts with 20+ sequential patch-file! calls targeting the same file.",
     "example_scenario": "Added patch 23 to insert a git-branch-name import into main.sls, matching '(jsh recorder)\\n   (jsh mux-server)'. But mux-server import is added by patch 30 in the Multiplexer section. The build completed without error but the import was silently missing, causing a runtime crash. Took multiple debug cycles to discover the ordering bug.",
-    "estimated_token_reduction": "~500 tokens per patch ordering bug — eliminates build/crash/debug cycle that typically takes 2-3 rounds",
+    "estimated_token_reduction": "~500 tokens per patch ordering bug \u2014 eliminates build/crash/debug cycle that typically takes 2-3 rounds",
     "votes": 0
   },
   {
     "id": "mcp-prelude-export-diff",
     "title": "Diff prelude exports against stdlib modules",
-    "description": "A tool that compares what (jerboa prelude) exports vs what each imported stdlib module exports, showing symbols that are imported but not re-exported. Helps ensure new features added to stdlib modules are surfaced in the prelude. Currently requires manually reading both prelude.sls and each module, comparing export lists — error-prone and token-heavy.",
+    "description": "A tool that compares what (jerboa prelude) exports vs what each imported stdlib module exports, showing symbols that are imported but not re-exported. Helps ensure new features added to stdlib modules are surfaced in the prelude. Currently requires manually reading both prelude.sls and each module, comparing export lists \u2014 error-prone and token-heavy.",
     "impact": "medium",
     "tags": [
       "prelude",
@@ -312,7 +312,7 @@
     ],
     "use_case": "When adding new exports to stdlib modules (like std/misc/list or std/result), to verify they're also re-exported from (jerboa prelude). Prevents the recurring problem of features being available only via direct module import.",
     "example_scenario": "Added string-match?, string-find, string-find-all to (std misc string) but forgot to add them to (jerboa prelude). Users writing .ss files with (import (jerboa prelude)) couldn't access the new functions. A diff tool would have caught this immediately.",
-    "estimated_token_reduction": "~400 tokens per prelude sync — eliminates manual cross-referencing of export lists across 15+ modules",
+    "estimated_token_reduction": "~400 tokens per prelude sync \u2014 eliminates manual cross-referencing of export lists across 15+ modules",
     "votes": 0
   },
   {
@@ -330,7 +330,7 @@
     ],
     "use_case": "After fixing a flicker or rendering bug, verify that the fix didn't introduce new visual artifacts by comparing screenshots before and after an operation (e.g. split window, switch buffer, resize).",
     "example_scenario": "Testing vterm alt-screen rendering: take screenshot of top output, wait 2 seconds for refresh, take another screenshot. Diff should show only the process list changing, not gaps or blank rows appearing. Currently requires manual viewing of each screenshot.",
-    "estimated_token_reduction": "~200 tokens per visual test — eliminates manual screenshot inspection and narrows focus to changed regions",
+    "estimated_token_reduction": "~200 tokens per visual test \u2014 eliminates manual screenshot inspection and narrows focus to changed regions",
     "votes": 0
   },
   {
@@ -345,7 +345,7 @@
       "editor",
       "codegen"
     ],
-    "use_case": "When adding many scaffolded editor commands in bulk rounds — a common workflow for jerboa-emacs feature parity with GNU Emacs.",
+    "use_case": "When adding many scaffolded editor commands in bulk rounds \u2014 a common workflow for jerboa-emacs feature parity with GNU Emacs.",
     "example_scenario": "User asks to add 20 new Emacs commands per round. Each round requires reading 3 file endings, writing 10 function defs to modes.ss, 10 to final.ss, 20 register-command! lines to regs2.ss, and a 20-row markdown table to docs. With a batch tool, one call with [{name: \"foo-mode\", type: \"toggle\"}, {name: \"foo-bar\", type: \"echo\", msg: \"Foo: did bar\"}] generates all artifacts.",
     "estimated_token_reduction": "~2000 tokens per round (eliminates 4 large edit blocks of repetitive boilerplate)",
     "votes": 0
@@ -365,14 +365,14 @@
       "static-binary"
     ],
     "use_case": "After building a hardened Chez Scheme or Jerboa static binary, verify all expected hardening properties are present. Currently requires manual readelf/nm invocations to check PIE (file command), RELRO (readelf -d | grep BIND_NOW), and stack canaries (nm | grep stack_chk).",
-    "example_scenario": "Building Chez with --enable-harden. After the build, need to verify that libkernel.a objects have stack canaries, the final binary is PIE, and RELRO is enabled. Required three separate bash commands (file, readelf -d, nm on individual .o files) — a single tool call returning a hardening report would replace all of these.",
-    "estimated_token_reduction": "~300 tokens per build verification — replaces 3-4 bash commands and result parsing",
+    "example_scenario": "Building Chez with --enable-harden. After the build, need to verify that libkernel.a objects have stack canaries, the final binary is PIE, and RELRO is enabled. Required three separate bash commands (file, readelf -d, nm on individual .o files) \u2014 a single tool call returning a hardening report would replace all of these.",
+    "estimated_token_reduction": "~300 tokens per build verification \u2014 replaces 3-4 bash commands and result parsing",
     "votes": 0
   },
   {
     "id": "prelude-shadow-builtin-detection",
     "title": "Detect prelude-shadowed Chez builtins causing unexpected errors",
-    "description": "When evaluating Jerboa code that uses Chez builtins like `make-time`, `sort`, `printf`, etc., detect when the prelude has shadowed the builtin with an incompatible version and the call fails with a confusing type/arity error. Should report \"Note: (jerboa prelude) shadows `make-time` — use `(let () (import (only (chezscheme) make-time)) make-time)` to capture the original.\" Currently Claude must know the full shadow list from CLAUDE.md and recognize the pattern manually.",
+    "description": "When evaluating Jerboa code that uses Chez builtins like `make-time`, `sort`, `printf`, etc., detect when the prelude has shadowed the builtin with an incompatible version and the call fails with a confusing type/arity error. Should report \"Note: (jerboa prelude) shadows `make-time` \u2014 use `(let () (import (only (chezscheme) make-time)) make-time)` to capture the original.\" Currently Claude must know the full shadow list from CLAUDE.md and recognize the pattern manually.",
     "impact": "medium",
     "tags": [
       "prelude",
@@ -383,8 +383,8 @@
       "chez"
     ],
     "use_case": "When a standalone Jerboa prelude script tries to use `sleep` with `make-time 'time-duration`, it gets a cryptic error because the prelude's `make-time` expects datetime args. The detection would explain the shadow and point to the capture pattern.",
-    "example_scenario": "Script has `(sleep (make-time 'time-duration 0 1))` — fails with wrong-type argument. The error message mentions `make-time` but gives no hint that the prelude shadowed it. Claude spent 2 tool-call round trips discovering the shadow and the fix pattern.",
-    "estimated_token_reduction": "~400 tokens per occurrence — eliminates 2-3 jerboa_eval probe calls to discover the shadow",
+    "example_scenario": "Script has `(sleep (make-time 'time-duration 0 1))` \u2014 fails with wrong-type argument. The error message mentions `make-time` but gives no hint that the prelude shadowed it. Claude spent 2 tool-call round trips discovering the shadow and the fix pattern.",
+    "estimated_token_reduction": "~400 tokens per occurrence \u2014 eliminates 2-3 jerboa_eval probe calls to discover the shadow",
     "votes": 0
   },
   {
@@ -400,15 +400,15 @@
       "parent-child",
       "sigsegv"
     ],
-    "use_case": "When refactoring Qt window management code that destroys splitter hierarchies. Qt's implicit child cleanup is easy to miss — the bug is silent until the stress test hits the specific code path.",
-    "example_scenario": "In `qt-frame-delete-window!`, destroying `parent-spl` (a QSplitter) automatically destroys `container` (its child QWidget). Then the code unconditionally called `qt-widget-destroy! container` — double-free, SIGSEGV in `QBindingStorage::clear()`. Fix: set `container = #f` before destroying parent so the conditional destroy is skipped.",
-    "estimated_token_reduction": "~800 tokens per crash investigation — Qt double-free crashes are very hard to trace without the pattern; eliminates multiple stress-burn-static runs and backtrace analysis",
+    "use_case": "When refactoring Qt window management code that destroys splitter hierarchies. Qt's implicit child cleanup is easy to miss \u2014 the bug is silent until the stress test hits the specific code path.",
+    "example_scenario": "In `qt-frame-delete-window!`, destroying `parent-spl` (a QSplitter) automatically destroys `container` (its child QWidget). Then the code unconditionally called `qt-widget-destroy! container` \u2014 double-free, SIGSEGV in `QBindingStorage::clear()`. Fix: set `container = #f` before destroying parent so the conditional destroy is skipped.",
+    "estimated_token_reduction": "~800 tokens per crash investigation \u2014 Qt double-free crashes are very hard to trace without the pattern; eliminates multiple stress-burn-static runs and backtrace analysis",
     "votes": 0
   },
   {
     "id": "cross-repo-impl-compare",
     "title": "Compare two implementations of the same feature across repos",
-    "description": "A tool that takes two file paths (or repo paths + feature names) and produces a structured diff of their capabilities — exported functions, supported features, known limitations, and architectural differences. Could work by running jerboa_file_summary and jerboa_module_exports on both sides and presenting a comparison table.",
+    "description": "A tool that takes two file paths (or repo paths + feature names) and produces a structured diff of their capabilities \u2014 exported functions, supported features, known limitations, and architectural differences. Could work by running jerboa_file_summary and jerboa_module_exports on both sides and presenting a comparison table.",
     "impact": "medium",
     "tags": [
       "compare",
@@ -417,9 +417,9 @@
       "feature",
       "architecture"
     ],
-    "use_case": "When evaluating whether to adopt a new library or replace an existing one — e.g. comparing two terminal emulator backends to decide what the current implementation is missing.",
+    "use_case": "When evaluating whether to adopt a new library or replace an existing one \u2014 e.g. comparing two terminal emulator backends to decide what the current implementation is missing.",
     "example_scenario": "User asks: \"what does ~/mine/emacs-libgterm offer over our current vterm?\" Required: exploring both repos with separate Explore agents (two parallel subagent spawns, ~3000 tokens combined), then manually synthesizing the comparison. A dedicated tool taking two paths and a topic would return a structured table in one call.",
-    "estimated_token_reduction": "~2000 tokens per comparison — replaces two parallel Explore agent spawns and manual synthesis",
+    "estimated_token_reduction": "~2000 tokens per comparison \u2014 replaces two parallel Explore agent spawns and manual synthesis",
     "votes": 0
   },
   {
@@ -486,5 +486,24 @@
     "example_scenario": "Query: \"Handle JSON errors safely.\" Returns: json-parse with try/catch examples from cookbook.",
     "estimated_token_reduction": "~600 tokens (reduces grep/howto trial-and-error).",
     "votes": 0
+  },
+  {
+    "id": "import-name-collision-detector",
+    "title": "Detect import name collisions between modules before compile errors",
+    "description": "A pre-compile check that detects when two or more imported modules export the same name, causing a duplicate-definition or ambiguous-import compile error. The tool should: (1) resolve all imports in a file/library, (2) collect the set of exported names from each, (3) report any names that appear in two or more modules, along with which modules they come from, and (4) suggest the rename workaround ((only (rename (mod) (old new) ...) names...)) with the corrected import form. Currently the only signal is a cryptic compile error like 'duplicate definition for identifier foo' with no indication of which two modules are in conflict.",
+    "impact": "medium",
+    "tags": [
+      "import",
+      "collision",
+      "rename",
+      "conflict",
+      "module",
+      "namespace",
+      "compile-error"
+    ],
+    "use_case": "When combining two stdlib modules that happen to export the same name (e.g., both export 'start!' or 'make-recorder'). Also useful during migration from Gerbil where module namespacing was explicit.",
+    "example_scenario": "Added (import (std debug timetravel)) to a file that already imported a module with 'recorder-start!'. Got a cryptic 'duplicate definition for recorder-start!' compile error. Had to manually read both modules' export lists to find the collision, then figure out the correct (only (rename ...) ...) syntax. This tool would immediately say: 'recorder-start! is exported by both (std debug timetravel) and (my module recorder) \u2014 use rename to resolve: (only (rename (std debug timetravel) (recorder-start! tt-recorder-start!)) tt-recorder-start! ...)'",
+    "estimated_token_reduction": "~400 tokens per collision \u2014 eliminates 2-3 rounds of module export inspection and trial-and-error rename syntax",
+    "votes": 1
   }
 ]
