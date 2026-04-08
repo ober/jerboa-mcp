@@ -17,8 +17,7 @@ clean:
 	rm -rf dist
 
 update: update-opencode update-claude
-	mkdir -p ~/.claude
-	cp CLAUDE.md.jerboa-example ~/.claude/CLAUDE.md
+	cp CLAUDE.md.jerboa-example AGENTS.md
 	cp copilot-instructions.md.jerboa-example ~/.copilot-instructions.md
 	mkdir -p ~/.claude/skills/save-discoveries
 	cp .claude/skills/save-discoveries/SKILL.md ~/.claude/skills/save-discoveries/SKILL.md
@@ -70,6 +69,10 @@ update-opencode:
 			> "$(OPENCODE_CONFIG)"; \
 		echo "Created $(OPENCODE_CONFIG) with jerboa MCP entry"; \
 	fi
-	@mkdir -p ~/.config/opencode
-	@cp CLAUDE.md.jerboa-example ~/.config/opencode/AGENTS.md
-	@echo "Copied AGENTS.md to ~/.config/opencode/AGENTS.md"
+	@echo ""
+	@echo "NOTE: To use the Jerboa AGENTS.md in a project, copy it there:"
+	@echo "  cp $(CURDIR)/CLAUDE.md.jerboa-example /path/to/project/AGENTS.md"
+	@echo ""
+	@echo "Installing to jerboa-mcp project directory..."
+	@cp CLAUDE.md.jerboa-example AGENTS.md
+	@echo "Copied AGENTS.md to $(CURDIR)/AGENTS.md"
