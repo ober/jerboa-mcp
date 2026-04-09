@@ -384,6 +384,7 @@ When a Jerboa MCP server is available, you MUST use its tools extensively instea
 - **`jerboa_verify`**: Combined syntax + compile + lint + arity + duplicate check in one pass. Returns unified issue list with phase, severity, and line numbers. Use this as the standard "is my code ok?" workflow. Saves multiple sequential tool calls.
 - **`jerboa_check_duplicates`**: Fast pre-build check for duplicate top-level defs. Catches rebind conflicts before compilation. No subprocess needed.
 - **`jerboa_check_balance`**: Fast paren/bracket/brace balance checking without spawning a subprocess.
+- **`jerboa_paren_depth`**: Report parenthesis nesting depth at each line in a file or line range. Shows depth at line start/end, opens/closes per line, and source text. Reader-aware (respects strings, comments, char literals, block comments, pipes). Use to diagnose structural paren issues like a `define` swallowing its siblings.
 - **`jerboa_project_health_check`**: Composite project audit — balance, export consistency, circular imports, duplicates. Returns health score.
 
 ### For Security Auditing
@@ -440,7 +441,7 @@ When a Jerboa MCP server is available, you MUST use its tools extensively instea
 - **`jerboa_generate_module_stub`**: Generate a module skeleton matching another module's exported signatures.
 - **`jerboa_generate_module`**: Create new modules by applying word-boundary-aware substitutions to a template file. Useful for mechanical variations of an existing module pattern.
 - **`jerboa_scaffold_test`**: Generate a test skeleton from a module's exports.
-- **`jerboa_balanced_replace`**: Like Edit/string-replace but validates delimiter balance before and after. Rejects edits that would break balance, but tolerates matching imbalance where old and new fragments have the same net delimiter change. Dry-run by default.
+- **`jerboa_balanced_replace`**: Like Edit/string-replace but validates delimiter balance before and after. Rejects edits that would break balance, but tolerates matching imbalance where old and new fragments have the same net delimiter change. Dry-run by default. **Multi-edit mode**: pass an `edits` array of `{old_string, new_string}` pairs to apply multiple changes atomically with balance checked once on the final result. Use this to move delimiters between locations (e.g., move `)` from one line to another).
 - **`jerboa_wrap_form`**: Wrap lines in a new Scheme form (e.g. `when`, `let`, `begin`) with guaranteed matching parentheses. Auto-detects form boundaries when `end_line` is omitted. Dry-run by default.
 - **`jerboa_splice_form`**: Remove a wrapper form while keeping selected children (inverse of wrap). Child indices are 1-based. Default: keep all children except the head. Dry-run by default.
 - **`jerboa_generate_api_docs`**: Generate markdown API documentation from a module's exports. Introspects procedures (with arities), macros, and values to produce a complete API reference.

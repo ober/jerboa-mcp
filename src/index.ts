@@ -38,6 +38,7 @@ import { registerBalancedReplaceTool } from './tools/balanced-replace.js';
 import { registerWrapFormTool } from './tools/wrap-form.js';
 import { registerSpliceFormTool } from './tools/splice-form.js';
 import { registerCheckBalanceTool } from './tools/check-balance.js';
+import { registerParenDepthTool } from './tools/paren-depth.js';
 import { registerFormatTool } from './tools/format.js';
 import { registerFindCallersTool } from './tools/find-callers.js';
 import { registerDocumentSymbolsTool } from './tools/document-symbols.js';
@@ -555,6 +556,7 @@ registerBalancedReplaceTool(server);
 registerWrapFormTool(server);
 registerSpliceFormTool(server);
 registerCheckBalanceTool(server);
+registerParenDepthTool(server);
 registerFormatTool(server);
 
 // Navigation and discovery

@@ -396,6 +396,7 @@ Jerboa is a niche Scheme dialect with limited training data. **Never guess — a
 | FFI work | `jerboa_ffi_scaffold` / `jerboa_ffi_type_check` / `jerboa_ffi_null_safety` |
 | Port Gerbil code | `jerboa_migration_check` + `jerboa_translate_scheme` |
 | Detect paren imbalance | `jerboa_check_balance` — use BEFORE `make build` after deep edits |
+| Diagnose paren depth at lines | `jerboa_paren_depth` — shows depth at each line, finds misplaced `)` |
 | Full project audit | `jerboa_project_health_check` — balance, exports, cycles, duplicates |
 | Security audit | `jerboa_security_audit` + `jerboa_import_policy_check` |
 | Static build audit | `jerboa_static_symbol_audit` + `jerboa_boot_library_audit` |
@@ -412,7 +413,7 @@ Jerboa is a niche Scheme dialect with limited training data. **Never guess — a
 
 ### Code Generation & Refactoring
 
-`jerboa_rename_symbol`, `jerboa_balanced_replace`, `jerboa_wrap_form`, `jerboa_splice_form`, `jerboa_scaffold_test`, `jerboa_generate_module`, `jerboa_translate_scheme`, `jerboa_project_template`, `jerboa_httpd_handler_scaffold`, `jerboa_db_pattern_scaffold`, `jerboa_actor_ensemble_scaffold`
+`jerboa_rename_symbol`, `jerboa_balanced_replace` (supports multi-edit for atomic cross-site changes), `jerboa_paren_depth`, `jerboa_wrap_form`, `jerboa_splice_form`, `jerboa_scaffold_test`, `jerboa_generate_module`, `jerboa_translate_scheme`, `jerboa_project_template`, `jerboa_httpd_handler_scaffold`, `jerboa_db_pattern_scaffold`, `jerboa_actor_ensemble_scaffold`
 
 ### Feature Suggestions
 
@@ -455,6 +456,7 @@ Jerboa is niche — every non-trivial pattern you discover prevents future sessi
 - **Port from Gerbil**: `jerboa_migration_check` -> `jerboa_translate_scheme` -> `jerboa_verify` -> `jerboa_check_syntax`
 - **Audit project quality**: `jerboa_verify` -> `jerboa_lint` -> `jerboa_dead_code` -> `jerboa_dependency_cycles`
 - **Debug a crash**: `jerboa_stale_static` -> `jerboa_bisect_crash` -> `jerboa_ffi_type_check`
+- **Fix misplaced parens**: `jerboa_paren_depth` (find where depth is wrong) -> `jerboa_balanced_replace` with `edits` array (move `)` atomically)
 - **Learn a module**: `jerboa_stdlib_source` -> `jerboa_module_catalog` -> `jerboa_module_quickstart`
 - **Security audit**: `jerboa_security_audit` -> `jerboa_import_policy_check` -> `jerboa_unsafe_import_lint`
 - **Static build audit**: `jerboa_static_symbol_audit` -> `jerboa_boot_library_audit` -> `jerboa_rust_musl_build`
