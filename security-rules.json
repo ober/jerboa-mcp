@@ -629,5 +629,24 @@
       "char-range",
       "ascii"
     ]
+  },
+  {
+    "id": "legacy-openssl-ffi",
+    "title": "Legacy OpenSSL foreign-procedure call (should use ring via jerboa_native)",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "foreign-procedure\\s+\"(RAND_bytes|EVP_sha256|PKCS5_PBKDF2_HMAC|EVP_CIPHER_CTX_new|EVP_aes_256_gcm|EVP_Encrypt|EVP_Decrypt|EVP_CIPHER_CTX_ctrl|EVP_CIPHER_CTX_free)\"",
+    "message": "Direct OpenSSL libcrypto FFI call detected. All crypto operations (CSPRNG, PBKDF2, AES-GCM) should use Rust ring via libjerboa_native instead: jerboa_random_bytes, jerboa_pbkdf2_derive, jerboa_aead_seal, jerboa_aead_open.",
+    "remediation": "Replace OpenSSL foreign-procedure calls with ring equivalents: RAND_bytes → jerboa_random_bytes, PKCS5_PBKDF2_HMAC → jerboa_pbkdf2_derive, EVP_*encrypt*/EVP_*decrypt* → jerboa_aead_seal/jerboa_aead_open. See cookbook recipes rust-aes-256-gcm-ffi and rust-pbkdf2-ffi.",
+    "related_recipe": "rust-aes-256-gcm-ffi",
+    "tags": [
+      "openssl",
+      "libcrypto",
+      "ffi",
+      "ring",
+      "rust",
+      "crypto",
+      "legacy"
+    ]
   }
 ]
