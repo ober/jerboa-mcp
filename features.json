@@ -1,24 +1,5 @@
 [
   {
-    "id": "jerboa-safe-prelude-default",
-    "title": "Make safe APIs the default prelude exports",
-    "description": "The (jerboa prelude) should re-export safe-sqlite-open as sqlite-open, safe-tcp-connect as tcp-connect, etc. Claude and humans will always reach for the simplest import — if the safe version IS the default, nobody has to remember to use (std safe). Raw APIs should require explicit (import (std db sqlite-native)) opt-in.",
-    "impact": "critical",
-    "tags": [
-      "safety",
-      "prelude",
-      "default",
-      "claude",
-      "api",
-      "import"
-    ],
-    "use_case": "Every time Claude writes Jerboa code, it imports (jerboa prelude). If that gives it the safe APIs by default, all generated code is automatically type-checked and resource-safe without Claude knowing about the safety modules.",
-    "example_scenario": "Claude writes (import (jerboa prelude)) then (sqlite-open \"db\") — this silently calls safe-sqlite-open which validates types, and (with-resource ...) is the documented pattern. No separate (import (std safe)) needed.",
-    "estimated_token_reduction": 200,
-    "votes": 1,
-    "note": "Requires Jerboa core change (prelude.sls), not implementable in jerboa-mcp."
-  },
-  {
     "id": "jerboa-ai-scaffold-ml",
     "title": "jerboa_ai_scaffold: Generate ML/AI patterns from Rust crates",
     "description": "Scaffold Jerboa FFI wrappers for Rust ML libs (e.g., tch-rs tensors, ndarray stats); auto-generates safe bindings with type checks and examples.",
