@@ -3657,5 +3657,85 @@
     "imports": [],
     "code": "/* In C (ffi-shim.c), the Linux chez_fuse_mount uses fusermount3/fusermount:\n *\n * 1. find_fusermount() - locates /usr/bin/fusermount3 or /usr/bin/fusermount\n * 2. mount_via_fusermount() - creates socketpair, forks, sets _FUSE_COMMFD\n *    env var, execs fusermount with -o options, sends /dev/fuse fd via SCM_RIGHTS\n * 3. Falls back to direct mount() syscall for root/CAP_SYS_ADMIN\n *\n * Unmount also tries fusermount -u first, falls back to umount2.\n *\n * The _FUSE_COMMFD protocol: child gets env var with socket fd number,\n * reads the /dev/fuse fd via recvmsg+SCM_RIGHTS from that socket.\n * This is the standard libfuse3 protocol used by fusermount3.\n */",
     "notes": "Non-root FUSE mount on Linux requires the fusermount setuid helper. Direct mount() returns EPERM (errno 1) without CAP_SYS_ADMIN. The _FUSE_COMMFD env var protocol is used by both fusermount3 (FUSE 3) and fusermount (FUSE 2). Always fall back to direct mount() for root users or containers."
+  },
+  {
+    "id": "errdefer-error-path-cleanup",
+    "title": "Error-path cleanup with errdefer (Zig-inspired)",
+    "tags": [
+      "errdefer",
+      "cleanup",
+      "error-handling",
+      "std/errdefer",
+      "zig",
+      "unwind"
+    ],
+    "imports": [
+      "(std errdefer)"
+    ],
+    "code": "(import (jerboa prelude))\n(import (std errdefer))\n\n;; errdefer: cleanup fires ONLY on error, not on normal exit\n;; Contrast with unwind-protect which ALWAYS runs cleanup.\n\n;; 1. Single body form\n(errdefer (delete-temp-file! path)\n  (write-file! path data))\n\n;; 2. Multiple body forms (errdefer* is cleaner than begin)\n(errdefer* (rollback! tx)\n  (step-1! tx)\n  (step-2! tx))\n\n;; 3. Zig-style stacking with with-errdefer\n;;    Multiple cleanups fire in LIFO order on error\n(with-errdefer ([(close-handle! h)]\n                [(rollback! conn)])\n  ;; If this raises: rollback! fires first, then close-handle!\n  (do-work conn h))\n\n;; 4. Verify: cleanup fires on error, NOT on success\n(define ran #f)\n(guard (e [#t 'ok])\n  (errdefer (set! ran #t) (error 'test \"boom\")))\n;; ran => #t  (cleanup fired because body raised)\n\n(define ran2 #f)\n(errdefer (set! ran2 #t) 42)\n;; ran2 => #f  (cleanup did NOT fire — normal exit)",
+    "notes": "errdefer cancels cleanup on success — this is the key difference from unwind-protect. with-errdefer stacks cleanups LIFO, matching Zig's errdefer semantics. errdefer* is syntactic sugar for (errdefer cleanup (begin body ...)). Module: (std errdefer), NOT in prelude — must import explicitly.",
+    "related": [
+      "jerboa-try-catch",
+      "jerboa-with-catch"
+    ]
+  },
+  {
+    "id": "defvariant-exhaustive-matching",
+    "title": "Closed sum types with defvariant and match-variant",
+    "tags": [
+      "variant",
+      "defvariant",
+      "match-variant",
+      "sum-type",
+      "tagged-union",
+      "exhaustive",
+      "std/variant"
+    ],
+    "imports": [
+      "(std variant)"
+    ],
+    "code": "(import (jerboa prelude))\n(import (std variant))\n\n;; Define a closed sum type (tagged union)\n(defvariant shape\n  (circle radius)\n  (rect width height)\n  (triangle base height))\n\n;; Generated names follow the pattern: type/tag, type/tag?, type/tag-field\n;; Constructors:  shape/circle, shape/rect, shape/triangle\n;; Predicates:    shape/circle?, shape/rect?, shape/triangle?\n;; Accessors:     shape/circle-radius, shape/rect-width, shape/rect-height, etc.\n;; Any-predicate: shape?\n;; Tag list:      shape/variants  => '(circle rect triangle)\n\n;; Create instances\n(define s1 (shape/circle 5))\n(define s2 (shape/rect 3 4))\n\n;; Exhaustive match — compile error if a variant is missing\n(define (area s)\n  (match-variant shape s\n    [(circle r)   (* 3.14159 r r)]\n    [(rect w h)   (* w h)]\n    [(triangle b h) (* 0.5 b h)]))\n\n(area s1)  ;; => 78.53...\n(area s2)  ;; => 12\n\n;; Use _ or else to suppress exhaustiveness check\n(define (is-round? s)\n  (match-variant shape s\n    [(circle _) #t]\n    [_ #f]))\n\n;; Access fields directly\n(shape/circle-radius s1)   ;; => 5\n(shape/rect-width s2)      ;; => 3\n\n;; Runtime type checks\n(shape? s1)         ;; => #t\n(shape/circle? s1)  ;; => #t\n(shape/rect? s1)    ;; => #f\n\n;; List all tags\nshape/variants  ;; => '(circle rect triangle)",
+    "notes": "defvariant + match-variant are in (std variant), NOT the prelude. match-variant performs exhaustiveness checking at EXPAND TIME — missing variants cause a syntax error, not a runtime error. Use _ or else clause to opt out. Naming convention is strict: type/tag for constructor (NOT make-type-tag), type/tag? for predicate, type/tag-field for accessors. defvariant must appear before match-variant in the same compilation unit for compile-time registration to work.",
+    "related": [
+      "ergo-typed-def",
+      "chez-record-type-custom-constructor"
+    ]
+  },
+  {
+    "id": "socks5-proxy-server",
+    "title": "SOCKS5 proxy server (Rust FFI)",
+    "tags": [
+      "socks5",
+      "proxy",
+      "network",
+      "ffi",
+      "std/net/socks5-server",
+      "rust"
+    ],
+    "imports": [
+      "(std net socks5-server)"
+    ],
+    "code": "(import (jerboa prelude))\n(import (std net socks5-server))\n\n;; Start on a random port with no authentication\n(define proxy (socks5-start))\n(displayln \"Listening on port: \" (socks5-port proxy))\n\n;; Start on a specific port with username/password auth\n(define proxy2 (socks5-start 1080 \"user\" \"secret\"))\n\n;; Set HTTP_PROXY / HTTPS_PROXY / ALL_PROXY env vars for child processes\n(socks5-set-proxy-env! proxy)\n\n;; Get stats string (\"active:N total:N\")\n(displayln (socks5-stats proxy))\n\n;; Unset proxy env vars\n(socks5-unset-proxy-env!)\n\n;; Stop the server\n(socks5-stop proxy)\n(socks5-stop proxy2)",
+    "notes": "Backed by libjerboa_native (Rust). Supports no-auth and RFC 1929 username/password auth. socks5-start args: (socks5-start) or (socks5-start port) or (socks5-start port user pass) or (socks5-start port user pass bind-addr). Port 0 = OS-assigned random port; read actual port with socks5-port after start. Requires libjerboa_native.so/.dylib to be built."
+  },
+  {
+    "id": "std-dev-debug-with-recording",
+    "title": "(std dev debug) — Time-travel debugger with-recording API",
+    "tags": [
+      "debug",
+      "time-travel",
+      "recording",
+      "std/dev/debug",
+      "with-recording",
+      "trace"
+    ],
+    "imports": [
+      "(std dev debug)"
+    ],
+    "code": "(import (jerboa prelude))\n(import (std dev debug))\n\n;; with-recording returns (values result recording) — ALWAYS destructure\n(define-values (result rec)\n  (with-recording\n    (lambda ()\n      (trace-call! 'my-fn '(1 2))\n      (trace-return! 'my-fn 42)\n      (trace-event! 'step \"halfway\")\n      42)\n    500))  ;; optional: max entries (default 1000)\n\n;; Inspect the recording\n(recording? rec)           ;; => #t\n(debug-frame-count rec)    ;; => number of recorded entries\n(debug-summary rec)        ;; print human-readable summary\n\n;; Navigate entries\n(debug-goto rec 0)         ;; seek to position 0\n(debug-print-frame rec 0)  ;; print entry at position 0\n(debug-history rec)        ;; list all entries (oldest first)\n\n;; Conditional breakpoints\n(break-when! 'my-fn (lambda (args) (> (car args) 100)))\n(check-breakpoints! 'my-fn '(200))  ;; fires if condition true\n(break-never! 'my-fn)              ;; remove breakpoint\n\n;; call-with-recording: callback style\n(call-with-recording\n  (lambda () (do-work))\n  1000)  ;; returns (values result rec)",
+    "notes": "BREAKING CHANGE from old API: with-recording now returns (values result recording) instead of just result. Always use define-values or call-with-values to capture both. call-with-recording was added alongside with-recording. debug-goto, debug-summary, debug-print-frame are new. The recording vector internal structure changed to 8 elements (added call-depth slot). NOTE: (std dev debug) is the low-level trace+breakpoint module. For a higher-level event recorder, see (std debug timetravel) which has a completely separate API (make-recorder, record-event!, replay-to-step, etc.).",
+    "related": [
+      "std-debug-timetravel-recorder"
+    ]
   }
 ]
