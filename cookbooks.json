@@ -3925,5 +3925,51 @@
     ],
     "code": ";; Inside a character class [...], different chars are special than in general regex.\n;;\n;; General regex special chars: . * + ? ( ) [ ] { } \\ ^ $ |\n;; Char class special chars:    ] \\ ^ -\n;;\n;; The hyphen (-) is interpreted as a RANGE operator inside [...]:\n;;   [a-z]   = all lowercase letters (range from a to z)\n;;   [a\\-z]  = the three chars: a, -, z (escaped hyphen)\n;;\n;; WRONG — (~ (or \"a\" \"-\" \"z\")) generated [^a-z] (a range!):\n;; (sre->pattern-string '(~ (or \"a\" \"-\" \"z\")))  ;; => \"[^a-z]\" — WRONG\n;;\n;; FIXED — srfi-115 now uses char-class-quote-char which escapes ] \\ ^ -:\n(sre->pattern-string '(~ (or \"a\" \"-\" \"z\")))  ;; => \"[^a\\\\-z]\" — correct\n\n;; This applies whenever strings appear inside (~ ...) complement forms:\n(sre->pattern-string '(~ (or \"=\" \":\" \"\\n\" \" \")))\n;; Correctly escapes special chars for the char-class context",
     "notes": "srfi-115 has two escaping functions: pregexp-quote-char (for general regex context, escapes . * + ? etc.) and char-class-quote-char (for inside [...], escapes ] \\ ^ -). The sre-char-class-body function (used by ~ complement and / char-range) must use the char-class version. This distinction matters because - is harmless in general regex but means \"range\" inside brackets."
+  },
+  {
+    "id": "rust-aes-256-gcm-ffi",
+    "title": "AES-256-GCM Encrypt/Decrypt via Rust ring Crate from Chez Scheme",
+    "tags": [
+      "rust",
+      "ffi",
+      "aes",
+      "gcm",
+      "aead",
+      "encryption",
+      "ring",
+      "vault",
+      "crypto"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; AES-256-GCM via jerboa_aead_seal / jerboa_aead_open (ring crate in libjerboa_native)\n;; Wire format: nonce[12] || ciphertext[N] || tag[16]\n\n(define c-rand-bytes\n  (foreign-procedure \"jerboa_random_bytes\" (u8* size_t) int))\n\n(define c-aead-seal\n  (foreign-procedure \"jerboa_aead_seal\"\n    (u8* size_t u8* size_t u8* size_t u8* size_t u8* size_t u8*) int))\n\n(define c-aead-open\n  (foreign-procedure \"jerboa_aead_open\"\n    (u8* size_t u8* size_t u8* size_t u8* size_t u8* size_t u8*) int))\n\n(define (rand-bytes n)\n  (let ([bv (make-bytevector n 0)])\n    (unless (= 0 (c-rand-bytes bv n))\n      (error 'rand-bytes \"jerboa_random_bytes failed\"))\n    bv))\n\n;; Encrypt: returns nonce[12] || ciphertext[N] || tag[16]\n(define (gcm-encrypt key plaintext-bv)\n  (let* ([pt-len  (bytevector-length plaintext-bv)]\n         [nonce   (rand-bytes 12)]\n         [out-max (+ pt-len 16)]           ;; ciphertext + GCM tag\n         [out     (make-bytevector out-max 0)]\n         [out-len (make-bytevector 8 0)]    ;; size_t* output param\n         [no-aad  (make-bytevector 0)])\n    (unless (= 0 (c-aead-seal key 32 nonce 12\n                   plaintext-bv pt-len no-aad 0\n                   out out-max out-len))\n      (error 'gcm-encrypt \"jerboa_aead_seal failed\"))\n    (let ([result (make-bytevector (+ 12 out-max))])\n      (bytevector-copy! nonce 0 result 0  12)\n      (bytevector-copy! out   0 result 12 out-max)\n      result)))\n\n;; Decrypt: input is nonce[12] || ciphertext[N] || tag[16], returns plaintext or #f\n(define (gcm-decrypt key ciphertext-bv)\n  (let* ([total  (bytevector-length ciphertext-bv)]\n         [ct-len (- total 12)])\n    (if (< ct-len 16) #f\n      (let* ([nonce  (let ([bv (make-bytevector 12)]) (bytevector-copy! ciphertext-bv 0 bv 0 12) bv)]\n             [ct+tag (let ([bv (make-bytevector ct-len)]) (bytevector-copy! ciphertext-bv 12 bv 0 ct-len) bv)]\n             [out    (make-bytevector ct-len 0)]\n             [out-len (make-bytevector 8 0)]\n             [no-aad  (make-bytevector 0)])\n        (if (= 0 (c-aead-open key 32 nonce 12\n                   ct+tag ct-len no-aad 0\n                   out ct-len out-len))\n          (let ([pt (make-bytevector (- ct-len 16))])\n            (bytevector-copy! out 0 pt 0 (- ct-len 16))\n            pt)\n          #f)))))",
+    "notes": "Key must be exactly 32 bytes, nonce 12 bytes. jerboa_aead_seal outputs ciphertext||tag (no nonce) — the Scheme layer prepends the nonce. The out-len parameter is a *mut usize written by Rust; use a bytevector of 8 bytes. Return codes: 0 = success, -1 = failure (unlike OpenSSL RAND_bytes which returns 1 for success). See also rust-chacha20-poly1305-ffi for ChaCha20 variant.",
+    "related": [
+      "rust-chacha20-poly1305-ffi",
+      "jerboa-ffi-foreign-procedure"
+    ]
+  },
+  {
+    "id": "rust-pbkdf2-ffi",
+    "title": "PBKDF2-HMAC-SHA256 Key Derivation via Rust ring Crate",
+    "tags": [
+      "rust",
+      "ffi",
+      "pbkdf2",
+      "kdf",
+      "key-derivation",
+      "ring",
+      "crypto",
+      "password"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; PBKDF2-HMAC-SHA256 via jerboa_pbkdf2_derive (ring crate in libjerboa_native)\n\n(define c-pbkdf2\n  (foreign-procedure \"jerboa_pbkdf2_derive\"\n    (u8* size_t u8* size_t unsigned-32 u8* size_t) int))\n\n;; Derive a key from password + salt using PBKDF2-HMAC-SHA256\n;; password-bv, salt-bv: bytevectors\n;; iterations: uint32 (e.g. 100000 for passphrase, 1 for fast block-key derivation)\n;; key-len: desired output length in bytes (e.g. 32 for AES-256)\n(define (pbkdf2-derive password-bv salt-bv iterations key-len)\n  (let ([out (make-bytevector key-len 0)])\n    (unless (= 0 (c-pbkdf2\n                   password-bv (bytevector-length password-bv)\n                   salt-bv     (bytevector-length salt-bv)\n                   iterations\n                   out key-len))\n      (error 'pbkdf2-derive \"jerboa_pbkdf2_derive failed\"))\n    out))\n\n;; Example: derive a 32-byte key from a passphrase\n(let ([key (pbkdf2-derive\n             (string->utf8 \"my passphrase\")\n             (string->utf8 \"random-salt-here\")\n             100000  ;; iterations\n             32)])   ;; 32 bytes = AES-256 key\n  (printf \"Derived key: ~a bytes~n\" (bytevector-length key)))",
+    "notes": "Return code: 0 = success, -1 = failure. iterations must be > 0 (uint32). Uses PBKDF2_HMAC_SHA256 internally (same as OpenSSL PKCS5_PBKDF2_HMAC with EVP_sha256). This is a deterministic standard (RFC 2898) — same inputs produce identical output regardless of ring vs OpenSSL. For password hashing, prefer jerboa_argon2id_hash or jerboa_scrypt for new designs.",
+    "related": [
+      "rust-aes-256-gcm-ffi"
+    ]
   }
 ]
