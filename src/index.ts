@@ -121,6 +121,8 @@ import { registerCrossRepoCompareTool } from './tools/cross-repo-compare.js';
 import { registerBatchAuditTool } from './tools/batch-audit.js';
 import { registerStdlibSearchTool } from './tools/stdlib-search.js';
 import { registerSreValidateTool } from './tools/sre-validate.js';
+import { registerAiScaffoldTool } from './tools/ai-scaffold.js';
+import { registerSemanticSearchTool } from './tools/semantic-search.js';
 // REMOVED: command-trace — IPC REPL tool for jerboa-emacs, not a Scheme language server tool
 // REMOVED: patch-file-validator — build script patching tool for jerboa-emacs
 // REMOVED: batch-command-scaffold — editor command scaffolding for jerboa-emacs
@@ -184,6 +186,8 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 - jerboa_test_coverage: Compare a module's exports against its test file to identify untested symbols.
 - jerboa_explain_error: Classify Jerboa/Chez error messages with likely causes, suggested fixes, and relevant cookbook recipes.
 - jerboa_sre_validate: Validate an SRE (s-expression regular expression) form — compiles it, lists named captures (=> name ...), and optionally tests against a sample string. Use this before runtime to catch unsupported SRE forms such as (~ ...) complement with unsupported char classes or malformed (embed ...) composition.
+- jerboa_ai_scaffold: Generate Jerboa FFI bindings from Rust extern "C" function signatures. Paste declarations from cbindgen output or a Rust crate C API. Produces foreign-procedure declarations, safe wrappers with type guards, resource wrappers for create/destroy pairs, and a test skeleton. Handles Rust primitives (i32, f64, usize, *mut T) and libc types.
+- jerboa_semantic_search: TF-IDF intent search over stdlib modules and cookbook recipes. Better than jerboa_stdlib_search for rare/specific terms ("guardian", "duckdb", "mtls", "stm"), multi-concept queries, or when keyword search returns noise. Indexes full recipe code+notes, not just tags. Use jerboa_howto_get with the returned id for full code.
 
 ## Macro Analysis Tools
 
@@ -664,6 +668,10 @@ registerStdlibSearchTool(server);
 
 // Regex tools
 registerSreValidateTool(server);
+
+// AI/ML scaffold and semantic search
+registerAiScaffoldTool(server);
+registerSemanticSearchTool(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
