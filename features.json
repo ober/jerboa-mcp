@@ -69,5 +69,40 @@
     "estimated_token_reduction": "~600 tokens (reduces grep/howto trial-and-error).",
     "votes": 0,
     "note": "Keyword-based version implemented as jerboa_stdlib_search. True semantic/embeddings search requires a vector store or embedding API."
+  },
+  {
+    "id": "jerboa-sre-validate",
+    "title": "jerboa_sre_validate: Validate SRE form and show generated regex string",
+    "description": "A tool that takes an SRE (s-expression regular expression) form, compiles it via sre->pattern-string, and returns both the resulting regex string and any named captures (name→group-index). Also catches unsupported SRE forms (e.g., unsupported char-class operators in ~ complement) before runtime. Should show the intermediate pregexp string to help debug composition issues.",
+    "impact": "medium",
+    "tags": [
+      "sre",
+      "regex",
+      "validate",
+      "debug",
+      "srfi-115"
+    ],
+    "use_case": "When writing or debugging complex SRE patterns, especially with (=> name ...) captures, (~ ...) complement, or (embed ...) composition. Avoids the need to run a full eval just to see what pattern string an SRE produces.",
+    "example_scenario": "Writing (define-rx kv-key (+ (~ (or \"=\" \":\" \"\\n\" \" \")))) and getting \"unsupported char class form\" at runtime. jerboa_sre_validate would have caught this immediately and shown that (or ...) inside (~ ...) needed to be added to sre-char-class-body.",
+    "estimated_token_reduction": "~300 tokens per complex SRE (eliminates 2-3 eval/error/fix cycles)",
+    "votes": 0
+  },
+  {
+    "id": "jerboa-gitignore-sls-warn",
+    "title": "jerboa_stale_static: warn when new .sls files are gitignored and untracked",
+    "description": "The jerboa_stale_static tool (or build_and_report) should warn when a compiled .so exists for an .sls file that is NOT tracked by git (e.g., because *.sls is in .gitignore). This catches the silent failure where new library files are written, compiled, and tested successfully — but never committed because git status doesn't show them. The fix requires git add -f.",
+    "impact": "medium",
+    "tags": [
+      "git",
+      "gitignore",
+      "sls",
+      "library",
+      "stale",
+      "build"
+    ],
+    "use_case": "When adding a new .sls library file to a project where *.sls is in .gitignore. The file compiles and tests pass, but git status shows nothing — the file is silently excluded from commits.",
+    "example_scenario": "Added lib/std/regex.sls, lib/std/rx.sls, lib/std/peg.sls. Build passed, all tests green. git status showed only modified files. The new .sls files were invisible — needed git add -f to force-add them past the gitignore rule. Without this warning, they would have been omitted from the commit.",
+    "estimated_token_reduction": "~100 tokens (prevents a lost-commit incident that would require a debugging session to diagnose)",
+    "votes": 0
   }
 ]
