@@ -3737,5 +3737,157 @@
     "related": [
       "std-debug-timetravel-recorder"
     ]
+  },
+  {
+    "id": "library-form-import-chezscheme",
+    "title": "Correct import pattern for library-form .ss files using jerboa prelude",
+    "tags": [
+      "library",
+      "import",
+      "chezscheme",
+      "prelude",
+      "conflict",
+      "quote"
+    ],
+    "imports": [],
+    "code": ";; Library-form .ss files need (chezscheme) for core syntax (quote, if, lambda, etc.)\n;; but (jerboa prelude) redefines some chezscheme names — import with except.\n;; Use the EXACT same except list that (jerboa prelude) itself uses internally:\n\n(library (mylib foo)\n  (export ...)\n  (import (except (chezscheme)\n                  make-hash-table hash-table?\n                  sort sort!\n                  printf fprintf\n                  path-extension path-absolute?\n                  with-input-from-string with-output-to-string\n                  iota 1+ 1-\n                  partition\n                  make-date make-time)\n          (jerboa prelude)\n          ;; ... other imports\n          )\n  ...)",
+    "notes": "CRITICAL: (jerboa prelude) does NOT re-export core syntax forms like quote, if, lambda, let, etc. Without (chezscheme), you get 'attempt to reference unbound identifier quote'. But importing both (chezscheme) and (jerboa prelude) causes 'multiple definitions' for the names listed above. Solution: use (except (chezscheme) ...) with the exact list that the prelude itself excludes. This also applies to top-level scripts (non-library) that import both. Also: #() vector literals are invalid in R6RS library context — use (vector) instead. The same except list works for top-level programs (main-binary.ss style).\""
+  },
+  {
+    "id": "std-test-check-predicate-order",
+    "title": "check-predicate argument order in (std test)",
+    "tags": [
+      "test",
+      "check-predicate",
+      "std test",
+      "argument order"
+    ],
+    "imports": [
+      "(std test)"
+    ],
+    "code": "(import (std test))\n\n;; check-predicate takes (actual pred) — VALUE first, PREDICATE second\n;; This is the OPPOSITE of what you might expect from Racket/RackUnit\n\n;; CORRECT:\n(check-predicate (length my-list) (lambda (n) (>= n 5)))\n(check-predicate (all-patterns) pair?)\n(check-predicate (pregexp-match pat str) (lambda (m) m))\n\n;; WRONG (args swapped — will call the value as a function → error):\n;; (check-predicate pair? (all-patterns))\n;; (check-predicate (lambda (n) ...) (length my-list))\n\n;; Also: test-suite creates a suite OBJECT, not running it.\n;; Must capture in def and call run-tests! to execute:\n\n(def my-suite\n  (test-suite \"my tests\"\n    (test-case \"foo\" (check-equal? 1 1))))\n\n(run-tests! my-suite)  ;; also calls test-report-summary! internally",
+    "notes": "check-predicate signature: (actual pred) where actual is the value under test and pred is the predicate function. Calling (check-predicate pred value) puts a lambda as 'actual' and a value as 'pred', causing 'value is not a procedure' errors. Also: test-suite returns a suite object — calling it at top level without run-tests! gives '0 checks' because nothing runs. Always: (def s (test-suite ...)) then (run-tests! s)."
+  },
+  {
+    "id": "std-regex-unified-facade",
+    "title": "Unified regex API via (std regex)",
+    "tags": [
+      "regex",
+      "re",
+      "match",
+      "search",
+      "named-capture",
+      "sre",
+      "std-regex"
+    ],
+    "imports": [
+      "(std regex)"
+    ],
+    "code": ";; Compile once, reuse — idempotent on re-objects\n(define pat (re '(+ digit)))          ; from SRE\n(define pat (re \"\\\\d+\"))              ; from string\n(define pat (re 'digit))              ; from SRE symbol\n\n;; Full-string match (anchored)\n(re-match? pat \"123\")    ; => #t\n(re-match? pat \"12abc\")  ; => #f\n\n;; Search (find first occurrence anywhere)\n(define m (re-search pat \"abc123def\"))\n(re-match-full  m)   ; => \"123\"\n(re-match-start m)   ; => 3\n(re-match-end   m)   ; => 6\n\n;; Find all non-overlapping matches\n(re-find-all pat \"a1b22c333\")  ; => (\"1\" \"22\" \"333\")\n\n;; Named captures with (=> name ...)\n(define dated\n  (re '(: (=> year  (= 4 digit)) \"-\"\n           (=> month (= 2 digit)) \"-\"\n           (=> day   (= 2 digit)))))\n(define m (re-search dated \"2026-04-09\"))\n(re-match-named m 'year)   ; => \"2026\"\n(re-match-named m 'month)  ; => \"04\"\n\n;; Numbered capture groups\n(re-groups \"(\\\\w+)@(\\\\w+)\" \"user@host\")  ; => (\"user\" \"host\")\n\n;; Replace\n(re-replace     \"\\\\d+\" \"abc123def456\" \"NUM\")  ; => \"abcNUMdef456\"\n(re-replace-all \"\\\\d+\" \"1a2b3c\" \"N\")          ; => \"NaNbNc\")\n\n;; Split\n(re-split \"\\\\s+\" \"a b  c\")  ; => (\"a\" \"b\" \"c\")\n\n;; Fold (collect with index)\n(re-fold \"\\\\d+\" (lambda (i m str acc) (cons (re-match-full m) acc)) '() \"a1b2\")\n; => (\"2\" \"1\")  — reversed",
+    "notes": "re accepts: string (pregexp syntax), SRE list/symbol, or existing re-object (idempotent). Named captures require SRE (=> name ...) syntax — pregexp backend doesn't support (?P<name>...)  inline. re-match? is overloaded: 1-arg tests if a value is a match-object, 2-arg tests full-string match. Available in (jerboa prelude) — no explicit import needed in .ss files."
+  },
+  {
+    "id": "std-rx-composable-patterns",
+    "title": "Composable named regex patterns with (std rx)",
+    "tags": [
+      "regex",
+      "rx",
+      "define-rx",
+      "composable",
+      "pattern",
+      "sre",
+      "std-rx"
+    ],
+    "imports": [
+      "(std rx)"
+    ],
+    "code": ";; rx: compile an SRE form to a re-object inline\n(re-match? (rx digit) \"5\")           ; => #t\n(re-match? (rx (+ digit)) \"12345\")   ; => #t\n(re-match? (rx alpha digit) \"a1\")    ; => #t\n\n;; define-rx: name a pattern and register for later composition\n(define-rx octet (** 1 3 digit))\n(define-rx ip4   (: octet \".\" octet \".\" octet \".\" octet))\n\n(re-match? ip4 \"192.168.1.1\")       ; => #t\n(re-find-all ip4 \"10.0.0.1 and 192.168.1.254\")\n; => (\"10.0.0.1\" \"192.168.1.254\")\n\n;; define-rx with named captures\n(define-rx dated\n  (: (=> year  (= 4 digit)) \"-\"\n     (=> month (= 2 digit)) \"-\"\n     (=> day   (= 2 digit))))\n(define m (re-search dated \"Event: 2026-04-09\"))\n(re-match-named m 'year)  ; => \"2026\"\n\n;; (std rx patterns) — pre-built patterns\n;; (import (std rx patterns)) gives you:\n;;   rx:ipv4  rx:email  rx:uuid  rx:semver  rx:iso8601-date\n;;   rx:identifier  rx:hex-color  rx:integer  rx:float  rx:quoted-string  etc.\n(re-match? rx:email \"user@example.com\")  ; => #t\n(re-match? rx:uuid \"550e8400-e29b-41d4-a716-446655440000\")  ; => #t",
+    "notes": "rx and define-rx are available in (jerboa prelude). (std rx patterns) must be imported explicitly. Composition works because define-rx registers patterns in a global rx-registry; later rx/define-rx forms splice them via (embed \"raw-pattern\") SRE extension. CRITICAL: define-rx must NOT mix define+expression in library bodies — internally uses (define name (let ([r ...]) (hashtable-set! ...) r)) pattern to stay R6RS-compliant."
+  },
+  {
+    "id": "std-peg-grammar",
+    "title": "PEG grammar with packrat memoization via (std peg)",
+    "tags": [
+      "peg",
+      "grammar",
+      "parser",
+      "define-grammar",
+      "packrat",
+      "csv",
+      "std-peg"
+    ],
+    "imports": [
+      "(std peg)"
+    ],
+    "code": ";; define-grammar creates a grammar with packrat memoization.\n;; Each rule becomes a public entry point: grammarname:rulename\n(define-grammar date-grammar\n  (date  (: (=> year  (= 4 digit)) \"-\"\n             (=> month (= 2 digit)) \"-\"\n             (=> day   (= 2 digit))))\n  (digit (/ \"0\" \"9\")))\n\n(date-grammar:date \"2026-04-09\")\n; => ((\"year\" . \"2026\") (\"month\" . \"04\") (\"day\" . \"09\"))\n; Named captures return an alist; unnamed sequences return concatenated string.\n\n;; Supported PEG operators in grammar rules:\n;; (: e1 e2 ...)     — sequence\n;; (or e1 e2 ...)    — ordered choice\n;; (* e)             — zero or more\n;; (+ e)             — one or more\n;; (? e)             — optional\n;; (= n e)           — exactly n repetitions\n;; (** m n e)        — between m and n repetitions\n;; (! e)             — negative lookahead (consumes nothing)\n;; (& e)             — positive lookahead (consumes nothing)\n;; (=> name e)       — named capture → alist entry\n;; (drop e)          — match and discard (not in result)\n;; (~ e)             — complement / any-char-not-matching\n;; (sep-by e sep)    — e separated by sep (zero or more)\n;; (sep-by1 e sep)   — e separated by sep (one or more)\n;; any               — any single character\n;; epsilon           — empty string (always succeeds)\n;; eof               — succeeds only at end of input\n\n;; CSV parser example\n(define-grammar csv\n  (file    (sep-by row \"\\n\"))\n  (row     (sep-by field \",\"))\n  (field   (or quoted bare))\n  (quoted  (: (drop \"\\\"\") (* (~ \"\\\"\")) (drop \"\\\"\")))\n  (bare    (* (~ (or \",\" \"\\n\")))))\n\n(csv:file \"a,b,c\\n1,2,3\")\n; => ((\"a\" \"b\" \"c\") (\"1\" \"2\" \"3\"))",
+    "notes": "Returns #f on parse failure (not exception). Rules can reference each other by name for mutual recursion — dispatch closure is shared. Result merging: all-string sequences are concatenated; any => form produces an alist. (drop ...) removes delimiters from output. Memoization key is (rule-name . position) — O(n) per rule. Rules must parse the FULL input string to succeed (peg-run wraps with eof check)."
+  },
+  {
+    "id": "raw-string-reader-test",
+    "title": "Testing #r\"...\" raw strings via jerboa-read-string",
+    "tags": [
+      "reader",
+      "raw-string",
+      "jerboa-read-string",
+      "annotated-datum",
+      "test"
+    ],
+    "imports": [
+      "(jerboa reader)"
+    ],
+    "code": ";; #r\"...\" raw strings are parsed by the Jerboa reader, not Chez's default reader.\n;; In .ss files run with scheme --script, you CANNOT use #r\"...\" literals directly.\n;; To test raw string parsing, call jerboa-read-string on a source string.\n\n;; KEY: without a path argument, jerboa-read-string returns PLAIN values (not annotated datums)\n(define (read1 str)\n  (car (jerboa-read-string str)))   ; <-- just car, NOT annotated-datum-value\n\n(read1 \"#r\\\"\\\\d+\\\"\")   ; => \"\\\\d+\" (the 3-char string backslash,d,plus)\n(read1 \"#r\\\"abc\\\"\")    ; => \"abc\"\n(read1 \"#r\\\"[a-z]+\\\"\") ; => \"[a-z]+\"\n\n;; Multiple datums\n(jerboa-read-string \"#r\\\"abc\\\" #r\\\"\\\\d+\\\"\")  ; => (\"abc\" \"\\\\d+\")\n\n;; To get annotated datums (with source location), pass a path:\n(define (read1-annotated str)\n  (let ((result (car (jerboa-read-string str \"test.ss\"))))\n    (annotated-datum-value result)))   ; now annotated-datum-value works\n\n;; Raw string semantics:\n;; - Backslashes are literal (no escape processing)\n;; - \\\" is the ONLY escape (produces a literal double-quote)\n;; - LIMITATION: cannot end a raw string with \\\" since it's consumed as escape\n;;   e.g. #r\"\\\\\" = backslash + escaped-quote (unterminated), not two backslashes\n;;   Workaround: put backslash-pairs mid-string: #r\"a\\\\b\" => \"a\\\\b\" (4 chars)",
+    "notes": "The #r\"...\" syntax is available when using the Jerboa reader (e.g. in the Jerboa REPL or when reading files with jerboa-read-all). In tests run via scheme --script, use jerboa-read-string to verify raw string parsing. The annotated-datum-value function only works when jerboa-read-string is called WITH a path argument (second arg); without it, values are returned plain."
+  },
+  {
+    "id": "r6rs-library-side-effect-in-define",
+    "title": "Side effects in R6RS library body: embed in define initializer",
+    "tags": [
+      "r6rs",
+      "library",
+      "define",
+      "side-effect",
+      "hashtable",
+      "macro",
+      "syntax-rules"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; R6RS library bodies CANNOT mix definitions and expressions.\n;; This is WRONG — expression (hashtable-set!) after a definition causes error:\n;;\n;; (define-syntax bad-macro\n;;   (syntax-rules ()\n;;     [(_ name val)\n;;      (begin\n;;        (define name val)\n;;        (hashtable-set! registry 'name val))]))   ;; ERROR: expr after define\n;;\n;; FIX: embed the side effect INSIDE the define initializer using let:\n\n(define-syntax register-define\n  (syntax-rules ()\n    [(_ name val)\n     (define name\n       (let ([v val])\n         (hashtable-set! registry 'name v)   ;; side effect inside let\n         v))]))                                ;; let returns v for the define\n\n;; This works because the whole (let ...) is the initializer expression for\n;; the single `define` — no expression follows a definition.\n\n;; Real-world example: (std rx)'s define-rx macro\n;; (define-rx ip4 (: octet \".\" octet))\n;; expands to:\n;; (define ip4\n;;   (let ([r (rx-compile '(: octet \".\" octet))])\n;;     (hashtable-set! rx-registry 'ip4 r)\n;;     r))",
+    "notes": "This pattern is required in any R6RS library (.sls file) where a macro needs to both define a binding AND register it in a side-channel data structure. Using (begin (define ...) (expression ...)) in a library body is a compile error. The let-inside-define trick is the canonical workaround. syntax-rules macros in Chez can refer to bindings from their definition environment — `rx-registry` in the template correctly refers to the internal hashtable even when the macro is used in another library."
+  },
+  {
+    "id": "printf-tilde-escape",
+    "title": "Escaping literal ~ in printf/format strings",
+    "tags": [
+      "printf",
+      "format",
+      "tilde",
+      "escape",
+      "output",
+      "string"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; In Chez Scheme, printf and format use ~ as directive prefix.\n;; A literal ~ in the output string must be written as ~~.\n\n;; WRONG — causes \"unrecognized directive ~<space>\" or similar error:\n;; (printf \"complement (~ ...) --\")  ; ~ followed by space is invalid directive\n\n;; CORRECT — use ~~ for a literal tilde:\n(printf \"complement (~~  ...) --~%\")   ; prints: complement (~  ...) --\n(printf \"cost: ~a~~  discount~%\" 10)   ; prints: cost: 10~ discount\n\n;; Common directives:\n;; ~a  — display (no quotes)\n;; ~s  — write (with quotes)\n;; ~%  — newline\n;; ~~  — literal tilde\n\n;; format works the same way:\n(format \"foo ~~ bar\")  ; => \"foo ~ bar\"",
+    "notes": "This trips up test files that describe SRE/regex syntax containing ~ (like complement forms). Any format string that mentions Jerboa/SRE operators using ~ must escape them as ~~. Also watch for: (or ...) in format strings is fine, but (~ ...) is dangerous since ~ is interpreted as a format directive start."
+  },
+  {
+    "id": "pregexp-named-capture-workaround",
+    "title": "Named captures in SRE: sre->named-groups instead of (?P&lt;name&gt;...)",
+    "tags": [
+      "regex",
+      "named-capture",
+      "sre",
+      "pregexp",
+      "srfi-115",
+      "sre->named-groups"
+    ],
+    "imports": [
+      "(std srfi srfi-115)"
+    ],
+    "code": ";; Jerboa's pregexp backend does NOT support (?P<name>...) named groups.\n;; Attempting to use them causes \"pregexp internal error\".\n\n;; WRONG — pregexp will error:\n;; (pregexp-match \"(?P<user>[a-z]+)\" \"alice\")  ; => ERROR\n\n;; CORRECT: (std srfi srfi-115) compiles (=> name ...) to plain numbered groups\n;; AND provides sre->named-groups to extract the name→index mapping separately.\n\n(define sre '(: (=> user (+ word)) \"@\" (=> host (+ word))))\n\n;; Get the pregexp pattern string (uses plain numbered groups):\n(sre->pattern-string sre)\n; => \"(?:[a-zA-Z0-9_])+@(?:[a-zA-Z0-9_])+\"  — no (?P<...>)\n\n;; Get the name→group-index alist:\n(sre->named-groups sre)\n; => ((user . 1) (host . 2))\n\n;; (std regex) handles this automatically:\n;; When you pass an SRE to re, it calls both sre->pattern-string and\n;; sre->named-groups and stores the alist in the re-object.\n;; re-match-named then uses that alist to look up by name.\n\n(define m (re-search '(: (=> user (+ word)) \"@\" (=> host (+ word)))\n                     \"alice@wonderland\"))\n(re-match-named m 'user)  ; => \"alice\"\n(re-match-named m 'host)  ; => \"wonderland\"",
+    "notes": "The (=> name sre...) form in srfi-115 compiles to a plain numbered capturing group (...), not (?P<name>...). Named-group tracking is done at the SRE level by sre->named-groups, which walks the SRE tree and assigns 1-based indices to => forms in left-to-right depth-first order. This avoids the pregexp limitation entirely. String patterns cannot use named groups ((?P<...>) is simply not supported by the pregexp library). Use SRE forms for named captures."
   }
 ]
