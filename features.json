@@ -19,23 +19,6 @@
     "note": "Requires Jerboa core change (prelude.sls), not implementable in jerboa-mcp."
   },
   {
-    "id": "ai-prompt-to-jerboa-code",
-    "title": "jerboa_prompt_to_code: Generate verified Jerboa from natural language prompts",
-    "description": "Tool that takes pseudocode/prompts, generates Jerboa via LLM, then verifies with eval/syntax_check/verify loop, iterating until passing. Outputs working .ss snippet.",
-    "impact": "high",
-    "tags": [
-      "ai",
-      "codegen",
-      "verification",
-      "prompt"
-    ],
-    "use_case": "AI assistants generating safe, executable Scheme from user descriptions without manual fixes.",
-    "example_scenario": "User: \"Write a function to sort a list and compute sum.\" Tool: Generates def/sort/sum code, verifies, returns verified snippet.",
-    "estimated_token_reduction": "~800 tokens per code gen session (auto-verify reduces back-and-forth).",
-    "votes": 0,
-    "note": "Requires calling an LLM API from within an MCP tool — not practical without Anthropic API integration."
-  },
-  {
     "id": "jerboa-ai-scaffold-ml",
     "title": "jerboa_ai_scaffold: Generate ML/AI patterns from Rust crates",
     "description": "Scaffold Jerboa FFI wrappers for Rust ML libs (e.g., tch-rs tensors, ndarray stats); auto-generates safe bindings with type checks and examples.",
