@@ -120,6 +120,7 @@ import { registerPreludeShadowDetectTool } from './tools/prelude-shadow-detect.j
 import { registerCrossRepoCompareTool } from './tools/cross-repo-compare.js';
 import { registerBatchAuditTool } from './tools/batch-audit.js';
 import { registerStdlibSearchTool } from './tools/stdlib-search.js';
+import { registerSreValidateTool } from './tools/sre-validate.js';
 // REMOVED: command-trace — IPC REPL tool for jerboa-emacs, not a Scheme language server tool
 // REMOVED: patch-file-validator — build script patching tool for jerboa-emacs
 // REMOVED: batch-command-scaffold — editor command scaffolding for jerboa-emacs
@@ -182,6 +183,7 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 - jerboa_diff_modules: Compare exports between two modules — added, removed, and shared symbols. Useful for version migration.
 - jerboa_test_coverage: Compare a module's exports against its test file to identify untested symbols.
 - jerboa_explain_error: Classify Jerboa/Chez error messages with likely causes, suggested fixes, and relevant cookbook recipes.
+- jerboa_sre_validate: Validate an SRE (s-expression regular expression) form — compiles it, lists named captures (=> name ...), and optionally tests against a sample string. Use this before runtime to catch unsupported SRE forms such as (~ ...) complement with unsupported char classes or malformed (embed ...) composition.
 
 ## Macro Analysis Tools
 
@@ -233,7 +235,7 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 - jerboa_build_and_report: Run "make build" and parse output for structured error diagnostics (file, line, severity).
 - jerboa_build_conflict_check: Detect running Chez/make processes on the same project directory.
 - jerboa_make: Run Makefile targets in a project directory.
-- jerboa_stale_static: Compare compiled .so artifact mtimes against source .sls files. Reports stale artifacts.
+- jerboa_stale_static: Compare compiled .so artifact mtimes against source .sls files. Reports stale artifacts. Also warns when .sls files are gitignored and untracked — files that compile and test green but are silently excluded from commits (fix: git add -f).
 - jerboa_run_tests: Execute test files via scheme or run project-wide tests. Use filter to match test names.
 
 ## FFI Tools
@@ -659,6 +661,9 @@ registerBatchAuditTool(server);
 
 // Enhanced stdlib/cookbook search
 registerStdlibSearchTool(server);
+
+// Regex tools
+registerSreValidateTool(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

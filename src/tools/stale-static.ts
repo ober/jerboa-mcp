@@ -2,7 +2,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative, dirname, basename } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { getJerboaHome } from '../chez.js';
+
+const execFileAsync = promisify(execFile);
 
 interface SlsFile {
   path: string;
@@ -78,6 +82,56 @@ async function findCompiledArtifact(slsPath: string): Promise<{ path: string; mt
 }
 
 /**
+ * Run a git command in the given directory.
+ * Returns stdout lines on success, or null if git is not available / not a git repo.
+ */
+async function runGit(cwd: string, args: string[]): Promise<string[] | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['-C', cwd, ...args], {
+      timeout: 5000,
+    });
+    return stdout
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find .sls files that are gitignored AND untracked — meaning they compiled
+ * but would be silently excluded from commits unless `git add -f` is used.
+ *
+ * Returns a set of absolute paths for the at-risk files.
+ */
+async function findGitIgnoredSlsFiles(projectPath: string): Promise<Set<string>> {
+  // Files that git knows about (tracked)
+  const tracked = await runGit(projectPath, ['ls-files', '--', '*.sls']);
+  // Untracked files that are explicitly ignored
+  const ignored = await runGit(projectPath, [
+    'ls-files',
+    '--others',
+    '--ignored',
+    '--exclude-standard',
+    '--',
+    '*.sls',
+  ]);
+
+  if (!tracked || !ignored) return new Set();
+
+  const trackedSet = new Set(tracked.map((f) => join(projectPath, f)));
+  const result = new Set<string>();
+  for (const rel of ignored) {
+    const abs = join(projectPath, rel);
+    if (!trackedSet.has(abs)) {
+      result.add(abs);
+    }
+  }
+  return result;
+}
+
+/**
  * Format a time difference in human-readable form.
  */
 function formatTimeDiff(diffMs: number): string {
@@ -99,6 +153,8 @@ export function registerStaleStaticTool(server: McpServer): void {
       description:
         'Compare compiled .so artifacts mtime against source .sls files in a Jerboa project. ' +
         'Detects stale compiled artifacts that may cause unexpected behavior. ' +
+        'Also warns when .sls files are gitignored and untracked — a silent failure where files ' +
+        'compile and test green but are excluded from commits (fix: git add -f). ' +
         'Reports which compiled files need rebuilding.',
       annotations: { readOnlyHint: true, idempotentHint: true },
       inputSchema: {
@@ -126,7 +182,10 @@ export function registerStaleStaticTool(server: McpServer): void {
         };
       }
 
-      const slsFiles = await findSlsFiles(project_path);
+      const [slsFiles, gitIgnoredSls] = await Promise.all([
+        findSlsFiles(project_path),
+        findGitIgnoredSlsFiles(project_path),
+      ]);
 
       if (slsFiles.length === 0) {
         return {
@@ -213,6 +272,29 @@ export function registerStaleStaticTool(server: McpServer): void {
       if (globalStaleNotes.length > 0) {
         lines.push(...globalStaleNotes);
         lines.push('');
+      }
+
+      // Gitignore warning: .sls files that compiled but are excluded from git commits
+      const ignoredWithArtifacts = checks.filter(
+        (c) => gitIgnoredSls.has(c.slsPath) && c.compiledPath !== null,
+      );
+      const ignoredWithoutArtifacts = checks.filter(
+        (c) => gitIgnoredSls.has(c.slsPath) && c.compiledPath === null,
+      );
+      if (ignoredWithArtifacts.length > 0 || ignoredWithoutArtifacts.length > 0) {
+        lines.push('WARNING: Gitignored .sls files (would be excluded from commits):');
+        for (const c of ignoredWithArtifacts) {
+          lines.push(
+            `  GITIGNORED+COMPILED: ${c.relPath} — has .so artifact but git will not track it`,
+          );
+        }
+        for (const c of ignoredWithoutArtifacts) {
+          lines.push(`  GITIGNORED: ${c.relPath} — not tracked by git`);
+        }
+        lines.push('  Fix: git add -f <file> to force-add past .gitignore');
+        lines.push('');
+      } else if (gitIgnoredSls.size === 0 && slsFiles.length > 0) {
+        // Only note clean state if git is available (gitIgnoredSls not null)
       }
 
       if (staleChecks.length === 0) {

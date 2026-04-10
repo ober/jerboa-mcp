@@ -3889,5 +3889,41 @@
     ],
     "code": ";; Jerboa's pregexp backend does NOT support (?P<name>...) named groups.\n;; Attempting to use them causes \"pregexp internal error\".\n\n;; WRONG — pregexp will error:\n;; (pregexp-match \"(?P<user>[a-z]+)\" \"alice\")  ; => ERROR\n\n;; CORRECT: (std srfi srfi-115) compiles (=> name ...) to plain numbered groups\n;; AND provides sre->named-groups to extract the name→index mapping separately.\n\n(define sre '(: (=> user (+ word)) \"@\" (=> host (+ word))))\n\n;; Get the pregexp pattern string (uses plain numbered groups):\n(sre->pattern-string sre)\n; => \"(?:[a-zA-Z0-9_])+@(?:[a-zA-Z0-9_])+\"  — no (?P<...>)\n\n;; Get the name→group-index alist:\n(sre->named-groups sre)\n; => ((user . 1) (host . 2))\n\n;; (std regex) handles this automatically:\n;; When you pass an SRE to re, it calls both sre->pattern-string and\n;; sre->named-groups and stores the alist in the re-object.\n;; re-match-named then uses that alist to look up by name.\n\n(define m (re-search '(: (=> user (+ word)) \"@\" (=> host (+ word)))\n                     \"alice@wonderland\"))\n(re-match-named m 'user)  ; => \"alice\"\n(re-match-named m 'host)  ; => \"wonderland\"",
     "notes": "The (=> name sre...) form in srfi-115 compiles to a plain numbered capturing group (...), not (?P<name>...). Named-group tracking is done at the SRE level by sre->named-groups, which walks the SRE tree and assigns 1-based indices to => forms in left-to-right depth-first order. This avoids the pregexp limitation entirely. String patterns cannot use named groups ((?P<...>) is simply not supported by the pregexp library). Use SRE forms for named captures."
+  },
+  {
+    "id": "sre-char-range-ascii-gotcha",
+    "title": "SRE char-range (/ #\\! #\\~) includes @ and other unexpected chars",
+    "tags": [
+      "sre",
+      "char-range",
+      "ascii",
+      "gotcha",
+      "email",
+      "regex",
+      "character-class"
+    ],
+    "imports": [
+      "(std regex)"
+    ],
+    "code": ";; GOTCHA: (/ #\\! #\\~) covers ASCII 33-126, which includes @, [, ], {, }, etc.\n;; This is a common bug when trying to match \"printable non-whitespace ASCII\".\n\n;; WRONG — allows @ in email local part, enabling \"user@domain@example.com\":\n;; (define-rx email-local (+ (or alnum (/ #\\! #\\~))))\n\n;; CORRECT — use explicit character lists instead of wide ranges:\n(define email-local-re (re '(+ (or alnum \".\" \"_\" \"+\" \"-\"))))\n\n;; If you must use ranges, verify what's included:\n;; ASCII 33 (#\\!) through 126 (#\\~):\n;;   ! \" # $ % & ' ( ) * + , - . / 0-9 : ; < = > ? @\n;;   A-Z [ \\ ] ^ _ ` a-z { | } ~\n;;\n;; Note @ is ASCII 64, right between ? (63) and A (65).\n;; To exclude @, split the range:\n;;   (or (/ #\\! #\\?) (/ #\\A #\\~))   ;; 33-63, 65-126 — skips @",
+    "notes": "This gotcha caused a real bug: rx:email-local used (/ #\\! #\\~) which allowed @ in email local parts, making \"user@domain@example.com\" match as a valid email. Always verify ASCII ranges with a table — the printable ASCII range includes many punctuation chars you may not want. Prefer explicit character lists (or alnum \".\" \"_\" \"+\" \"-\") over broad ranges."
+  },
+  {
+    "id": "sre-char-class-escaping",
+    "title": "Character class escaping differs from general regex escaping",
+    "tags": [
+      "sre",
+      "char-class",
+      "escape",
+      "hyphen",
+      "bracket",
+      "complement",
+      "regex"
+    ],
+    "imports": [
+      "(std srfi srfi-115)"
+    ],
+    "code": ";; Inside a character class [...], different chars are special than in general regex.\n;;\n;; General regex special chars: . * + ? ( ) [ ] { } \\ ^ $ |\n;; Char class special chars:    ] \\ ^ -\n;;\n;; The hyphen (-) is interpreted as a RANGE operator inside [...]:\n;;   [a-z]   = all lowercase letters (range from a to z)\n;;   [a\\-z]  = the three chars: a, -, z (escaped hyphen)\n;;\n;; WRONG — (~ (or \"a\" \"-\" \"z\")) generated [^a-z] (a range!):\n;; (sre->pattern-string '(~ (or \"a\" \"-\" \"z\")))  ;; => \"[^a-z]\" — WRONG\n;;\n;; FIXED — srfi-115 now uses char-class-quote-char which escapes ] \\ ^ -:\n(sre->pattern-string '(~ (or \"a\" \"-\" \"z\")))  ;; => \"[^a\\\\-z]\" — correct\n\n;; This applies whenever strings appear inside (~ ...) complement forms:\n(sre->pattern-string '(~ (or \"=\" \":\" \"\\n\" \" \")))\n;; Correctly escapes special chars for the char-class context",
+    "notes": "srfi-115 has two escaping functions: pregexp-quote-char (for general regex context, escapes . * + ? etc.) and char-class-quote-char (for inside [...], escapes ] \\ ^ -). The sre-char-class-body function (used by ~ complement and / char-range) must use the char-class version. This distinction matters because - is harmless in general regex but means \"range\" inside brackets."
   }
 ]

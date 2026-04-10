@@ -611,5 +611,23 @@
       "static",
       "path-injection"
     ]
+  },
+  {
+    "id": "sre-char-range-at-sign-inclusion",
+    "title": "SRE char-range (/ #\\\\! #\\\\~) includes @ allowing email validation bypass",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(/\\s*#\\\\!\\s*#\\\\~\\)",
+    "message": "The character range (/ #\\\\! #\\\\~) covers ASCII 33-126 which includes @ (64). When used in email local-part patterns, this allows double-@ addresses like user@domain@example.com to match, bypassing email validation.",
+    "remediation": "Use explicit character lists instead of broad ASCII ranges: (or alnum \\\".\\\" \\\"_\\\" \\\"+\\\" \\\"-\\\"). If a range is needed, split around @: (or (/ #\\\\! #\\\\?) (/ #\\\\A #\\\\~))",
+    "related_recipe": "sre-char-range-ascii-gotcha",
+    "tags": [
+      "sre",
+      "regex",
+      "email",
+      "validation",
+      "char-range",
+      "ascii"
+    ]
   }
 ]
