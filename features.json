@@ -34,5 +34,94 @@
     "example_scenario": "docs/core-async.md Section 17 contains a 20-line worked example that ports Clojure's scatter/gather pattern to Jerboa. Two lines use `@out` (Clojure atom-deref reader sugar that doesn't exist in Jerboa) and one uses `(swap! out cons v)` instead of `(swap! out (cut cons v <>))`. A `jerboa_doc_verify docs/core-async.md` call would have compiled the block, noted \"variable @out is not bound\" at the fence's line, and caught both errors in one shot. Instead I wrote a /tmp/test-async-example.ss file, ran it by hand, saw the first error, fixed it, re-ran, saw the second, fixed it, re-ran again. Three iterations that one tool call could collapse into one. Same friction applies to every cookbook recipe on disk and every README code snippet.",
     "estimated_token_reduction": "~1500 tokens per doc-ship session (replaces: write tmp file → read → run → parse error → re-write → re-run → parse → fix → re-run cycle). Multiplicative across every code block in a large doc.",
     "votes": 0
+  },
+  {
+    "id": "jerboa-safe-prelude-default",
+    "title": "Make safe APIs the default prelude exports",
+    "description": "The (jerboa prelude) should re-export safe-sqlite-open as sqlite-open, safe-tcp-connect as tcp-connect, etc. Claude and humans will always reach for the simplest import — if the safe version IS the default, nobody has to remember to use (std safe). Raw APIs should require explicit (import (std db sqlite-native)) opt-in.",
+    "impact": "critical",
+    "tags": [
+      "safety",
+      "prelude",
+      "default",
+      "claude",
+      "api",
+      "import"
+    ],
+    "use_case": "Every time Claude writes Jerboa code, it imports (jerboa prelude). If that gives it the safe APIs by default, all generated code is automatically type-checked and resource-safe without Claude knowing about the safety modules.",
+    "example_scenario": "Claude writes (import (jerboa prelude)) then (sqlite-open \"db\") — this silently calls safe-sqlite-open which validates types, and (with-resource ...) is the documented pattern. No separate (import (std safe)) needed.",
+    "estimated_token_reduction": 200,
+    "votes": 1,
+    "note": "Requires Jerboa core change (prelude.sls), not implementable in jerboa-mcp."
+  },
+  {
+    "id": "ai-prompt-to-jerboa-code",
+    "title": "jerboa_prompt_to_code: Generate verified Jerboa from natural language prompts",
+    "description": "Tool that takes pseudocode/prompts, generates Jerboa via LLM, then verifies with eval/syntax_check/verify loop, iterating until passing. Outputs working .ss snippet.",
+    "impact": "high",
+    "tags": [
+      "ai",
+      "codegen",
+      "verification",
+      "prompt"
+    ],
+    "use_case": "AI assistants generating safe, executable Scheme from user descriptions without manual fixes.",
+    "example_scenario": "User: \"Write a function to sort a list and compute sum.\" Tool: Generates def/sort/sum code, verifies, returns verified snippet.",
+    "estimated_token_reduction": "~800 tokens per code gen session (auto-verify reduces back-and-forth).",
+    "votes": 0,
+    "note": "Requires calling an LLM API from within an MCP tool — not practical without Anthropic API integration."
+  },
+  {
+    "id": "jerboa-ai-scaffold-ml",
+    "title": "jerboa_ai_scaffold: Generate ML/AI patterns from Rust crates",
+    "description": "Scaffold Jerboa FFI wrappers for Rust ML libs (e.g., tch-rs tensors, ndarray stats); auto-generates safe bindings with type checks and examples.",
+    "impact": "high",
+    "tags": [
+      "ai",
+      "ml",
+      "ffi",
+      "rust",
+      "scaffold"
+    ],
+    "use_case": "Prototyping AI models in Jerboa without manual FFI boilerplate.",
+    "example_scenario": "User: \"Scaffold tensor ops from tch-rs.\" Tool: Generates foreign-procedure defs, safe wrappers, test suite.",
+    "estimated_token_reduction": "~1200 tokens (avoids explaining/generating FFI from scratch).",
+    "votes": 0,
+    "note": "Requires LLM API + knowledge of Rust crate APIs — too domain-specific without crate introspection tooling."
+  },
+  {
+    "id": "jerboa-semantic-search-stdlib",
+    "title": "jerboa_semantic_search: Embeddings-based search over stdlib and cookbooks",
+    "description": "Vector search for functions/patterns by intent (e.g., \"safe file read\"); uses simple embeddings on docstrings/exports for code discovery.",
+    "impact": "high",
+    "tags": [
+      "search",
+      "semantic",
+      "ai",
+      "discovery"
+    ],
+    "use_case": "AI finding relevant APIs without exact name knowledge.",
+    "example_scenario": "Query: \"Handle JSON errors safely.\" Returns: json-parse with try/catch examples from cookbook.",
+    "estimated_token_reduction": "~600 tokens (reduces grep/howto trial-and-error).",
+    "votes": 0,
+    "note": "Keyword-based version implemented as jerboa_stdlib_search. True semantic/embeddings search requires a vector store or embedding API."
+  },
+  {
+    "id": "detect-worker-shared-mutation",
+    "title": "Scanner to detect worker-thread mutation of shared hash tables and lists",
+    "description": "Add a static analysis pass that flags the anti-pattern where a (spawn ...) worker thread's body (including parameterized callbacks) calls hash-put!, hash-remove!, set-car!, set-cdr!, or struct setters on values that are ALSO read by the thread that called spawn. This is unsafe under Chez preemptive pthreads — hash tables and pair lists are not thread-safe, and empirical testing shows 33–37% data loss on concurrent mutation even with per-op mutexes. The scanner should recommend the mailbox pattern (thread-send / non-blocking thread-receive 0 drain) as the fix.",
+    "impact": "high",
+    "tags": [
+      "thread-safety",
+      "race",
+      "spawn",
+      "hash-put",
+      "concurrency",
+      "lint"
+    ],
+    "use_case": "Any Jerboa project using (spawn ...) with worker threads that drive a UI or long-running loop. The bug is invisible in development (messages appear to work) but manifests as silent data loss or hangs under load. A static pass that flags this pattern at lint time would save hours of debugging per occurrence.",
+    "example_scenario": "jerboa-code TUI spawned a worker thread that called (hash-put! tool-counts name ...) and mutated msg-block lists via a parameterized callback. The main event-loop thread read these same structures to render each frame. Under load the TUI would hang randomly, losing ~1 in 3 events. Took Gemini 3.1 Pro pseudocode analysis to diagnose. A linter that recognized \"callback defined inside parameterize inside spawn\" + \"mutates value reachable from outer scope\" would have flagged this immediately.",
+    "estimated_token_reduction": "~3000 tokens per occurrence (avoids multi-round debugging session, .log analysis, thread-safety recipe search)",
+    "votes": 0
   }
 ]

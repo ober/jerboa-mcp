@@ -4209,5 +4209,49 @@
       "csp-core-async-basics",
       "jerboa-clojure-atom-aliases"
     ]
+  },
+  {
+    "id": "macos-static-binary-link",
+    "title": "Link a static Chez Scheme binary on macOS (Homebrew)",
+    "tags": [
+      "macos",
+      "static",
+      "binary",
+      "link",
+      "homebrew",
+      "tarm64osx",
+      "apple-silicon"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Detect macOS via machine-type\n(define macos?\n  (let ([mt (symbol->string (machine-type))])\n    (or (string=? mt \"ta6osx\") (string=? mt \"a6osx\")\n        (string=? mt \"tarm64osx\") (string=? mt \"arm64osx\"))))\n\n;; Find Chez install dir — Homebrew on Apple Silicon uses /opt/homebrew/lib\n(define (find-csv-dir lib-dir mt)\n  (let ([csv-dir\n          (let lp ([dirs (guard (e [#t '()]) (directory-list lib-dir))])\n            (cond\n              [(null? dirs) #f]\n              [(and (> (string-length (car dirs)) 3)\n                    (string=? \"csv\" (substring (car dirs) 0 3)))\n               (format \"~a/~a/~a\" lib-dir (car dirs) mt)]\n              [else (lp (cdr dirs))]))])\n    (and csv-dir\n         (file-exists? (format \"~a/main.o\" csv-dir))\n         csv-dir)))\n\n;; Search order: ~/.local/lib, /usr/local/lib, /opt/homebrew/lib, /usr/lib\n(define chez-dir\n  (let ([mt (symbol->string (machine-type))]\n        [home (getenv \"HOME\")])\n    (or (find-csv-dir (format \"~a/.local/lib\" home) mt)\n        (find-csv-dir \"/usr/local/lib\" mt)\n        (find-csv-dir \"/opt/homebrew/lib\" mt)  ;; Apple Silicon Homebrew\n        (find-csv-dir \"/usr/lib\" mt))))\n\n;; macOS link flags — no -ldl or -luuid (both in system libs), needs -liconv\n(define link-libs\n  (cond\n    [macos?   \"-lkernel -llz4 -lz -lm -lpthread -lncurses -liconv\"]\n    [else     \"-lkernel -llz4 -lz -lm -ldl -lpthread -luuid -lncurses\"]))",
+    "notes": "macOS differences from Linux: (1) Homebrew on Apple Silicon installs to /opt/homebrew/lib/csv*/tarm64osx/, not /usr/local/lib. (2) -ldl does not exist — dlopen is in libSystem. (3) -luuid does not exist — uuid is in system frameworks. (4) -liconv is needed. Machine-type strings: ta6osx (threaded x86-64), a6osx (non-threaded x86-64), tarm64osx (threaded ARM64), arm64osx (non-threaded ARM64).",
+    "related": [
+      "freebsd-static-binary-link"
+    ]
+  },
+  {
+    "id": "tui-worker-mailbox-nonblocking-drain",
+    "title": "TUI event loop: non-blocking mailbox drain from worker thread",
+    "tags": [
+      "tui",
+      "mailbox",
+      "thread-receive",
+      "non-blocking",
+      "event-loop",
+      "worker",
+      "drain"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; When a worker thread produces events that must be applied to UI state,\n;; DO NOT mutate state from the worker — Chez hash tables and pair lists\n;; are NOT thread-safe under preemptive pthreads. We observed 33–37% data\n;; loss on concurrent hash-put! and list mutation.\n;;\n;; Instead: worker sends tagged event tuples to the main thread's mailbox\n;; via thread-send; the event loop non-blocking-drains before each render.\n\n;; 1. Capture the main thread so worker knows where to send.\n(def *main-thread* (make-parameter #f))\n\n;; 2. Worker-side send helper.\n(def (send-event! ev)\n  (let ((main (*main-thread*)))\n    (when main (thread-send main ev))))\n\n;; 3. Non-blocking drain. The key is (thread-receive 0) — timeout zero\n;;    means \"return immediately if the mailbox is empty\". But an empty\n;;    mailbox RAISES an exception rather than returning #f, so we must\n;;    guard it and map the exception to a sentinel.\n(def (drain-events! state)\n  \"Drain all pending events from current-thread's mailbox. Non-blocking.\"\n  (let loop ((n 0))\n    (let ((ev (guard (e (#t 'EMPTY)) (thread-receive 0))))\n      (if (eq? ev 'EMPTY)\n        n\n        (begin\n          (apply-event! state ev)\n          (loop (+ n 1)))))))\n\n;; 4. Main thread captures itself before the event loop starts.\n(def (event-loop state)\n  (parameterize ((*main-thread* (current-thread)))\n    (let loop ()\n      (drain-events! state)     ;; <- drain before rendering\n      (render! state)\n      (let ((ev (poll-input)))\n        (when ev (handle-input! state ev))\n        (unless (done? state) (loop))))))\n\n;; 5. Worker parameterizes callbacks that send events instead of mutating.\n(def (run-worker! text)\n  (spawn\n    (lambda ()\n      (parameterize ((current-stream-cb\n                       (lambda (tok) (send-event! (list 'stream-token tok)))))\n        (try\n          (do-work text)\n          (send-event! (list 'done))\n          (catch (e)\n            (send-event! (list 'error (err->string e)))))))))\n\n;; 6. All state mutation happens on the main thread.\n(def (apply-event! state ev)\n  (match ev\n    ((list 'stream-token tok) (append-to-buffer! state tok))\n    ((list 'done)             (mark-done! state))\n    ((list 'error msg)        (set-error! state msg))))",
+    "notes": "CRITICAL distinction from the `actor-pattern` recipe: that one uses BLOCKING `(thread-receive)` which freezes the UI. For a TUI event loop you need (thread-receive 0) — but an empty mailbox RAISES an exception with timeout 0, not returns #f, so you MUST wrap it in `guard` and convert to a sentinel.\n\nWhy not a shared hash table with a mutex? Empirical test on Chez 10 with preemptive pthreads showed 33–37% data loss on concurrent hash-put! even with per-write mutex acquisition, because the event loop reader was still racing with the writer during read-modify-write of pair lists inside buckets. The mailbox pattern sidesteps this entirely: state mutation is serialized by being single-threaded.\n\nWhy a (make-parameter) for *main-thread*? Parameters are inherited by spawn, so the worker closes over the main thread's identity without needing explicit closure capture. Must be set before spawning any workers.\n\nFIFO ordering is preserved: Chez thread mailboxes are FIFO, so event tuples arrive in send order (stream-token before tool-event before done, etc.).\n\nThis pattern was validated fixing TUI hangs in jerboa-code after a pseudocode analysis by Gemini 3.1 Pro identified the hash-put! race as the root cause.",
+    "related": [
+      "actor-pattern",
+      "jemacs-spawn-worker-ui-queue",
+      "spawn-thread"
+    ]
   }
 ]
