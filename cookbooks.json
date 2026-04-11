@@ -4273,5 +4273,30 @@
     ],
     "code": ";; `transduce` and `into` are polymorphic over pmap/pset/pvec.\n;;\n;; As sources: pmap yields (key . val) pairs (matching Clojure's seq-of-\n;; entries), pset and pvec yield single elements.\n;;\n;; As destinations: `into` uses transients under the hood so bulk ingest\n;; is O(n) rather than O(n log32 n) for pmap/pset, and amortised O(n)\n;; for pvec.\n\n;; --- As destination (with rf-into-pmap / rf-into-pset / rf-into-pvec) ---\n\n;; Build a persistent-vector via `into`\n(into pvec-empty (filtering odd?) '(1 2 3 4 5))\n;; => pvec(1 3 5)\n\n;; Build a persistent-set via `into`\n(into pset-empty (mapping (lambda (x) (* x x))) '(1 2 3 4))\n;; => pset(1 4 9 16)\n\n;; Build a persistent-map from (k . v) pairs\n(into pmap-empty\n      (mapping (lambda (p) (cons (car p) (* (cdr p) 2))))\n      '((a . 1) (b . 2) (c . 3)))\n;; => pmap(a 2, b 4, c 6)\n\n;; --- As source ---\n\n;; Reduce over a persistent-set\n(transduce (filtering even?) (rf-sum) 0 (persistent-set 1 2 3 4 5 6))\n;; => 12\n\n;; Reduce over a persistent-map — each element is a (k . v) pair\n(transduce (mapping cdr) (rf-sum) 0 (persistent-map 'a 1 'b 2 'c 3))\n;; => 6\n\n;; Reduce over a persistent-vector\n(transduce (taking 3) (rf-sum) 0 (persistent-vector 10 20 30 40 50))\n;; => 60\n\n;; --- Explicit reducing functions ---\n\n;; These are useful when you want to drive `transduce` yourself.\n(rf-into-pmap)  ;; case-lambda: [() (t) (t kv)] — completion finalises\n(rf-into-pset)  ;; case-lambda: [() (t) (t x)]\n(rf-into-pvec)  ;; case-lambda: [() (t) (t x)]",
     "notes": "(std transducer) now imports pmap/pset/pvec directly and the transduce/into entry points dispatch on collection type. Lists, vectors, strings, pmap, pset, and pvec are supported as sources. Destinations use transients under the hood, so bulk ingestion is O(n). Early termination via `reduced` is preserved across persistent-collection sources via call/cc. Landed April 2026."
+  },
+  {
+    "id": "jerboa-csp-transducer-chan",
+    "title": "Transducer-backed channels with (chan n xform)",
+    "tags": [
+      "csp",
+      "channel",
+      "transducer",
+      "xform",
+      "clojure",
+      "core.async",
+      "chan"
+    ],
+    "imports": [
+      "(except (chezscheme) merge)",
+      "(except (std csp) go go-named)",
+      "(std csp clj)",
+      "(std transducer)"
+    ],
+    "code": ";; (std csp clj) exposes Clojure's `(chan n xform)` and\n;; `(chan n xform ex-handler)`. Every put runs through the transducer\n;; before landing in the buffer. Supports every transducer from\n;; (std transducer) — mapping, filtering, flat-mapping, taking,\n;; partitioning-by, composed xforms, and so on.\n\n;; Simple mapping: increment every value as it's put.\n(let ([ch (chan 8 (mapping (lambda (x) (+ x 1))))])\n  (chan-put! ch 1) (chan-put! ch 2) (chan-put! ch 3)\n  (chan-close! ch)\n  (chan->list ch))\n;; => (2 3 4)\n\n;; Filtering: only even numbers reach consumers.\n(let ([ch (chan 8 (filtering even?))])\n  (for-each (lambda (x) (chan-put! ch x)) '(1 2 3 4 5 6))\n  (chan-close! ch)\n  (chan->list ch))\n;; => (2 4 6)\n\n;; Early termination: (taking n) closes the channel automatically\n;; after n puts. Use chan-try-put! to avoid raising on a closed channel.\n(let ([ch (chan 8 (taking 3))])\n  (for-each (lambda (x) (chan-try-put! ch x)) '(a b c d e))\n  (chan->list ch))\n;; => (a b c)\n\n;; One-to-many expansion: flat-mapping can enqueue several items\n;; per put. Make sure the buffer is large enough.\n(let ([ch (chan 16 (flat-mapping (lambda (x) (list x (* x 10)))))])\n  (chan-put! ch 1) (chan-put! ch 2)\n  (chan-close! ch)\n  (chan->list ch))\n;; => (1 10 2 20)\n\n;; Composed xforms: filter -> map -> take\n(let ([ch (chan 32 (compose-transducers\n                     (filtering odd?)\n                     (mapping (lambda (x) (* x x)))\n                     (taking 3)))])\n  (for-each (lambda (x) (chan-try-put! ch x)) '(1 2 3 4 5 6 7 8 9))\n  (chan->list ch))\n;; => (1 9 25)\n\n;; Stateful transducers are flushed on close. partitioning-by keeps\n;; a pending partition in its internal buffer until the key changes\n;; or the channel closes.\n(let ([ch (chan 16 (partitioning-by even?))])\n  (for-each (lambda (x) (chan-put! ch x)) '(1 3 2 4 5 7))\n  (chan-close! ch)    ;; completion arity fires, emitting the last group\n  (chan->list ch))\n;; => ((1 3) (2 4) (5 7))\n\n;; Exception handling: pass a third argument as the ex-handler. If the\n;; xform raises, the handler is called with the condition. Return #f\n;; to drop the offending value silently, or return a substitute value\n;; to enqueue it raw (the replacement skips the rest of the xform).\n(let ([ch (chan 8\n            (mapping (lambda (x)\n                       (if (= x 0) (error 'bad \"zero\") x)))\n            (lambda (exn) 'oops))])   ;; substitute 'oops on error\n  (chan-put! ch 1) (chan-put! ch 0) (chan-put! ch 2)\n  (chan-close! ch)\n  (chan->list ch))\n;; => (1 oops 2)",
+    "notes": "Use a buffered channel (n >= 1) when attaching a transducer — flat-mapping can expand one input into several outputs, and the buffer is where those outputs land. `taking n` auto-closes the channel when its budget hits zero; use `chan-try-put!` in the producer loop to avoid raising. Stateful transducers (partitioning-by, windowing) flush their pending state on `chan-close!` via the completion arity. Exception handling follows Clojure semantics: handler return value is the replacement (#f drops silently, any other value is enqueued raw). The xform runs under the channel's mutex so keep the step functions short and non-blocking.",
+    "related": [
+      "jerboa-csp-channels",
+      "jerboa-transducers"
+    ]
   }
 ]
