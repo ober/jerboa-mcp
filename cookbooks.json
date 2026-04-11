@@ -2345,6 +2345,23 @@
     "notes": "Designed to replace (make-hash-table) + mutex in multi-threaded code. Chez's plain hash tables are NOT safe under concurrent mutation — empirical testing in jerboa-code showed ~33-37% of hash-put! calls silently dropped, and torn bucket writes could create cyclic chains that hang readers. concurrent-hash eliminates both classes of bug by construction: the HAMT is immutable (no torn writes, no cyclic chains), and the shared cell's mutex serializes writers (no lost updates). Readers never lock — shared-ref returns the current pmap pointer and queries walk an immutable structure. Stress test: 8 threads × 500 writes = 4000/4000 retained (0% loss). Use chash-swap! for multi-key atomic transforms. Use concurrent-hash-snapshot to hand an immutable view to another thread for long-running reads without blocking writers. Both 'concurrent-hash-*' (Java/C# ConcurrentHashMap-style) and 'chash-*' (short) aliases are exported."
   },
   {
+    "id": "jerboa-clojure-atom-aliases",
+    "title": "Clojure-style atom / deref / swap! / reset! / compare-and-set!",
+    "tags": [
+      "clojure",
+      "atom",
+      "deref",
+      "swap",
+      "reset",
+      "compare-and-set",
+      "thread-safe",
+      "mutable-state"
+    ],
+    "imports": [],
+    "code": ";; All of these are in the prelude — no explicit import needed.\n;; (std misc atom) also exports them if you want a minimal import.\n\n;; Construct an atom (thread-safe mutable reference cell)\n(def counter (atom 0))\n\n;; Read (like Clojure's @counter or (deref counter))\n(deref counter)                ;; => 0\n\n;; Set, returns the new value\n(reset! counter 42)             ;; => 42\n(deref counter)                 ;; => 42\n\n;; Atomic update — swap! is variadic: (swap! a f args...)\n;; Semantics: (f @a args...) executed under the cell mutex\n(swap! counter + 1)             ;; => 43\n(swap! counter + 10)            ;; => 53\n(swap! counter (lambda (x) (* x 2)))  ;; => 106\n\n;; Compare-and-swap — returns #t on success, #f on failure\n(compare-and-set! counter 106 200)    ;; => #t\n(compare-and-set! counter 106 999)    ;; => #f (current value != 106)\n(deref counter)                       ;; => 200\n\n;; Type predicate\n(atom? counter)                 ;; => #t\n\n;; Native Gerbil-style names are also available and work on the same\n;; record type (atoms created by either constructor are interchangeable):\n(atom-deref counter)            ;; same as (deref counter)\n(atom-reset! counter 0)         ;; same as (reset! counter 0)\n(atom-swap! counter (lambda (x) (+ x 1)))  ;; single-arg only\n(atom-update! counter + 5)      ;; variadic, same as swap!\n\n;; Classic pattern: multi-thread counter\n(def n (atom 0))\n(def threads\n  (for/collect ((i (in-range 8)))\n    (fork-thread\n      (lambda ()\n        (dotimes (j 1000)\n          (swap! n + 1))))))\n(for-each thread-join threads)\n(deref n)  ;; => 8000 (no lost updates)",
+    "notes": "atom/deref/swap!/reset!/compare-and-set! are Clojure aliases for the Gerbil-style (std misc atom) API — same record type, same mutex, zero overhead. swap! is variadic and matches Clojure's semantics exactly: (swap! a f x y) calls (f @a x y) under the cell's lock. compare-and-set! uses equal? for comparison (not eq?) so it works on structured values. reset! returns the new value (not void, so you can chain it). All names are in the prelude. Chez's builtin atom? (a pair/non-pair predicate) is shadowed — in Jerboa, atom? tests for the atom record type. If you need Chez's meaning, use (not (pair? x)) instead."
+  },
+  {
     "id": "chez-guardian-resource-leak-detection",
     "title": "Guardian-based resource leak detection (Chez Scheme)",
     "tags": [
