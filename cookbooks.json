@@ -4108,5 +4108,26 @@
       "jerboa-clojure-compat",
       "jerboa-concurrent-hash"
     ]
+  },
+  {
+    "id": "jerboa-persistent-sets",
+    "title": "Persistent hash-sets with (std pset)",
+    "tags": [
+      "pset",
+      "set",
+      "clojure",
+      "hamt",
+      "persistent",
+      "immutable"
+    ],
+    "imports": [
+      "(std pset)"
+    ],
+    "code": ";; (std pset) is a HAMT-backed persistent hash-set built on (std pmap).\n;; Use it when you want Clojure-style immutable sets.\n\n;; Construction\n(def s (persistent-set 1 2 3))\n(persistent-set-size s)             ;; => 3\n(persistent-set-contains? s 2)      ;; => #t\n\n;; Pure updates return new sets\n(def s2 (persistent-set-add s 4))\n(def s3 (persistent-set-remove s 1))\n\n;; Set operations\n(def a (persistent-set 1 2 3 4))\n(def b (persistent-set 3 4 5 6))\n(persistent-set-union a b)          ;; => {1 2 3 4 5 6}\n(persistent-set-intersection a b)   ;; => {3 4}\n(persistent-set-difference a b)     ;; => {1 2}\n(persistent-set-subset? (persistent-set 1 2) a)  ;; => #t\n(persistent-set=? a (persistent-set 4 3 2 1))    ;; => #t\n\n;; Iteration\n(persistent-set->list s)            ;; list of elements\n(persistent-set-fold (lambda (acc x) (+ acc x)) 0 a)\n\n;; Transient bulk construction (note: empty set is `pset-empty`)\n(def big (let ([t (transient-set pset-empty)])\n           (let loop ([i 0])\n             (if (>= i 10000)\n                 (persistent-set! t)\n                 (begin (tset-add! t i) (loop (+ i 1)))))))\n(persistent-set-size big)           ;; => 10000\n\n;; ---- Clojure-style names via (std clojure) ----\n(import (std clojure))\n\n(def cs (hash-set 1 2 3))           ;; Clojure's #{1 2 3}\n(set? cs)                            ;; => #t\n(conj cs 4 5)                        ;; add elements\n(disj cs 1 2)                        ;; remove elements\n(union (hash-set 1 2) (hash-set 2 3))  ;; {1 2 3}\n(intersection (hash-set 1 2 3) (hash-set 2 3 4))\n(difference (hash-set 1 2 3) (hash-set 2))\n(subset? (hash-set 1 2) cs)\n(superset? cs (hash-set 1 2))\n\n;; Get on a set returns the key if present (Clojure semantics)\n(get cs 2)                           ;; => 2\n(get cs 99 \"missing\")                ;; => \"missing\"",
+    "notes": "`pset-empty` is the canonical empty set. Short `pset-` aliases exist for all long-name operations. Element equality is equal?; hashing is equal-hash. Transients mirror the pmap transient design — `tset-add! / tset-remove!` mutate in place, and `persistent-set!` finalizes (invalidates the transient). For Clojure-idiomatic naming, import (std clojure) and use hash-set / disj / union / intersection / difference / subset? / superset?. `get` on a set matches Clojure's membership semantics: returns the element if present, the default (or nil) if not.",
+    "related": [
+      "jerboa-pmap-transients",
+      "jerboa-clojure-compat"
+    ]
   }
 ]
