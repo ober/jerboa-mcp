@@ -4298,5 +4298,24 @@
       "jerboa-csp-channels",
       "jerboa-transducers"
     ]
+  },
+  {
+    "id": "jerboa-pqueue-basic",
+    "title": "Persistent FIFO queue with (std pqueue)",
+    "tags": [
+      "pqueue",
+      "queue",
+      "persistent",
+      "fifo",
+      "clojure",
+      "peek",
+      "pop"
+    ],
+    "imports": [
+      "(std pqueue)",
+      "(std clojure)"
+    ],
+    "code": ";; (std pqueue) is a thin wrapper over srfi-134 ideque that exposes\n;; Clojure's PersistentQueue surface. Enqueues go in the back, peek /\n;; pop act on the front, all operations return a new queue.\n\n(define q0 (persistent-queue))              ;; empty queue\n(define q1 (persistent-queue 1 2 3))        ;; front=1, back=3\n\n(pqueue-peek q1)     ;; => 1  (front element)\n(pqueue-count q1)    ;; => 3\n\n;; conj (enqueue at the back)\n(define q2 (pqueue-conj q1 4))\n(pqueue->list q2)    ;; => (1 2 3 4)\n\n;; pop (dequeue the front)\n(define q3 (pqueue-pop q1))\n(pqueue->list q3)    ;; => (2 3)\n\n;; Empty-queue semantics: peek returns #f, pop raises.\n(pqueue-peek pqueue-empty)   ;; => #f\n(guard (exn [#t 'empty])\n  (pqueue-pop pqueue-empty)) ;; => 'empty\n\n;; FIFO drain loop\n(let loop ([q (persistent-queue 'a 'b 'c 'd)] [out '()])\n  (if (pqueue-empty? q)\n      (reverse out)\n      (loop (pqueue-pop q) (cons (pqueue-peek q) out))))\n;; => (a b c d)\n\n;; Clojure-style polymorphism: conj/peek/pop dispatch on the coll type.\n;; Imported from (std clojure) — these work uniformly across lists,\n;; persistent vectors, and persistent queues.\n\n(conj pqueue-empty 1 2 3)               ;; queue with 1,2,3 at the back\n(peek (persistent-queue 'x 'y))         ;; => 'x   (queue front)\n(peek (persistent-vector 'x 'y 'z))     ;; => 'z   (vector stack-end)\n(peek '(10 20 30))                       ;; => 10  (list head)\n\n(pqueue->list (pop (persistent-queue 1 2 3)))           ;; => (2 3)\n(persistent-vector->list (pop (persistent-vector 1 2 3))) ;; => (1 2)\n(pop '(1 2 3))                                            ;; => (2 3)",
+    "notes": "Use `(std pqueue)` directly when you want the queue API without pulling in the full (std clojure) umbrella; use (std clojure) when you want polymorphic peek/pop that also work on lists and persistent vectors. Clojure models peek/pop on a vector as stack operations (last / drop-last), while queues use FIFO (front / drop-front) — the same generic name dispatches correctly on the type. The empty queue is `pqueue-empty` (shared constant) or `(persistent-queue)` (fresh). Internally pqueue? is srfi-134's ideque? predicate, so any ideque instance is accepted as a queue. pqueue-pop on empty raises; peek returns #f to match Clojure's nil.</notes>\n<parameter name=\"related\">[\"jerboa-transducers\"]"
   }
 ]
