@@ -4317,5 +4317,28 @@
     ],
     "code": ";; (std pqueue) is a thin wrapper over srfi-134 ideque that exposes\n;; Clojure's PersistentQueue surface. Enqueues go in the back, peek /\n;; pop act on the front, all operations return a new queue.\n\n(define q0 (persistent-queue))              ;; empty queue\n(define q1 (persistent-queue 1 2 3))        ;; front=1, back=3\n\n(pqueue-peek q1)     ;; => 1  (front element)\n(pqueue-count q1)    ;; => 3\n\n;; conj (enqueue at the back)\n(define q2 (pqueue-conj q1 4))\n(pqueue->list q2)    ;; => (1 2 3 4)\n\n;; pop (dequeue the front)\n(define q3 (pqueue-pop q1))\n(pqueue->list q3)    ;; => (2 3)\n\n;; Empty-queue semantics: peek returns #f, pop raises.\n(pqueue-peek pqueue-empty)   ;; => #f\n(guard (exn [#t 'empty])\n  (pqueue-pop pqueue-empty)) ;; => 'empty\n\n;; FIFO drain loop\n(let loop ([q (persistent-queue 'a 'b 'c 'd)] [out '()])\n  (if (pqueue-empty? q)\n      (reverse out)\n      (loop (pqueue-pop q) (cons (pqueue-peek q) out))))\n;; => (a b c d)\n\n;; Clojure-style polymorphism: conj/peek/pop dispatch on the coll type.\n;; Imported from (std clojure) — these work uniformly across lists,\n;; persistent vectors, and persistent queues.\n\n(conj pqueue-empty 1 2 3)               ;; queue with 1,2,3 at the back\n(peek (persistent-queue 'x 'y))         ;; => 'x   (queue front)\n(peek (persistent-vector 'x 'y 'z))     ;; => 'z   (vector stack-end)\n(peek '(10 20 30))                       ;; => 10  (list head)\n\n(pqueue->list (pop (persistent-queue 1 2 3)))           ;; => (2 3)\n(persistent-vector->list (pop (persistent-vector 1 2 3))) ;; => (1 2)\n(pop '(1 2 3))                                            ;; => (2 3)",
     "notes": "Use `(std pqueue)` directly when you want the queue API without pulling in the full (std clojure) umbrella; use (std clojure) when you want polymorphic peek/pop that also work on lists and persistent vectors. Clojure models peek/pop on a vector as stack operations (last / drop-last), while queues use FIFO (front / drop-front) — the same generic name dispatches correctly on the type. The empty queue is `pqueue-empty` (shared constant) or `(persistent-queue)` (fresh). Internally pqueue? is srfi-134's ideque? predicate, so any ideque instance is accepted as a queue. pqueue-pop on empty raises; peek returns #f to match Clojure's nil.</notes>\n<parameter name=\"related\">[\"jerboa-transducers\"]"
+  },
+  {
+    "id": "jerboa-sorted-set-basic",
+    "title": "Persistent sorted-set with (std sorted-set)",
+    "tags": [
+      "sorted-set",
+      "ordered",
+      "set",
+      "clojure",
+      "red-black",
+      "persistent",
+      "immutable"
+    ],
+    "imports": [
+      "(std sorted-set)"
+    ],
+    "code": ";; (std sorted-set) is a thin wrapper over (std ds sorted-map) —\n;; a red-black tree — that exposes Clojure's sorted-set surface.\n;; Elements are kept in sorted order; add / remove / contains? are\n;; O(log n) and iteration is in-order.\n\n(import (std sorted-set))\n\n;; Variadic constructor — default comparator handles numbers,\n;; strings, and symbols (falls back to ~s printing for other types).\n(define s (sorted-set 5 2 8 1 3))\n(sorted-set->list s)              ;; => (1 2 3 5 8)\n\n;; Immutable — sorted-set-add/remove return a new set.\n(define s2 (sorted-set-add s 4))\n(sorted-set->list s2)             ;; => (1 2 3 4 5 8)\n(sorted-set->list s)              ;; => (1 2 3 5 8) — unchanged\n\n(sorted-set-remove s 5)           ;; => {1 2 3 8}\n\n;; Membership / size / min / max.\n(sorted-set-contains? s 3)        ;; => #t\n(sorted-set-contains? s 99)       ;; => #f\n(sorted-set-size s)               ;; => 5\n(sorted-set-min s)                ;; => 1\n(sorted-set-max s)                ;; => 8\n\n;; Closed-interval range query returns a sorted list.\n(sorted-set-range (sorted-set 1 2 3 4 5 6 7 8 9 10) 3 7)\n;; => (3 4 5 6 7)\n\n;; Ordered fold (elements visited ascending):\n(sorted-set-fold (sorted-set 1 2 3 4 5) + 0)   ;; => 15\n\n;; Custom comparator — e.g. reverse order.\n(define r\n  (sorted-set-by\n    (lambda (a b) (cond [(> a b) -1] [(< a b) 1] [else 0]))\n    1 2 3))\n(sorted-set->list r)              ;; => (3 2 1)\n\n;; Polymorphic dispatch via (std clojure):\n;;   conj / disj / count / contains? / first / last / seq /\n;;   union / intersection / difference / subset? / superset?\n;; all work on sorted-sets and preserve sorted-set identity when the\n;; first operand is a sorted-set.\n(import (std clojure))\n(first (sorted-set 5 3 8 1 4))    ;; => 1 (min)\n(last  (sorted-set 5 3 8 1 4))    ;; => 8 (max)\n(conj (sorted-set 1 2) 5 3 9)     ;; => sorted-set {1 2 3 5 9}\n(union (sorted-set 1 3 5) (sorted-set 2 4 6))\n;; => sorted-set {1 2 3 4 5 6}",
+    "notes": "A sorted-set is a sorted-map where every key maps to #t, which gives O(log n) add/remove/contains? and in-order iteration. Use sorted-set when you need ordered traversal, min/max in O(log n), or range queries; use (std pset) (HAMT) when you only need unordered membership and want faster constant factors. sorted-set-range uses a closed interval [lo, hi]. For a custom comparator, use sorted-set-by — the cmp must return -1/0/1. The clojure.set algebra (union/intersection/difference) preserves sorted-set identity when the first operand is a sorted-set.",
+    "related": [
+      "jerboa-persistent-sets",
+      "jerboa-pqueue-basic",
+      "pmap-structural-equality-hash-iter"
+    ]
   }
 ]
