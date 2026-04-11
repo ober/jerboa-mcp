@@ -4491,5 +4491,28 @@
     "related": [
       "jerboa-clojure-atom-aliases"
     ]
+  },
+  {
+    "id": "clojure-style-defmulti-defmethod",
+    "title": "Clojure-style value-dispatched multimethods via (std multi)",
+    "tags": [
+      "multi",
+      "defmulti",
+      "defmethod",
+      "clojure",
+      "polymorphism",
+      "dispatch",
+      "multimethod"
+    ],
+    "imports": [
+      "(except (jerboa prelude) defmethod)",
+      "(std multi)"
+    ],
+    "code": ";; Jerboa's prelude `defmethod` dispatches on struct type. If you want\n;; Clojure's value-dispatched multimethods (the user supplies a dispatch\n;; function and each method is keyed on an arbitrary value), import\n;; (std multi) AND exclude the prelude's defmethod to avoid a clash.\n\n(import (except (jerboa prelude) defmethod)\n        (std multi))\n\n;;; Single-arg dispatch ---------------------------------------\n\n(defmulti area (lambda (s) (car s)))\n(defmethod area 'circle  (c) (* 3.14159 (cadr c) (cadr c)))\n(defmethod area 'square  (s) (let ([side (cadr s)]) (* side side)))\n(defmethod area 'default (x) (error 'area \"unknown shape\" x))\n\n(displayln (area '(circle 3)))       ;; => 28.27431\n(displayln (area '(square 4)))       ;; => 16\n\n;;; Multi-arg dispatch ----------------------------------------\n;;; Dispatch function can use any args and return any equal?-comparable\n;;; value. Here we dispatch on a (cons type-a . type-b) pair.\n\n(defmulti encounter (lambda (a b) (cons (car a) (car b))))\n(defmethod encounter '(cat . mouse) (a b) 'chase)\n(defmethod encounter '(dog . cat)   (a b) 'chase)\n(defmethod encounter 'default       (a b) 'ignore)\n\n(displayln (encounter '(cat whiskers) '(mouse jerry)))  ;; => chase\n(displayln (encounter '(cow bessie)   '(bird tweety)))  ;; => ignore\n\n;;; Introspection ---------------------------------------------\n\n(displayln (multimethod? area))            ;; => #t\n(displayln (multimethod-name area))        ;; => area\n(displayln (map car (methods area)))       ;; => (circle square)   (unordered)\n(displayln (and (get-method area 'circle) #t))   ;; => #t\n(displayln (get-method area 'triangle))    ;; => #f\n\n;;; Mutating the dispatch table -------------------------------\n\n(remove-method area 'square)\n(displayln (and (get-method area 'square) #t))   ;; => #f\n(displayln (area '(square 4)))                   ;; => triggers default -> raise\n\n;; Removing 'default clears the fallback, and subsequent dispatch\n;; misses raise instead of returning #f.\n(remove-method area 'default)",
+    "notes": "(std multi) is NOT in the prelude because the prelude already ships a struct-typed `defmethod` for class-style dispatch. Users MUST `(except (jerboa prelude) defmethod)` to unshadow the Clojure variant or the prelude's version wins.\n\nDispatch keys are compared with `equal?`, so any hashable value works — symbols, numbers, strings, lists, persistent maps. The sentinel `'default` is reserved: registering a method with key `'default` sets the fallback that fires on a miss. Without a default, a miss raises.\n\nConcurrency: each multimethod has its own mutex. Method LOOKUP runs under the lock but the method BODY runs outside, so methods can recursively call the same multimethod without deadlocking. `%registry` is a module-level `eq?`-hashtable linking the dispatching procedure to the underlying record.\n\nThe module does NOT yet implement Clojure's advanced features — `isa?` hierarchies, `derive`, `underive`, `prefer-method`. Those are deferred to a follow-up phase. For the 90% case (dispatch on a symbol or key in a map), the current surface is complete.\n\nExports: `defmulti`, `defmethod`, `multimethod?`, `multimethod-name`, `methods`, `get-method`, `remove-method`.",
+    "related": [
+      "jerboa-defclass-defmethod",
+      "defclass-basics"
+    ]
   }
 ]
