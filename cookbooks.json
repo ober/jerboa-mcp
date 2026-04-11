@@ -4469,5 +4469,27 @@
       "csp-scatter-gather-timeout",
       "jerboa-csp-mult-slow-sub-policies"
     ]
+  },
+  {
+    "id": "jerboa-atom-watches-volatiles",
+    "title": "Atom watches and volatile! (single-threaded transient cells)",
+    "tags": [
+      "atom",
+      "watch",
+      "add-watch",
+      "volatile",
+      "vswap",
+      "clojure",
+      "reactive",
+      "transducer"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; Watches fire AFTER every successful mutation: reset!, swap!,\n;; atom-update!, and successful compare-and-set! (a failed CAS does\n;; NOT fire). They run OUTSIDE the atom's mutex so the callback can\n;; call back into the atom (or any other atom) without deadlock.\n\n(define counter (atom 0))\n(define history (atom '()))\n\n;; Register a watch under a key. The callback signature is\n;;   (fn key atom old-value new-value).\n(add-watch! counter 'logger\n  (lambda (k atm old new)\n    (swap! history\n      (lambda (xs) (cons (list 'changed old '-> new) xs)))))\n\n(reset! counter 10)\n(swap!  counter + 5)\n(swap!  counter - 3)\n(compare-and-set! counter 12 100)    ;; fires (success)\n(compare-and-set! counter 999 200)   ;; does NOT fire (failed CAS)\n\n(displayln (deref counter))                 ;; → 100\n(displayln (reverse (deref history)))\n;; → ((changed 0 -> 10) (changed 10 -> 15) (changed 15 -> 12) (changed 12 -> 100))\n\n;; Same-key re-add replaces the previous callback (matches Clojure).\n(add-watch! counter 'logger\n  (lambda (k atm old new) (displayln (list 'logger-v2 old new))))\n(reset! counter 200)                         ;; → (logger-v2 100 200)\n\n;; Watches stop firing after remove-watch!; it's idempotent on a\n;; missing key. Both add/remove return the atom so calls chain.\n(remove-watch! counter 'logger)\n(reset! counter 300)                         ;; silent\n\n;; Raised exceptions in watch callbacks are swallowed — a broken\n;; watch cannot corrupt the atom.\n(add-watch! counter 'bad (lambda args (error 'bad \"boom\")))\n(reset! counter 999)                         ;; still succeeds\n(displayln (deref counter))                  ;; → 999\n\n;; ---------------------------------------------------------------\n;; Volatiles — single-threaded transient cells.\n;;\n;; NO mutex, NO watches, NO CAS. Intentionally unsafe under thread\n;; concurrency. Meant for transducer accumulators like the cell\n;; captured in (partition-by) where the closure is single-threaded\n;; by construction.\n;; ---------------------------------------------------------------\n\n(define v (volatile! 0))\n(vreset! v 10)\n(vswap!  v + 5)              ;; → 15\n(vswap!  v * 2)              ;; → 30\n(displayln (vderef v))       ;; → 30\n(displayln (volatile? v))    ;; → #t\n(displayln (atom? v))        ;; → #f — a volatile is NOT an atom",
+    "notes": "Watches snapshot the watch list under the atom's mutex before firing, so a concurrent add-watch!/remove-watch! does not race the firing loop. A failed compare-and-set! deliberately does NOT fire watches — only a successful swap notifies listeners. Use volatiles ONLY when the cell is captured in a closure that cannot be touched from multiple threads (e.g. inside a reducing-function closure in a transducer pipeline). If you need thread-safety reach for `atom`. Exports (add-watch!, remove-watch!, volatile!, volatile?, vderef, vreset!, vswap!) are available from (jerboa prelude) and (std clojure) — no extra imports needed.",
+    "related": [
+      "jerboa-clojure-atom-aliases"
+    ]
   }
 ]
