@@ -4129,5 +4129,32 @@
       "jerboa-pmap-transients",
       "jerboa-clojure-compat"
     ]
+  },
+  {
+    "id": "pmap-structural-equality-hash-iter",
+    "title": "Structural equality, hash, and iterators for persistent maps/sets",
+    "tags": [
+      "pmap",
+      "pset",
+      "imap",
+      "equality",
+      "hash",
+      "iterator",
+      "hamt",
+      "structural",
+      "clojure"
+    ],
+    "imports": [
+      "(std pmap)",
+      "(std pset)",
+      "(std immutable)",
+      "(std iter)"
+    ],
+    "code": ";; Persistent HAMT maps and sets compare structurally, not by\n;; record identity. The comparison is size-first then key-by-key,\n;; short-circuits on mismatch, and recurses through nested pmaps\n;; (Chez's equal? uses eq? on user records, so it would wrongly\n;; return #f for two pmaps with the same content).\n\n(let ([m1 (imap \"a\" 1 \"b\" 2 \"c\" 3)]\n      [m2 (imap \"c\" 3 \"b\" 2 \"a\" 1)]     ;; same content, different order\n      [m3 (imap \"a\" 1 \"b\" 2)])\n  (imap=? m1 m2)                          ;; => #t\n  (imap=? m1 m3)                          ;; => #f\n  (= (imap-hash m1) (imap-hash m2)))      ;; => #t\n\n;; Nested pmaps also compare structurally:\n(persistent-map=?\n  (persistent-map 'a (persistent-map 'x 1))\n  (persistent-map 'a (persistent-map 'x 1)))   ;; => #t\n\n;; Same names exist for persistent sets:\n(persistent-set=? (persistent-set 1 2 3)\n                  (persistent-set 3 2 1))       ;; => #t\n(= (persistent-set-hash (persistent-set 1 2 3))\n   (persistent-set-hash (persistent-set 3 2 1))) ;; => #t\n\n;; Iterators plug into (std iter):\n(let ([m (imap \"a\" 1 \"b\" 2 \"c\" 3)])\n  (for/collect ([v (in-imap-values m)]) (* v v))  ;; => (1 4 9)\n  (for/fold ([s 0]) ([v (in-imap-values m)]) (+ s v))  ;; => 6\n  (in-imap-keys m)    ;; => (\"a\" \"b\" \"c\")  [HAMT order, not insertion]\n  (in-imap-pairs m))  ;; => ((\"a\" . 1) (\"b\" . 2) (\"c\" . 3))\n\n;; Via (std clojure), everything is polymorphic:\n;;   (=? m1 m2)                -- dispatches to persistent-map=?\n;;   (hash m1)                 -- dispatches to persistent-map-hash\n;;   (seq m1) -> list of pairs, (seq (hash-map)) -> #f (empty)",
+    "notes": "Why we have this:\n  - Chez's built-in `equal?` compares user-defined record types (like\n    %pmap / %pset) by eq?, so `(equal? (imap 'a 1) (imap 'a 1))`\n    would return #f and imaps could not be used as test fixtures or\n    dictionary keys. `persistent-map=?` / `persistent-set=?` walk\n    the smaller map and verify every (k,v) matches in the other.\n  - The hash is order-independent (XOR of per-entry hashes), so the\n    invariant `(=> (=? a b) (= (hash a) (hash b)))` holds even\n    though HAMT iteration order depends on the hash layout.\n  - Nested maps: both `=?` and `hash` recurse through pmaps, pairs,\n    and vectors via internal helpers, so `(imap 'a (imap 'x 1))`\n    compares by value at every level.\n  - `in-pmap-*` / `in-pset` return plain lists (materializing the\n    HAMT once) so they compose with (std iter)'s existing for/for-\n    collect/for-fold macros without needing a new iterator protocol.\n  - `(std clojure)` exports a polymorphic `=?`, `hash`, and `seq`\n    that dispatch across imap / pset / concurrent-hash / hash-table /\n    vector / string / list. `seq` returns #f for empty collections\n    to mirror Clojure's nil.\n\nGotchas:\n  - `persistent-map=?` uses the map's own equal? proc for key\n    matching, but values are compared with the recursive helper\n    `pmap-val=?`, not equal-proc. That matters if you created a\n    pmap with a custom equal? proc — value equality is still\n    structural.\n  - Iteration order is HAMT order (determined by key hashes), not\n    insertion order. Sort the result if you need a stable view.\n  - `in-pmap` is an alias for `in-pmap-pairs`, so\n    `(for ([kv (in-pmap m)]) ...)` binds each step to a (k . v) pair.",
+    "related": [
+      "jerboa-concurrent-hash",
+      "jerboa-hash-more"
+    ]
   }
 ]
