@@ -4156,5 +4156,30 @@
       "jerboa-concurrent-hash",
       "jerboa-hash-more"
     ]
+  },
+  {
+    "id": "csp-core-async-basics",
+    "title": "Clojure core.async-style channels, go blocks, and alts!!",
+    "tags": [
+      "csp",
+      "core.async",
+      "channel",
+      "go",
+      "alts",
+      "clojure",
+      "concurrency",
+      "select",
+      "timeout",
+      "pipeline"
+    ],
+    "imports": [
+      "(except (chezscheme) merge)",
+      "(except (std csp) go go-named)",
+      "(std csp select)",
+      "(std csp ops)",
+      "(std csp clj)"
+    ],
+    "code": ";; Basic put/take through the Clojure surface\n(let ([ch (chan 4)])\n  (>!! ch 'hello)\n  (>!! ch 'world)\n  (close! ch)\n  (list (<!! ch) (<!! ch) (eof-object? (<!! ch))))\n;; => (hello world #t)\n\n;; Buffer policies: sliding drops the oldest when full,\n;; dropping silently discards the incoming value.\n(let ([ch (chan (sliding-buffer 2))])\n  (>!! ch 1) (>!! ch 2) (>!! ch 3)\n  (close! ch)\n  (chan->list ch))\n;; => (2 3)\n\n;; go returns a size-1 result channel; close on done/exception.\n(let ([r (go (+ 1 2 3))])\n  (<!! r))  ;; => 6\n\n;; go-loop binds `loop` hygienically in the caller's scope.\n(<!! (go-loop ((i 0) (acc 0))\n       (if (= i 10) acc (loop (+ i 1) (+ acc i)))))  ;; => 45\n\n;; alts!! picks the first ready spec. Each spec is either a\n;; channel (take) or (list ch val) (put). Options:\n;;   'priority       — try specs in order instead of shuffling\n;;   'default v      — return (v default) if no spec is ready\n(let ([c1 (chan 1)] [c2 (timeout 100)])\n  (>!! c1 'winner)\n  (car (alts!! (list c1 c2) 'priority)))  ;; => winner\n\n;; alt!! — clause-based sugar over alts!!. `v` is bound to the\n;; received value inside each (ch body) clause. `(default expr)`\n;; is a special clause that runs when nothing is ready on the\n;; first poll. You must import `default` from (std csp clj) or\n;; (std csp select) for it to match as a clause head.\n(let ([c (chan)])\n  (alt!!\n    (c (list 'got v))\n    (default 'nothing)))  ;; => nothing\n\n;; Pipeline with ordered output across N workers.\n(let* ([in  (to-chan '(1 2 3 4 5 6 7 8 9 10))]\n       [out (chan 20)])\n  (pipeline 4 out (lambda (x) (* x x)) in)\n  (chan->list out))\n;; => (1 4 9 16 25 36 49 64 81 100)\n\n;; Broadcast fan-out: mult + tap.\n(let* ([src (chan 4)]\n       [m   (mult src)]\n       [s1  (chan 8)]\n       [s2  (chan 8)])\n  (tap m s1)\n  (tap m s2)\n  (>!! src 'a) (>!! src 'b)\n  (close! src)\n  (sleep (make-time 'time-duration 50000000 0))\n  (list (chan->list s1) (chan->list s2)))\n;; => ((a b) (a b))\n\n;; promise-chan: first put wins, every taker sees the same value.\n(let ([p (promise-chan)])\n  (list (promise-channel-put! p 42)\n        (promise-channel-put! p 99)\n        (promise-channel-get! p)\n        (promise-channel-get! p)))\n;; => (#t #f 42 42)",
+    "notes": "Jerboa's CSP modules are split into four libraries:\n\n- (std csp)         — primitives: make-channel, chan-put!, chan-get!,\n                      make-channel/sliding, make-channel/dropping,\n                      chan-try-put!/chan-try-get, chan-close!, go,\n                      chan-pipe, chan-map, chan-filter.\n- (std csp select)  — alts!/alts!! (symbol options 'priority / 'default),\n                      alt!/alt!! macros, timeout channel, chan-recv-evt.\n- (std csp ops)     — to-chan, chan-merge, chan-split, chan-pipe-to,\n                      make-mult/tap!/untap!, make-pub/sub!/unsub!,\n                      chan-pipeline, chan-pipeline-async,\n                      make-promise-channel.\n- (std csp clj)     — Clojure-named surface over the three modules\n                      above: chan, >!, <!, >!!, <!!, close!, poll!,\n                      offer!, alts!/alt!, go, go-loop, merge, split,\n                      pipe, mult, tap, pub, sub, pipeline,\n                      promise-chan, sliding-buffer, dropping-buffer.\n\nImporting all four in one file requires shadowing `merge` from\n(chezscheme) (which is Chez's sorted-merge) and `go`/`go-named` from\n(std csp) (which are plain functions, not the clj go macro). Use:\n\n  (import (except (chezscheme) merge)\n          (except (std csp) go go-named)\n          (std csp select)\n          (std csp ops)\n          (std csp clj))\n\nJerboa's reader rewrites a leading `:` into a module path, so\nClojure's `:priority` / `:default` keyword options don't work — use\nthe plain symbols `'priority` and `'default` instead. The `default`\nclause head in alt!!/alt! is an exported auxiliary keyword, not a\nsymbol, so you must actually import it (it's in both (std csp clj)\nand (std csp select)).\n\nIn Jerboa every `go` is a real OS thread — there is no CPS transform\nand no park/block distinction, so `>!` and `>!!` (and `<!`/`<!!`)\ncollapse to the same operation. That means you can't spawn millions\nof go blocks the way Clojure's core.async does; a few thousand is a\nreasonable ceiling. For low-rate timeouts the `timeout` helper is\nfine; for many short-lived timeouts a timer wheel would be better\n(tracked as Phase 4 in core-async.md)."
   }
 ]
