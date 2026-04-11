@@ -12,6 +12,7 @@ export const STD_MODULES = [
   '(std sort)',
   '(std list)',
   '(std string)',
+  '(std regex)',
   '(std text json)',
   '(std text csv)',
   '(std pregexp)',

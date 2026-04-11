@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": "static-build-lso-guard-audit",
+    "title": "Audit Scheme files for unguarded load-shared-object calls that crash static binaries",
+    "description": "Scan .ss/.sls files and report any top-level load-shared-object or foreign-procedure calls that are not guarded by a JEMACS_STATIC (or similar) env-var check. Unguarded calls crash static binaries at boot time. Should report: file, line, the unguarded call, and whether a guard pattern exists nearby.",
+    "impact": "medium",
+    "tags": [
+      "static",
+      "build",
+      "load-shared-object",
+      "ffi",
+      "audit",
+      "musl"
+    ],
+    "use_case": "When preparing a Jerboa project for static binary compilation (musl or otherwise), before spending 30+ minutes on a Docker build that fails at runtime.",
+    "example_scenario": "Building jemacs-qt static: (chez-qt ffi) calls load-shared-object at top level. Without JEMACS_STATIC=1 the compilation step fails with a dlopen error inside the container. Finding this required reading vendor/chez-qt/chez-qt/ffi.ss manually. A tool scan would have flagged it immediately.",
+    "estimated_token_reduction": "~800 tokens per static build session (eliminates 3-5 grep/read cycles to find unguarded FFI calls)",
+    "votes": 0
+  }
+]
