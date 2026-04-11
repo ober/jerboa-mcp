@@ -4087,5 +4087,26 @@
       "jerboa-clojure-atom-aliases",
       "jerboa-nested-access"
     ]
+  },
+  {
+    "id": "jerboa-pmap-transients",
+    "title": "Build a persistent map fast with transients",
+    "tags": [
+      "transient",
+      "pmap",
+      "imap",
+      "hamt",
+      "bulk",
+      "clojure"
+    ],
+    "imports": [
+      "(std pmap)"
+    ],
+    "code": ";; Transients are mutable builders for HAMT-backed persistent maps.\n;; Use them when you need to insert many keys in a loop and then\n;; produce a single persistent-map at the end — avoids per-step\n;; %pmap record allocation.\n\n;; Raw API:\n(def t (transient-map pmap-empty))\n(tmap-set! t \"a\" 1)\n(tmap-set! t \"b\" 2)\n(tmap-set! t \"c\" 3)\n(tmap-delete! t \"a\")\n(def m (persistent-map! t))      ;; finalize; `t` is now dead\n(persistent-map-size m)          ;; => 2\n(persistent-map-ref m \"b\")       ;; => 2\n\n;; After persistent-map!, further tmap-* calls raise\n;; \"transient used after persistent!\".\n\n;; Via (std immutable) aliases:\n(import (std immutable))\n(def t2 (imap-transient imap-empty))\n(imap-t-set! t2 \"x\" 10)\n(def m2 (imap-persistent! t2))\n\n;; Via (std clojure) Clojure-style polymorphic API (works on both\n;; pmap AND pvec):\n(import (std clojure))\n(def m3 (let ([t (transient (hash-map))])\n          (assoc! t \"a\" 1 \"b\" 2 \"c\" 3)\n          (dissoc! t \"b\")\n          (persistent! t)))\n\n(def v3 (let ([t (transient (vec '()))])\n          (conj! t 1 2 3 4)\n          (persistent! t)))",
+    "notes": "Clojure-idiomatic bulk construction. Performance note: this first version does NOT implement Clojure's edit-owner tagging, so each tmap-set! still copies the nodes on its path. Wins vs repeated persistent-map-set come from (1) avoiding %pmap record allocation per step and (2) skipping the record-field dispatch in the inner HAMT loop. Expect a larger speedup once node-ownership is added. Semantics are fully correct: the original persistent map is never mutated, and use-after-persistent! raises.",
+    "related": [
+      "jerboa-clojure-compat",
+      "jerboa-concurrent-hash"
+    ]
   }
 ]
