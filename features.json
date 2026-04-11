@@ -16,5 +16,23 @@
     "example_scenario": "Building jemacs-qt static: (chez-qt ffi) calls load-shared-object at top level. Without JEMACS_STATIC=1 the compilation step fails with a dlopen error inside the container. Finding this required reading vendor/chez-qt/chez-qt/ffi.ss manually. A tool scan would have flagged it immediately.",
     "estimated_token_reduction": "~800 tokens per static build session (eliminates 3-5 grep/read cycles to find unguarded FFI calls)",
     "votes": 0
+  },
+  {
+    "id": "doc-code-block-verify",
+    "title": "Verify Jerboa code blocks inside markdown docs compile and run",
+    "description": "Scan a .md file (or directory) for fenced ```scheme / ```jerboa code blocks, extract each one, run it through the compiler, and optionally evaluate it. Report per-block status: compiled/failed/ran/threw, with line number of the fence and the exact error. Support an `:imports` metadata line before the fence (or a doc-level header) so the tool knows which modules each block expects. For blocks that are partial (no imports, no top-level wrapping), auto-wrap in `(import (jerboa prelude)) ...`. Intended for keeping design docs, cookbook sources, and README examples in lockstep with reality.",
+    "impact": "high",
+    "tags": [
+      "doc",
+      "markdown",
+      "verify",
+      "code-block",
+      "drift",
+      "example"
+    ],
+    "use_case": "When shipping a design doc or porting guide that contains many worked code examples, before committing. Also for periodic audits of existing docs to catch drift when APIs change. Would have prevented shipping docs/core-async.md with two broken references (`@out` reader sugar that doesn't exist, `(swap! out cons v)` with wrong argument order) — both only discovered by running the example manually after commit.",
+    "example_scenario": "docs/core-async.md Section 17 contains a 20-line worked example that ports Clojure's scatter/gather pattern to Jerboa. Two lines use `@out` (Clojure atom-deref reader sugar that doesn't exist in Jerboa) and one uses `(swap! out cons v)` instead of `(swap! out (cut cons v <>))`. A `jerboa_doc_verify docs/core-async.md` call would have compiled the block, noted \"variable @out is not bound\" at the fence's line, and caught both errors in one shot. Instead I wrote a /tmp/test-async-example.ss file, ran it by hand, saw the first error, fixed it, re-ran, saw the second, fixed it, re-ran again. Three iterations that one tool call could collapse into one. Same friction applies to every cookbook recipe on disk and every README code snippet.",
+    "estimated_token_reduction": "~1500 tokens per doc-ship session (replaces: write tmp file → read → run → parse error → re-write → re-run → parse → fix → re-run cycle). Multiplicative across every code block in a large doc.",
+    "votes": 0
   }
 ]
