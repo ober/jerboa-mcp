@@ -4405,5 +4405,24 @@
       "jerboa-csp-sorted-set",
       "jerboa-csp-chan-n-xform"
     ]
+  },
+  {
+    "id": "jerboa-csp-mult-slow-sub-policies",
+    "title": "CSP mult slow-subscriber policies (block / drop / timeout)",
+    "tags": [
+      "csp",
+      "mult",
+      "tap",
+      "slow-subscriber",
+      "drop",
+      "timeout",
+      "core.async"
+    ],
+    "imports": [
+      "(std csp)",
+      "(std csp ops)"
+    ],
+    "code": ";; By default make-mult is 'block: the fan-out thread blocks on\n;; chan-put! until every tap accepts the value. One slow sub stalls\n;; the whole mult. Two additional policies let you trade correctness\n;; for liveness when a subscriber can't keep up.\n;;\n;;   (make-mult src)               ;; 'block (same as before)\n;;   (make-mult src 'block)\n;;   (make-mult src 'drop)         ;; try-put!, slow sub misses values\n;;   (make-mult src 'timeout 100)  ;; poll try-put! for up to 100 ms\n;;\n;; The policy is set once, at creation. (mult-policy m) returns the\n;; configured symbol ('block, 'drop, or 'timeout). Policy validation\n;; raises for bad combinations, e.g. (make-mult src 'timeout) without\n;; an ms argument, or (make-mult src 'drop 100) (3-arg arity only\n;; applies to 'timeout).\n\n;; 'drop example — fast sub gets everything, unbuffered slow sub\n;; misses everything.\n(let* ([src  (make-channel 8)]\n       [m    (make-mult src 'drop)]\n       [fast (make-channel 16)]\n       [slow (make-channel)])  ;; never drained\n  (tap! m fast) (tap! m slow)\n  (for-each (lambda (x) (chan-put! src x)) '(1 2 3 4 5 6 7 8))\n  (chan-close! src)\n  (sleep (make-time 'time-duration 120000000 0)) ;; 120ms\n  (display (chan->list fast)) (newline))  ;; (1 2 3 4 5 6 7 8)\n\n;; 'timeout example — 25 ms per sub per value.\n(let* ([src  (make-channel 4)]\n       [m    (make-mult src 'timeout 25)]\n       [fast (make-channel 16)]\n       [slow (make-channel)])\n  (tap! m fast) (tap! m slow)\n  (for-each (lambda (x) (chan-put! src x)) '(a b c d))\n  (chan-close! src)\n  ;; Need ≥ 25 ms × 4 values = 100 ms for the slow sub to fully drop.\n  (sleep (make-time 'time-duration 250000000 0))\n  (display (chan->list fast)) (newline))  ;; (a b c d)",
+    "notes": "Pick 'block when correctness (every sub sees every value) matters more than liveness — the default. Pick 'drop when you want the fastest possible fan-out and slow subs can legitimately miss values (e.g. dashboards, tracing, telemetry). Pick 'timeout when you want bounded-latency delivery with some tolerance: each sub has up to ms milliseconds to accept, then that value is dropped for that sub only. The poll loop for 'timeout uses a 1 ms tick, so ms=1 effectively behaves like 'drop. For very high message rates, use 'drop (it never sleeps) and give fast subs buffered channels. Policies cannot be changed on a running mult — create a new mult to switch. mult-policy is an introspection accessor and is not in (std csp clj); use (std csp ops) if you need it.</notes>\n<parameter name=\"related\">[\"jerboa-csp-n-way-classifier\", \"jerboa-csp-async-reduce-onto-chan\"]"
   }
 ]
