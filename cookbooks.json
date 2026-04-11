@@ -4514,5 +4514,28 @@
       "jerboa-defclass-defmethod",
       "defclass-basics"
     ]
+  },
+  {
+    "id": "clojure-style-defprotocol",
+    "title": "Clojure-style protocols with open-world dispatch via (std protocol)",
+    "tags": [
+      "protocol",
+      "defprotocol",
+      "extend-type",
+      "extend-protocol",
+      "clojure",
+      "polymorphism",
+      "dispatch"
+    ],
+    "imports": [
+      "(jerboa prelude)",
+      "(std protocol)"
+    ],
+    "code": ";; A protocol is a named bundle of method names. Each method dispatches\n;; on the type of its first argument. Any type can opt in by supplying\n;; implementations — types do NOT need to know about the protocol up\n;; front (open-world extension, unlike class inheritance).\n\n(import (jerboa prelude)\n        (std protocol))\n\n;;; 1) Declare the protocol ----------------------------------------\n(defprotocol Shape\n  (area      (self))\n  (perimeter (self)))\n\n;;; 2) Extend on a defstruct record.\n;;;    defstruct binds the rtd as NAME::t — pass that as the type key.\n(defstruct circle (r))\n(defstruct square (side))\n\n(extend-type circle::t Shape\n  (area      (c) (* 314/100 (circle-r c) (circle-r c)))\n  (perimeter (c) (* 2 314/100 (circle-r c))))\n\n(extend-type square::t Shape\n  (area      (s) (let ([x (square-side s)]) (* x x)))\n  (perimeter (s) (* 4 (square-side s))))\n\n;;; 3) Extend on built-in types using symbol type-keys.\n;;;    Valid keys: 'string 'vector 'pair 'null 'number 'symbol\n;;;                'boolean 'char 'procedure 'hashtable 'bytevector 'eof\n;;;                'any   (universal fallback)\n(extend-protocol Shape\n  ('string\n    (area      (s) (string-length s))\n    (perimeter (s) (* 4 (string-length s))))\n  ('pair\n    (area      (p) (length p))\n    (perimeter (p) (* 2 (length p)))))\n\n;;; 4) Dispatch -----------------------------------------------------\n(displayln (area (make-circle 10)))   ;; => 314\n(displayln (area (make-square 5)))    ;; => 25\n(displayln (area \"hello\"))            ;; => 5\n(displayln (area '(a b c d)))         ;; => 4\n\n;;; 5) Introspection ------------------------------------------------\n(displayln (protocol? Shape))              ;; => #t\n(displayln (protocol-name Shape))          ;; => Shape\n(displayln (protocol-methods Shape))       ;; => (area perimeter)\n\n;;; 6) satisfies? — true iff the type has explicit impls.\n;;;    An 'any fallback does NOT count toward satisfying the protocol.\n(displayln (satisfies? Shape (make-circle 3)))  ;; => #t\n(displayln (satisfies? Shape \"foo\"))             ;; => #t\n(displayln (satisfies? Shape 42))                ;; => #f\n\n;;; 7) define-record-type users ------------------------------------\n;;;    (record-type-descriptor name) yields the rtd at expand time.\n(define-record-type rect (fields w h))\n(extend-type (record-type-descriptor rect) Shape\n  (area      (r) (* (rect-w r) (rect-h r)))\n  (perimeter (r) (* 2 (+ (rect-w r) (rect-h r)))))\n\n(displayln (area (make-rect 3 4)))    ;; => 12\n\n;;; 8) 'any universal fallback -------------------------------------\n(defprotocol Greetable\n  (greet (self)))\n\n(extend-type 'any Greetable\n  (greet (x) (list 'hi x)))\n;; greet now works on ANY value — but satisfies? still returns #f\n;; for types that have no explicit implementation.\n(displayln (greet 42))                      ;; => (hi 42)\n(displayln (satisfies? Greetable 42))       ;; => #f\n\n(extend-type 'number Greetable\n  (greet (n) (list 'hello-number n)))\n(displayln (greet 42))                      ;; => (hello-number 42)\n(displayln (satisfies? Greetable 42))       ;; => #t  (now explicit)",
+    "notes": "(std protocol) is its own library, not in the prelude. Import both `(jerboa prelude)` (for defstruct, displayln, etc.) and `(std protocol)` in application code.\n\nType keys\n---------\n- Records: pass the RTD directly\n  - `defstruct point (x y)` — use `point::t`\n  - `(define-record-type point ...)` — use `(record-type-descriptor point)`\n- Built-ins: pass a symbol\n  - `'string`, `'vector`, `'pair`, `'null`, `'number`, `'symbol`,\n    `'boolean`, `'char`, `'procedure`, `'hashtable`, `'bytevector`, `'eof`\n- `'any` is the universal fallback — fires when no type-specific\n  method exists. Does NOT count toward `satisfies?`.\n\nSemantics\n---------\n- Methods dispatch on the FIRST argument's type only (like Clojure).\n- Method redefinition replaces silently (`extend-type` on an already-\n  extended type updates the method entry).\n- `satisfies?` checks for explicit implementations, not `'any` fallback.\n- Dispatch runs under a mutex BUT method BODIES run outside the mutex,\n  so a method may recursively call other protocol methods on different\n  types without deadlocking.\n\nDeferred Clojure features: `isa?` hierarchies, `prefer-method`, and\nclassifier-style dispatch. The current surface implements the 90% case.\n\nSee also: `clojure-style-defmulti-defmethod` for value-based dispatch\nvia `(std multi)`. Multimethods dispatch on arbitrary values; protocols\ndispatch on types.",
+    "related": [
+      "clojure-style-defmulti-defmethod",
+      "jerboa-defclass-defmethod"
+    ]
   }
 ]
