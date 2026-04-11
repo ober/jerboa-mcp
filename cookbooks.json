@@ -4065,5 +4065,27 @@
     "related": [
       "override-module-static-binary"
     ]
+  },
+  {
+    "id": "jerboa-clojure-compat",
+    "title": "Clojure-familiar names via (std clojure)",
+    "tags": [
+      "clojure",
+      "compat",
+      "hash-map",
+      "assoc",
+      "reduce",
+      "polymorphic"
+    ],
+    "imports": [
+      "(std clojure)"
+    ],
+    "code": ";; (std clojure) gives Clojure developers a single import with\n;; polymorphic get/assoc/dissoc, reduce, range, inc/dec, nil?,\n;; hash-map constructor (Clojure-style {:k v}), and re-exports\n;; of atom and get-in / assoc-in.\n\n(import (std clojure))\n\n;; Maps\n(def m (hash-map \"a\" 1 \"b\" 2 \"c\" 3))     ;; like {:a 1 :b 2 :c 3}\n(get m \"a\")                              ;; => 1\n(contains? m \"b\")                        ;; => #t\n(count m)                                ;; => 3\n(keys m) (vals m)\n(assoc m \"d\" 4)                          ;; new imap with d=4\n(dissoc m \"a\" \"b\")                       ;; new imap without a,b\n(merge m (hash-map \"d\" 4))\n(update m \"a\" inc)                       ;; (inc 1) => 2\n(select-keys m (list \"a\" \"b\"))\n\n;; Polymorphic: the same `get`/`assoc` work on chash and hash too\n(def ch (concurrent-hash \"x\" 10))\n(get ch \"x\")                             ;; => 10\n(assoc ch \"y\" 20)                        ;; mutates in place\n\n;; Sequences\n(reduce + 0 (range 10))                  ;; => 45\n(range 2 8)                              ;; => (2 3 4 5 6 7)\n(first (list 10 20 30))                  ;; => 10\n(last (list 10 20 30))                   ;; => 30\n(inc 5)                                  ;; => 6\n(dec 5)                                  ;; => 4\n\n;; Atoms and nested access (re-exported)\n(def a (atom 0))\n(swap! a inc)\n(swap! a + 10)\n(deref a)                                ;; => 11\n(compare-and-set! a 11 100)              ;; => #t\n\n(def nested (hash-map \"user\" (hash-map \"name\" \"Alice\" \"age\" 30)))\n(get-in nested (list \"user\" \"name\"))     ;; => \"Alice\"\n(assoc-in nested (list \"user\" \"age\") 31) ;; new imap",
+    "notes": "Shadows Jerboa's Racket-style (hash-map f ht) mapper with a Clojure-style constructor; also shadows chezscheme's `assoc` and `merge`. If you need both the mapper and the constructor in one file, rename one of them on import with `rename`. Container-polymorphic ops (get/assoc/dissoc/contains?/count/merge/keys/vals/update) work on persistent imap (pure returns), concurrent-hash (mutating), and hash-table (mutating). hash-set / make-hash-set are placeholders until (std pset) lands.",
+    "related": [
+      "jerboa-concurrent-hash",
+      "jerboa-clojure-atom-aliases",
+      "jerboa-nested-access"
+    ]
   }
 ]
