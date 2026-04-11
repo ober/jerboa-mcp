@@ -4340,5 +4340,25 @@
       "jerboa-pqueue-basic",
       "pmap-structural-equality-hash-iter"
     ]
+  },
+  {
+    "id": "jerboa-csp-put-take-callbacks",
+    "title": "Non-blocking callback put! / take! for CSP channels",
+    "tags": [
+      "csp",
+      "channel",
+      "put",
+      "take",
+      "callback",
+      "async",
+      "clojure",
+      "core-async"
+    ],
+    "imports": [
+      "(std csp)",
+      "(std csp ops)"
+    ],
+    "code": ";; (std csp ops) exports put! and take! — the Clojure core.async\n;; non-blocking callback forms. They spawn a helper OS thread to do\n;; the blocking work and fire the user's callback with the result.\n;; Re-exported under the same names from (std csp clj).\n\n(import (std csp)\n        (std csp ops))\n\n;; ---- put! ----------------------------------------------------------\n;;\n;; (put! ch v)      — fire-and-forget. Returns immediately. Callbacks\n;;                     receive nothing; closed-channel errors swallowed.\n;; (put! ch v fn)   — fires, and when the put lands invokes\n;;                     (fn #t) on success or (fn #f) if the channel\n;;                     was closed before the value could be delivered.\n\n(define ch (make-channel 4))\n\n;; Successful put with callback:\n(define result-ch (make-channel 1))\n(put! ch 'hello\n  (lambda (ok?) (chan-put! result-ch ok?) (chan-close! result-ch)))\n(chan-get! result-ch)            ;; => #t\n(chan-get! ch)                   ;; => hello\n\n;; Put on a closed channel:\n(define ch2 (make-channel 1))\n(chan-close! ch2)\n(define cb-ch (make-channel 1))\n(put! ch2 'bye\n  (lambda (ok?) (chan-put! cb-ch ok?) (chan-close! cb-ch)))\n(chan-get! cb-ch)                ;; => #f\n\n;; Fire-and-forget:\n(put! ch 'fire)                  ;; returns immediately\n\n;; ---- take! ---------------------------------------------------------\n;;\n;; (take! ch fn)    — async get. When a value arrives (or the channel\n;;                     closes), calls fn with the value. On close, fn\n;;                     receives (eof-object).\n\n(define out (make-channel 1))\n(take! ch\n  (lambda (v)\n    (chan-put! out (if (eof-object? v) 'closed v))\n    (chan-close! out)))\n(chan-put! ch 'world)\n(chan-get! out)                  ;; => world\n\n;; ---- async round-trip ---------------------------------------------\n\n(define rt-ch (make-channel 4))\n(define rt-out (make-channel 1))\n(take! rt-ch\n  (lambda (v) (chan-put! rt-out (* v 10)) (chan-close! rt-out)))\n(put! rt-ch 7)\n(chan-get! rt-out)               ;; => 70",
+    "notes": "put! and take! each spawn one OS thread per callback — fine for moderate rates but avoid at high request volumes. For production workloads consider batching callbacks onto a dedicated dispatch thread (see core-async.md §3.4). Callbacks run on the helper thread. If a callback raises, a warning is printed to current-error-port and the helper exits silently — exceptions do NOT propagate to the caller of put!/take!. take! delivers (eof-object) on close, not #f; use (eof-object? v) to detect closure. Also re-exported under the same names from (std csp clj).</notes>\n<parameter name=\"related\">[\"chan-xform-transducer-backed\", \"jerboa-csp-channels\", \"transducer-into-persistent-collections\"]"
   }
 ]
