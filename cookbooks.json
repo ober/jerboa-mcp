@@ -4561,5 +4561,29 @@
       "clojure-style-multimethods",
       "atom-watches-and-volatiles"
     ]
+  },
+  {
+    "id": "clojure-style-agents",
+    "title": "Async state cells with serialized action queues via (std agent)",
+    "tags": [
+      "agent",
+      "send",
+      "async",
+      "state",
+      "clojure",
+      "std/agent",
+      "concurrency",
+      "queue"
+    ],
+    "imports": [
+      "(std agent)"
+    ],
+    "code": ";; Clojure-style agents: async state cells with a serialized action\n;; queue. Each agent has its own worker thread so actions run\n;; one-at-a-time in order.\n\n;; Create an agent with an initial value\n(def a (agent 0))\n\n;; Dispatch actions with `send`. The action is applied to the\n;; current value on the worker thread: (fn current-value args...)\n(send a + 1)   ;; queues (+ 0 1) -> 1, returns a\n(send a * 3)   ;; queues (* 1 3) -> 3, returns a\n\n;; `await` blocks until all queued actions have drained\n(await a)\n\n;; Read the current value — non-blocking\n(agent-value a)   ;; => 3\n\n;; `send` returns the agent so you can chain\n(-> (agent 0)\n    (send + 10)\n    (send * 2)\n    (await)\n    (agent-value))\n;; => 20\n\n;; ---- Error handling ------------------------------------------------\n\n(def b (agent 100))\n(send b (lambda (v) (error 'boom \"kaboom\")))\n(sleep (make-time 'time-duration 50000000 0))  ;; let worker pick it up\n\n(agent-error b)   ;; => a condition object\n(agent-value b)   ;; => 100 (unchanged; failed actions don't commit)\n\n;; While in error state, further sends raise:\n(guard (exn [#t 'caught]) (send b + 1))  ;; => 'caught\n\n;; Two ways to recover:\n(clear-agent-errors b)   ;; clears error, keeps value at 100\n(restart-agent b 0)      ;; clears error AND resets value to 0\n(send b + 1)             ;; works again\n(await b)\n(agent-value b)          ;; => 1\n\n;; ---- Concurrent sends serialize automatically ----------------------\n\n(def counter (agent 0))\n\n;; Spawn 10 threads each sending 10 increments\n(for ([t (in-range 10)])\n  (fork-thread\n    (lambda ()\n      (for ([i (in-range 10)])\n        (send counter + 1)))))\n\n;; Give them time to queue, then drain\n(sleep (make-time 'time-duration 100000000 0))\n(await counter)\n(agent-value counter)   ;; => 100 — every increment landed in order\n\n;; ---- Shutdown ------------------------------------------------------\n\n(shutdown-agent! a)\n(shutdown-agent! b)\n(shutdown-agent! counter)\n;; After shutdown, further sends raise.\n;; agent-value is still readable.",
+    "notes": "Implements §4.8 of docs/clojure-remaining.md. One worker thread per agent; actions run one at a time regardless of how many threads call `send` concurrently.\n\nSERIALIZATION: The key property is that the value the N-th action sees is always the result of the (N-1)-th action. Readers via `agent-value` see the most recent committed value — no locking needed.\n\nERROR MODE: Jerboa implements Clojure's `:fail` mode. When an action throws, the error lands in the agent's error slot. The worker keeps draining the queue but doesn't execute anything until `restart-agent` is called. `send` / `await` raise while in error state — check with `agent-error`. `clear-agent-errors` clears just the error; `restart-agent` clears the error AND resets the value to a new state (it takes the new value as its second arg).\n\nSEND-OFF: Clojure distinguishes `send` (CPU pool) from `send-off` (unbounded I/O pool). Jerboa has one dedicated worker per agent, so `send-off` is literally an alias for `send`. Kept for Clojure code compatibility.\n\nQUEUE SIZE: Default queue capacity is 1024. Pass a second arg to `agent` for custom: `(agent 0 8)`. When the queue fills, `send` blocks (fixed buffer).\n\nNAMESPACE: (std agent) exports `send`, which conflicts with (std actor)'s `send`. They're not in the same module — users pick one, or rename on import. (std agent) is NOT in the prelude for this reason.\n\nvs (std actor): (std actor) is full actor-model with supervised hierarchies, links, monitors. (std agent) is a simple one-value-one-queue primitive. Use agents when you want to coalesce writes to a single state without contention; use actors when you want a tree of supervised processes.\n\nSHUTDOWN: `shutdown-agent!` closes the action channel. The worker thread exits naturally when it drains the queue. There's no forcible kill — in-flight actions finish.",
+    "related": [
+      "clojure-style-metadata",
+      "clojure-style-protocols",
+      "atom-watches-and-volatiles"
+    ]
   }
 ]
