@@ -4537,5 +4537,29 @@
       "clojure-style-defmulti-defmethod",
       "jerboa-defclass-defmethod"
     ]
+  },
+  {
+    "id": "clojure-style-metadata",
+    "title": "Attach metadata to values with with-meta / meta / vary-meta",
+    "tags": [
+      "metadata",
+      "with-meta",
+      "meta",
+      "vary-meta",
+      "clojure",
+      "std/misc/meta",
+      "annotations"
+    ],
+    "imports": [
+      "(jerboa prelude)",
+      "(std clojure)"
+    ],
+    "code": ";; Clojure-style metadata: attach an immutable map to any value\n;; without affecting equality or hash. Useful for source-location\n;; tracking, type hints, cache keys, etc.\n\n;; Wrap a value with metadata\n(def m (with-meta (hash-map \"x\" 1 \"y\" 2)\n                  '((source . \"input.edn\") (line . 42))))\n\n(meta m)                         ;; => ((source . \"input.edn\") (line . 42))\n(strip-meta m)                   ;; => underlying (hash-map \"x\" 1 \"y\" 2)\n(meta-wrapped? m)                ;; => #t\n(meta-wrapped? '(1 2 3))         ;; => #f\n\n;; Metadata does NOT affect equality in (std clojure)'s =?\n(=? m (hash-map \"x\" 1 \"y\" 2))    ;; => #t\n\n;; unwrapped values return #f from meta\n(meta 42)                        ;; => #f\n(meta \"hello\")                   ;; => #f\n\n;; Update metadata with vary-meta — applies f to the current meta\n;; (meta value) is passed as the first arg; extra args are appended.\n;;\n;;   (vary-meta v f arg ...) ==  (with-meta v (apply f (meta v) arg ...))\n(def m2 (vary-meta m\n                   (lambda (old k v) (cons (cons k v) old))\n                   'col 10))\n(meta m2)  ;; => ((col . 10) (source . \"input.edn\") (line . 42))\n\n;; On an unwrapped value, the current meta is #f — handle that in f:\n(def v (vary-meta 42 (lambda (old) (or old '((fresh . #t))))))\n(meta v)   ;; => ((fresh . #t))\n(strip-meta v)  ;; => 42\n\n;; with-meta on an already-wrapped value replaces the metadata\n;; rather than nesting — strip-meta is always a single hop.\n(def m3 (with-meta m '((new . tag))))\n(meta m3)        ;; => ((new . tag))\n(strip-meta m3)  ;; => original (hash-map \"x\" 1 \"y\" 2), not m",
+    "notes": "Implements §4.4 of docs/clojure-remaining.md. Wrapper-based: values only get allocated when with-meta is called, so unwrapped code pays zero cost.\n\nKEY LIMITATION: meta-wrapped values are NOT transparently interchangeable with raw values. Polymorphic ops in (std clojure) — get, assoc, count, etc. — check types directly and will see the wrapper record, not the underlying collection. Call (strip-meta v) before handing a metadata-tagged value to those ops.\n\nEQUALITY: (std clojure)'s =? is taught to strip-meta on both sides, so metadata does NOT participate in equality — this matches Clojure. (equal? (with-meta x m) x) however returns #f because equal? doesn't know about the wrapper.\n\nRE-WRAPPING: with-meta on an already-wrapped value rebuilds the wrapper in place instead of nesting. strip-meta is always one hop regardless of how many times with-meta was applied.\n\nALL FIVE NAMES are exported from (jerboa prelude) AND (std clojure). If you only import (jerboa prelude), =? (from std clojure) won't auto-unwrap — use (std clojure) for Clojure-semantic equality.\n\nCHEZ NAMING: meta is a Chez syntactic keyword used for phase-scoped definitions like (meta define foo ...). The std/misc/meta library uses (except (chezscheme) meta) to shadow it. If you need Chez's meta in the same scope as this library's meta function, you'll need to rename one.",
+    "related": [
+      "clojure-style-protocols",
+      "clojure-style-multimethods",
+      "atom-watches-and-volatiles"
+    ]
   }
 ]
