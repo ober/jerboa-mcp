@@ -2326,6 +2326,25 @@
     "notes": "imap wraps (std pmap) — HAMT with 32-way branching, O(log32 n) for ref/set/delete. ivec wraps (std pvec) — persistent trie with tail optimization, O(log32 n) for ref/set, amortized O(1) for append. Both use structural sharing — modifications share unchanged nodes with the original. Use these instead of mutable hashtables/vectors to prevent accidental mutation bugs. pmap-empty and pvec-empty are VALUES not functions — use directly, don't call them."
   },
   {
+    "id": "jerboa-concurrent-hash",
+    "title": "Thread-safe concurrent hash table (std concur hash)",
+    "tags": [
+      "concurrent",
+      "thread-safe",
+      "hash",
+      "chash",
+      "concurrenthashmap",
+      "pmap",
+      "hamt",
+      "shared"
+    ],
+    "imports": [
+      "(std concur hash)"
+    ],
+    "code": "(import (std concur hash))\n\n;; Create a thread-safe hash table. Internally: a persistent HAMT\n;; inside a shared (mutex-guarded) cell. Writers serialize; readers\n;; grab an immutable snapshot and never lock.\n(define h (make-concurrent-hash))\n\n;; Basic put/get\n(concurrent-hash-put! h \"alice\" 42)\n(concurrent-hash-get  h \"alice\")          ;; => 42\n(concurrent-hash-get  h \"missing\" 'none)  ;; => 'none\n(concurrent-hash-ref  h \"alice\")          ;; raises on missing\n\n;; Atomic read-modify-write (counter pattern)\n(concurrent-hash-update! h \"counter\"\n  (lambda (n) (+ (or n 0) 1)))\n\n;; Remove / query\n(concurrent-hash-remove! h \"alice\")\n(concurrent-hash-key?  h \"alice\")  ;; => #f\n(concurrent-hash-size  h)\n\n;; Literal constructor (takes alternating k/v pairs)\n(define cfg (concurrent-hash \"host\" \"localhost\" \"port\" 8080))\n\n;; Multi-key atomic update — hand the whole pmap to a function\n(import (std pmap))\n(concurrent-hash-swap! h\n  (lambda (m)\n    (persistent-map-filter (lambda (k v) (> v 0)) m)))\n\n;; Lock-free iteration (the snapshot can't change underneath you)\n(concurrent-hash-for-each\n  (lambda (k v) (displayln k \" => \" v))\n  h)\n\n;; Merge another chash (or persistent-map); right wins on conflict\n(concurrent-hash-merge! h other)\n\n;; Grab a raw snapshot for long analyses on another thread\n(define snap (concurrent-hash-snapshot h))  ;; immutable pmap\n\n;; Short aliases (chash-*) are available for every operation:\n(define c (chash \"k\" 1))\n(chash-put! c \"j\" 2)\n(chash-get  c \"k\")  ;; => 1",
+    "notes": "Designed to replace (make-hash-table) + mutex in multi-threaded code. Chez's plain hash tables are NOT safe under concurrent mutation — empirical testing in jerboa-code showed ~33-37% of hash-put! calls silently dropped, and torn bucket writes could create cyclic chains that hang readers. concurrent-hash eliminates both classes of bug by construction: the HAMT is immutable (no torn writes, no cyclic chains), and the shared cell's mutex serializes writers (no lost updates). Readers never lock — shared-ref returns the current pmap pointer and queries walk an immutable structure. Stress test: 8 threads × 500 writes = 4000/4000 retained (0% loss). Use chash-swap! for multi-key atomic transforms. Use concurrent-hash-snapshot to hand an immutable view to another thread for long-running reads without blocking writers. Both 'concurrent-hash-*' (Java/C# ConcurrentHashMap-style) and 'chash-*' (short) aliases are exported."
+  },
+  {
     "id": "chez-guardian-resource-leak-detection",
     "title": "Guardian-based resource leak detection (Chez Scheme)",
     "tags": [
@@ -3970,6 +3989,47 @@
     "notes": "Return code: 0 = success, -1 = failure. iterations must be > 0 (uint32). Uses PBKDF2_HMAC_SHA256 internally (same as OpenSSL PKCS5_PBKDF2_HMAC with EVP_sha256). This is a deterministic standard (RFC 2898) — same inputs produce identical output regardless of ring vs OpenSSL. For password hashing, prefer jerboa_argon2id_hash or jerboa_scrypt for new designs.",
     "related": [
       "rust-aes-256-gcm-ffi"
+    ]
+  },
+  {
+    "id": "pregexp-to-std-regex-migration",
+    "title": "Migrate from pregexp-match to (std regex) API",
+    "tags": [
+      "regex",
+      "pregexp",
+      "migrate",
+      "re-search",
+      "re-match",
+      "capture-group",
+      "BASH_REMATCH"
+    ],
+    "imports": [
+      "(std regex)"
+    ],
+    "code": ";; === pregexp-match returns a flat list ===\n;; (pregexp-match \"(.+)@(.+)\" \"user@host\")\n;; => (\"user@host\" \"user\" \"host\")   ; car=full, cdr=groups\n\n;; === re-search returns a match OBJECT ===\n(let ([m (re-search (re \"(.+)@(.+)\") \"user@host\")])\n  (re-match-full m)      ;; => \"user@host\"\n  (re-match-groups m))   ;; => (\"user\" \"host\")  — groups only, no full match\n\n;; Migration pattern 1: boolean match (pregexp-match used as truthy)\n;; OLD: (and (pregexp-match pattern str) #t)\n;; NEW:\n(re-match? pattern str)   ;; full-string anchored match\n;; or for substring search:\n(if (re-search (re pattern) str) #t #f)\n\n;; Migration pattern 2: capture groups (e.g. BASH_REMATCH)\n;; OLD: (let ((m (pregexp-match regex str)))\n;;        (map (lambda (v) (or v \"\")) m))  ; full+groups as flat list\n;; NEW:\n(let ([m (re-search (re regex) str)])\n  (if m\n    (cons (re-match-full m)\n          (map (lambda (v) (or v \"\")) (re-match-groups m)))\n    #f))\n\n;; Migration pattern 3: pregexp-quote-char replacement\n;; OLD: (pregexp-match \"[\\\\\\\\\\\\^\\\\$...]\" (string ch))\n;; NEW:\n(re-match? \"[\\\\\\\\\\\\^\\\\$\\\\.\\\\|\\\\?\\\\*\\\\+\\\\(\\\\)\\\\[\\\\]\\\\{\\\\}]\" (string ch))",
+    "notes": "Key differences: (1) pregexp-match returns a LIST where car=full-match, cdr=capture-groups. re-search returns a MATCH OBJECT — use re-match-full and re-match-groups separately. (2) re-match? is anchored (full-string match), pregexp-match is unanchored (substring search). For substring search use re-search. (3) re-search requires a compiled re object or string — use (re pattern) to compile. (4) re-match-groups returns only capture groups (no full match), unlike pregexp-match which includes full match as car. (5) When migrating glob code, pregexp-match on a ^..$ anchored regex maps directly to re-match? since both are full-string.",
+    "related": [
+      "std-regex-unified-facade"
+    ]
+  },
+  {
+    "id": "static-stub-library-no-ffi",
+    "title": "Create a no-FFI stub library for static binary builds",
+    "tags": [
+      "static",
+      "stub",
+      "ffi",
+      "library",
+      "musl",
+      "build"
+    ],
+    "imports": [
+      "(chezscheme)"
+    ],
+    "code": ";; Pattern: vendor/jerboa-net-tls-rustls-static.sls\n;; Use when a library depends on a native .so (Rust, OpenSSL, etc.) that\n;; is NOT available in the static binary. Export the same interface but\n;; raise a clear error if any function is actually called at runtime.\n;; No foreign-procedure declarations — so the linker never needs the .so.\n\n#!chezscheme\n(library (std net tls-rustls)\n  (export\n    rustls-connect\n    rustls-read\n    rustls-write\n    rustls-close\n    ;; ... all exported names from the real library ...\n    )\n  (import (chezscheme))\n\n  (define (tls-not-available who . args)\n    (error who \"TLS not available in static jemacs build\"))\n\n  (define (rustls-connect host port) (tls-not-available 'rustls-connect))\n  (define (rustls-read handle buf max-len) (tls-not-available 'rustls-read))\n  (define (rustls-write handle buf len) (tls-not-available 'rustls-write))\n  (define (rustls-close handle) (tls-not-available 'rustls-close))\n  ;; ... repeat for all exported names ...\n  )",
+    "notes": "Differs from the \"override with guard\" pattern: this stub has ZERO foreign-procedure declarations and ZERO load-shared-object calls. It is safe to compile into any static binary regardless of which native libraries are available. Use this when the feature is entirely absent from the binary (e.g. TUI binary has no TLS, Qt binary has no rustls). Patch it into place in the Makefile before compilation: `cp vendor/tls-rustls-static.sls /path/to/jerboa/lib/std/net/tls-rustls.sls`. Remember to delete the .wpo and .so files for the module after patching so Chez recompiles from the stub.",
+    "related": [
+      "override-module-static-binary"
     ]
   }
 ]
