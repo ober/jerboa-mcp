@@ -2362,6 +2362,23 @@
     "notes": "atom/deref/swap!/reset!/compare-and-set! are Clojure aliases for the Gerbil-style (std misc atom) API — same record type, same mutex, zero overhead. swap! is variadic and matches Clojure's semantics exactly: (swap! a f x y) calls (f @a x y) under the cell's lock. compare-and-set! uses equal? for comparison (not eq?) so it works on structured values. reset! returns the new value (not void, so you can chain it). All names are in the prelude. Chez's builtin atom? (a pair/non-pair predicate) is shadowed — in Jerboa, atom? tests for the atom record type. If you need Chez's meaning, use (not (pair? x)) instead."
   },
   {
+    "id": "jerboa-nested-access",
+    "title": "Clojure-style get-in / assoc-in / update-in (nested access)",
+    "tags": [
+      "clojure",
+      "get-in",
+      "assoc-in",
+      "update-in",
+      "nested",
+      "path",
+      "imap",
+      "polymorphic"
+    ],
+    "imports": [],
+    "code": ";; In prelude — no explicit import needed.\n;; (std misc nested) is the underlying module.\n\n;; ----- Polymorphic read (get-in) -----\n;; Works on imap, concurrent-hash, hash-table, vector, and alist,\n;; and they can be freely mixed at different levels of the path.\n\n(import (std immutable))  ;; for imap\n\n(def m (imap \"user\" (imap \"name\" \"Alice\"\n                            \"prefs\" (imap \"theme\" \"dark\")\n                            \"tags\" (vector \"admin\" \"active\"))))\n\n(get-in m '(\"user\" \"name\"))               ;; => \"Alice\"\n(get-in m '(\"user\" \"prefs\" \"theme\"))      ;; => \"dark\"\n(get-in m '(\"user\" \"tags\" 0))             ;; => \"admin\"   (integer key → vector)\n(get-in m '(\"user\" \"missing\"))            ;; => #f\n(get-in m '(\"user\" \"missing\") 'none)      ;; => 'none\n\n;; ----- Pure updates (assoc-in / update-in) -----\n;; Return a NEW imap — original unchanged. Auto-creates intermediate\n;; pmaps if the path doesn't exist.\n\n(def m2 (assoc-in m '(\"user\" \"name\") \"Bob\"))\n(get-in m  '(\"user\" \"name\"))    ;; => \"Alice\"  (unchanged)\n(get-in m2 '(\"user\" \"name\"))    ;; => \"Bob\"\n\n(def m3 (update-in m '(\"user\" \"name\") string-upcase))\n(get-in m3 '(\"user\" \"name\"))    ;; => \"ALICE\"\n\n;; Variadic update-in — extra args passed to the function\n(def counts (imap \"a\" (imap \"b\" 10)))\n(def counts2 (update-in counts '(\"a\" \"b\") + 5))\n(get-in counts2 '(\"a\" \"b\"))     ;; => 15\n\n;; Deep path creation — intermediate imaps auto-created\n(def m4 (assoc-in (imap) '(\"a\" \"b\" \"c\" \"d\") 42))\n(get-in m4 '(\"a\" \"b\" \"c\" \"d\"))  ;; => 42\n\n;; ----- Mutating updates (assoc-in! / update-in!) -----\n;; For concurrent-hash or plain hash-table — mutate in place.\n\n(import (std concur hash))\n\n(def state (chash \"user\" (chash \"count\" 0)))\n(update-in! state '(\"user\" \"count\") + 1)\n(update-in! state '(\"user\" \"count\") + 1)\n(update-in! state '(\"user\" \"count\") + 1)\n(assoc-in! state '(\"user\" \"name\") \"Alice\")\n\n(get-in state '(\"user\" \"count\"))  ;; => 3\n(get-in state '(\"user\" \"name\"))   ;; => \"Alice\"\n\n;; Deep-path creation on mutable containers: intermediates are created\n;; as the SAME TYPE as the top-level container.\n(def h (make-hash-table))\n(assoc-in! h '(\"a\" \"b\" \"c\") 42)        ;; creates hash-tables for \"a\" and \"b\"\n(get-in h '(\"a\" \"b\" \"c\"))              ;; => 42",
+    "notes": "get-in is polymorphic — it dispatches at every level so you can walk a chash of hash-tables of imaps of vectors with a single path. For vectors, use an integer key (bounds-checked, returns default if out of range). assoc-in / update-in are PURE: they only work on imap/persistent-map and always return a new container (original is never mutated). assoc-in! / update-in! MUTATE: they work on chash/hash-table/vector and return the same container. When creating intermediate containers on a mutable path, they use the same type as the top-level container (chash → chash intermediates, hash-table → hash-table intermediates). update-in/update-in! are variadic in the extra args: (update-in m path f x y) calls (f old-val x y). Empty path lists raise an error. Follows Clojure's Associative semantics — should feel familiar to clojure users."
+  },
+  {
     "id": "chez-guardian-resource-leak-detection",
     "title": "Guardian-based resource leak detection (Chez Scheme)",
     "tags": [
