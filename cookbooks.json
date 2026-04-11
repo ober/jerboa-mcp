@@ -4585,5 +4585,31 @@
       "clojure-style-protocols",
       "atom-watches-and-volatiles"
     ]
+  },
+  {
+    "id": "clojure-records-as-maps",
+    "title": "Use defstruct records as polymorphic Clojure maps",
+    "tags": [
+      "clojure",
+      "record",
+      "defstruct",
+      "get",
+      "keys",
+      "assoc",
+      "polymorphic",
+      "map",
+      "get-in"
+    ],
+    "imports": [
+      "(except (jerboa prelude) hash-map)",
+      "(std clojure)"
+    ],
+    "code": ";; In Clojure, a defrecord instance is *also* a persistent map — you\n;; can (get p :x), (keys p), (assoc p :new 1), etc. (std clojure)\n;; gives the same behaviour to plain Jerboa records (defstruct /\n;; define-record-type) as long as you dispatch through the\n;; polymorphic ops (get / assoc / keys / vals / ...), not the\n;; per-field accessors.\n\n(defstruct point (x y z))\n(def p (make-point 1 2 3))\n\n;; --- Read side: get / contains? / count / keys / vals ---\n(get p 'x)               ;; => 1 (symbol key)\n(get p \"y\")              ;; => 2 (string coerces to symbol)\n(get p 'missing 'none)   ;; => none (default)\n(contains? p 'z)         ;; => #t\n(count p)                ;; => 3\n(empty? p)               ;; => #f\n(keys p)                 ;; => (x y z)  in declaration order\n(vals p)                 ;; => (1 2 3)\n\n;; --- assoc / dissoc: ESCAPE TO PERSISTENT-MAP ---\n;;\n;; Both operations lose the record type because reconstructing a\n;; sealed Chez record generically isn't feasible. The result is a\n;; regular persistent-map with every field bound, plus/minus the\n;; changed key. The original record is never mutated.\n\n(def m (assoc p 'new-key 99))\n(persistent-map? m)      ;; => #t\n(get m 'x)               ;; => 1\n(get m 'new-key)         ;; => 99\n(point-x p)              ;; => 1  (original record unchanged)\n\n;; Updating a known field *also* escapes to a pmap — convenient,\n;; but if you want to keep the record type, use the accessor directly:\n(def p2 (make-point 100 (point-y p) (point-z p)))\n\n;; dissoc likewise returns a pmap:\n(def m2 (dissoc p 'x))\n(contains? m2 'x)        ;; => #f\n(contains? m2 'y)        ;; => #t\n\n;; --- Nested access: get-in walks into records ---\n(defstruct address (city zip))\n(defstruct user (name email addr))\n(def u (make-user \"Alice\" \"a@x\" (make-address \"NYC\" \"10001\")))\n(get-in u '(addr city))             ;; => \"NYC\"\n(get-in u '(addr country) 'unknown) ;; => unknown\n\n;; Records can be nested inside pmaps and vice versa; get-in walks\n;; across the boundary in either direction.",
+    "notes": "Records participate in Clojure's polymorphic collection API via\n(std clojure) as of Phase E.6. The dispatch walks the record's rtd\nvia Chez's record-type-field-names + record-accessor, so any record\ntype — defstruct, define-record-type, inherited records — works\nautomatically. Inherited fields from parent records are included\nin declaration order (parent-first).\n\nKey coercion accepts symbol, string, and keyword keys, so both\n(get p 'x) and (get p \"x\") hit the same field.\n\nCRITICAL: assoc and dissoc on a record DO NOT return a record —\nthey return a persistent-map. This is the \"fallback\" from the §4.10\ndesign doc: Chez's sealed-record model doesn't expose a generic way\nto rebuild an instance, so uniform pmap escape is the chosen\nsemantics. If you need to preserve the record type on update, use\nthe record's own field setter (e.g. point-x-set!) or allocate a\nfresh record with the updated fields via the constructor.\n\nIMPORT GOTCHA: Jerboa's prelude exports `hash-map` as Racket-style\n(hash-map f ht). (std clojure) exports `hash-map` as a variadic\nconstructor (hash-map k v k v ...). If you need both modules in a\ntest, import the prelude with `(except (jerboa prelude) hash-map)`\nso (std clojure)'s constructor wins.\n\nRegression-safe: persistent-map, persistent-set, sorted-set, and\nconcurrent-hash are explicitly excluded from the record branch in\nget / contains? / count / keys / vals / empty?, so they continue\nto dispatch through their own fast paths.",
+    "related": [
+      "jerboa-clojure-compat",
+      "jerboa-nested-access",
+      "pmap-structural-equality-hash-iter"
+    ]
   }
 ]
