@@ -453,6 +453,85 @@ Re-exported by `(jerboa prelude)`.
 (thread-receive)        ; blocks until message arrives
 ```
 
+### `(std fiber)` — M:N Green Threads
+
+Engine-based preemptive/cooperative fibers scheduled across OS worker threads.
+Includes channels, cancellation, structured concurrency, and fiber-local storage.
+
+```scheme
+(import (std fiber))
+
+;; Basic: spawn fibers and run
+(with-fibers
+  (fiber-spawn* (lambda () (displayln "hello from fiber")))
+  (fiber-spawn* (lambda () (displayln "hello from another"))))
+
+;; Yield and sleep
+(fiber-yield)
+(fiber-sleep 100)  ;; milliseconds
+
+;; Fiber identity
+(fiber-self)        ;; current fiber
+(fiber-id f)        ;; unique integer id
+(fiber-done? f)     ;; completion check
+
+;; Channels (fiber-aware, buffered or unbounded)
+(def ch (make-fiber-channel))      ;; unbounded
+(def ch (make-fiber-channel 10))   ;; bounded capacity 10
+(fiber-channel-send ch value)
+(def val (fiber-channel-recv ch))
+(fiber-channel-try-send ch value)  ;; non-blocking => #t/#f
+(fiber-channel-try-recv ch)        ;; non-blocking => value or #f
+(fiber-channel-close! ch)
+
+;; Cancellation (cooperative)
+(fiber-cancel! f)                  ;; set cancelled flag, wake if parked
+(fiber-cancel! f 5000)             ;; cooperative, then force after 5s
+(fiber-cancelled? f)               ;; check flag
+(fiber-check-cancelled!)           ;; raise &fiber-cancelled if set
+;; Cancellation points: yield, sleep, channel send/recv, select
+
+;; Fiber-local storage
+(def fp (make-fiber-parameter 'default))
+(fp)           ;; read
+(fp 'new-val)  ;; write
+(fiber-parameterize ([fp 'temp-val])
+  (fp))  ;; => temp-val  (restored after)
+
+;; Join — block until fiber completes
+(fiber-join f)          ;; returns result, re-raises exceptions
+(fiber-join f 5000)     ;; with timeout (raises &fiber-timeout)
+
+;; Link — Erlang-style crash propagation
+(fiber-link! f)         ;; if f crashes, current fiber gets &fiber-linked-crash
+(fiber-unlink! f)
+
+;; Select — wait on multiple channels
+(fiber-select
+  [ch1 val => (handle val)]              ;; recv from ch1
+  [ch2 :send msg => (sent)]             ;; send msg to ch2
+  [:timeout 5000 => (timed-out)]        ;; timeout clause
+  [:default => (nothing-ready)])        ;; non-blocking
+
+;; Timeout — channel that fires after delay
+(def tch (fiber-timeout 5000))
+(fiber-channel-recv tch)  ;; blocks until timeout fires
+
+;; Structured concurrency — scoped fiber groups
+(with-fiber-group
+  (lambda (g)
+    (fiber-group-spawn g (lambda () (do-work-a)))
+    (fiber-group-spawn g (lambda () (do-work-b)))
+    ;; implicit: waits for all children
+    ;; if any child raises, cancels siblings, re-raises in parent
+    ))
+
+;; Condition types
+;; &fiber-cancelled   — raised at cancellation points
+;; &fiber-timeout     — raised by fiber-join with timeout
+;; &fiber-linked-crash — raised when a linked fiber crashes
+```
+
 ### `(std misc process)` — Process Spawning
 
 ```scheme
@@ -675,6 +754,7 @@ Re-exported by `(jerboa prelude)`.
 (std net httpd)       ← HTTP server
 (std net http)        ← HTTP client
 
+(std fiber)           ← fiber-spawn*, fiber-join, fiber-cancel!, fiber-select, with-fiber-group
 (std misc channel)    ← channel-put, channel-get
 (std misc thread)     ← spawn, thread-start!, thread-join!, mutexes
 (std misc process)    ← run-process, spawn-process

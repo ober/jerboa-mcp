@@ -195,6 +195,12 @@ const STDLIB_MODULES: Array<{
     keyExports: ['make-tvar', 'atomically', 'tvar-read', 'tvar-write!', 'retry', 'or-else'],
   },
   {
+    path: '(std fiber)',
+    description: 'M:N green threads with engine-based preemption, channels, cancellation, structured concurrency',
+    keywords: ['fiber', 'green-thread', 'coroutine', 'concurrency', 'channel', 'cancel', 'timeout', 'group', 'select', 'join', 'link', 'structured'],
+    keyExports: ['fiber-spawn*', 'fiber-yield', 'fiber-sleep', 'fiber-join', 'fiber-cancel!', 'fiber-select', 'with-fiber-group', 'fiber-group-spawn', 'make-fiber-parameter', 'fiber-parameterize', 'fiber-link!', 'fiber-timeout', 'make-fiber-channel', 'fiber-channel-send', 'fiber-channel-recv', 'with-fibers'],
+  },
+  {
     path: '(std result)',
     description: 'Rust-inspired Result type: ok/err/unwrap/map',
     keywords: ['result', 'ok', 'err', 'error', 'option', 'maybe', 'unwrap', 'rust'],

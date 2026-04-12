@@ -4611,5 +4611,249 @@
       "jerboa-nested-access",
       "pmap-structural-equality-hash-iter"
     ]
+  },
+  {
+    "id": "jerboa-predicate-combinators",
+    "title": "Jerboa predicate combinators (Clojure every-pred/some-fn equivalents)",
+    "tags": [
+      "predicate",
+      "combinator",
+      "conjoin",
+      "disjoin",
+      "every-pred",
+      "some-fn",
+      "clojure",
+      "complement",
+      "negate"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; Jerboa's predicate combinators live in the prelude under different\n;; names than Clojure's. The behaviours are the same — only the names\n;; differ.\n;;\n;;   Clojure                 Jerboa\n;;   -------                 ------\n;;   (every-pred p1 p2 ...)  (conjoin p1 p2 ...)\n;;   (some-fn p1 p2 ...)     (disjoin p1 p2 ...)\n;;   (complement p)          (complement p)   ;; same name\n;;   (complement p)          (negate p)       ;; alias\n;;\n;; All return a *new predicate*, which is how you use them.\n\n(import (jerboa prelude))\n\n;; AND-combined predicate: all must hold\n(def positive-even? (conjoin positive? even?))\n(positive-even? 4)   ;; => #t\n(positive-even? -4)  ;; => #f  (fails positive?)\n(positive-even? 3)   ;; => #f  (fails even?)\n\n;; OR-combined predicate: any one can hold\n(def string-or-number? (disjoin string? number?))\n(string-or-number? \"hi\")  ;; => #t\n(string-or-number? 42)    ;; => #t\n(string-or-number? 'sym)  ;; => #f\n\n;; Negation\n(def not-zero? (complement zero?))\n(not-zero? 0)  ;; => #f\n(not-zero? 5)  ;; => #t\n\n;; Composing with filter:\n(filter (conjoin number? positive?) '(1 -2 \"x\" 3 0 4))\n;; => (1 3 4)\n\n;; Composing with every/any:\n(every (disjoin symbol? keyword?) '(a b))   ;; => #t\n(any (complement pair?) '(1 2 3))           ;; => #t (numbers aren't pairs)",
+    "notes": "These names trip up Clojure and Racket porters constantly because Jerboa's `conjoin`/`disjoin` come from the Common Lisp / SRFI-1 tradition rather than Clojure's `every-pred`/`some-fn`. Semantics are identical. `complement` and `negate` are both in the prelude and behave the same way. Clojure's `fnil` (wrap a function so nil args get replaced with defaults) is NOT in Jerboa as of 2026-04-11 — roll your own `(def (fnil f default) (lambda (x . r) (apply f (or x default) r)))` if needed. See `docs/clojure-vs-jerboa.md` §26 for the full Clojure→Jerboa combinator mapping.",
+    "related": [
+      "jerboa-clojure-compat"
+    ]
+  },
+  {
+    "id": "clojure-dlet-destructuring",
+    "title": "Clojure-style destructuring let (dlet) and function (dfn)",
+    "tags": [
+      "clojure",
+      "destructuring",
+      "dlet",
+      "dfn",
+      "keys",
+      "let",
+      "binding",
+      "map"
+    ],
+    "imports": [
+      "(except (jerboa prelude) hash-map)",
+      "(std clojure)"
+    ],
+    "code": ";; List destructuring\n(dlet ([(a b c) '(1 2 3)])\n  (+ a b c))  ;; => 6\n\n;; Rest args with &\n(dlet ([(h & t) '(10 20 30)])\n  (list h t))  ;; => (10 (20 30))\n\n;; Map destructuring with keys:\n(dlet ([(keys: x y) (hash-map 'x: 10 'y: 20)])\n  (+ x y))  ;; => 30\n\n;; :as binds the whole map, :or provides defaults\n(dlet ([(keys: x y or: ([y 99]) as: m) (hash-map 'x: 10)])\n  (list x y (persistent-map? m)))  ;; => (10 99 #t)\n\n;; Multiple bindings (plain + destructured)\n(dlet ([a 1] [(b c) '(2 3)] [(keys: d) (hash-map 'd: 4)])\n  (+ a b c d))  ;; => 10\n\n;; dfn — define function with destructured params\n(dfn (sum-pair (a b)) (+ a b))\n(sum-pair '(3 7))  ;; => 10\n\n(dfn (get-x (keys: x)) x)\n(get-x (hash-map 'x: 42))  ;; => 42",
+    "notes": "CRITICAL: Jerboa keywords use trailing-colon format. Map keys for :keys destructuring must be symbols ending in colon: 'x: not '#:x. The keys: directive looks up 'x: in the map and binds to variable x. The or: directive takes an alist of ([var default] ...) pairs. The as: directive binds the whole map to a variable."
+  },
+  {
+    "id": "clojure-ex-info-exceptions",
+    "title": "Clojure-style structured exceptions with ex-info / ex-data",
+    "tags": [
+      "clojure",
+      "ex-info",
+      "ex-data",
+      "exception",
+      "structured",
+      "condition",
+      "error"
+    ],
+    "imports": [
+      "(except (jerboa prelude) hash-map)",
+      "(std clojure)"
+    ],
+    "code": ";; Create and raise a structured exception\n(try\n  (raise (ex-info \"insufficient funds\"\n                  (hash-map 'reason 'nsf 'amount 100)))\n  (catch (e)\n    (list (ex-info? e)\n          (ex-message e)\n          (get (ex-data e) 'reason))))\n;; => (#t \"insufficient funds\" nsf)\n\n;; With optional cause (any condition)\n(try\n  (raise (ex-info \"wrapper\" (hash-map 'code 42)\n                  (make-message-condition \"root cause\")))\n  (catch (e) (ex-info? e)))  ;; => #t\n\n;; ex-data returns #f for non-ex-info conditions\n(ex-data (make-message-condition \"plain\"))  ;; => #f",
+    "notes": "ex-info creates a Chez condition type (&amp;ex-info) carrying a message string, a persistent-map of data, and an optional cause condition. Use ex-info? to test, ex-message for the string, ex-data for the map, ex-cause for the wrapped condition. ex-data returns #f (not an error) when given a non-ex-info condition."
+  },
+  {
+    "id": "clojure-walk-tree-rewriting",
+    "title": "Tree rewriting with clojure.walk (postwalk / prewalk / keywordize-keys)",
+    "tags": [
+      "clojure",
+      "walk",
+      "postwalk",
+      "prewalk",
+      "tree",
+      "keywordize",
+      "stringify",
+      "transform"
+    ],
+    "imports": [
+      "(except (jerboa prelude) hash-map)",
+      "(std clojure)",
+      "(std clojure walk)"
+    ],
+    "code": ";; postwalk — bottom-up: transform children first, then parent\n(postwalk (lambda (x) (if (number? x) (* x 2) x))\n          '(1 (2 3) 4))\n;; => (2 (4 6) 8)\n\n;; prewalk — top-down: transform parent first, then walk children\n(prewalk (lambda (x)\n           (if (and (list? x) (not (null? x)) (eq? (car x) 'skip))\n               'SKIPPED x))\n         '(a (skip b) c))\n;; => (a SKIPPED c)\n\n;; postwalk-replace — substitute by lookup in a map\n(postwalk-replace (hash-map 'x 1 'y 2) '(x y z))\n;; => (1 2 z)\n\n;; keywordize-keys — string keys to keyword keys (recursive)\n(let ([m (keywordize-keys (hash-map \"a\" 1 \"b\" 2))])\n  (keys m))  ;; => list of keyword keys\n\n;; stringify-keys — keyword keys to string keys (recursive)\n(let ([m (stringify-keys (hash-map (string->keyword \"a\") 1))])\n  (keys m))  ;; => (\"a\")",
+    "notes": "Import (std clojure walk) separately from (std clojure). The walk function handles: lists, dotted pairs, vectors, persistent-vectors, persistent-maps (entries as cons pairs), and persistent-sets. For persistent-maps, the inner function receives (cons k v) pairs and must return a pair."
+  },
+  {
+    "id": "clojure-map-utilities",
+    "title": "Clojure map utilities: merge-with, zipmap, reduce-kv, min-key, max-key",
+    "tags": [
+      "clojure",
+      "merge-with",
+      "zipmap",
+      "reduce-kv",
+      "min-key",
+      "max-key",
+      "map",
+      "hash-map"
+    ],
+    "imports": [
+      "(except (jerboa prelude) hash-map)",
+      "(std clojure)"
+    ],
+    "code": ";; merge-with — merge maps, resolving conflicts with a function\n(let ([m (merge-with + (hash-map 'a 1 'b 2) (hash-map 'b 3 'c 4))])\n  (list (get m 'a) (get m 'b) (get m 'c)))\n;; => (1 5 4)\n\n;; zipmap — build map from parallel key/value lists\n(let ([m (zipmap '(a b c) '(1 2 3))])\n  (list (get m 'a) (get m 'b) (get m 'c)))\n;; => (1 2 3)\n\n;; reduce-kv — fold over map entries with (acc k v)\n(reduce-kv (lambda (acc k v) (+ acc v)) 0\n           (hash-map 'a 1 'b 2 'c 3))\n;; => 6\n\n;; min-key / max-key — select element by key function\n(min-key string-length \"aa\" \"b\" \"ccc\")  ;; => \"b\"\n(max-key string-length \"aa\" \"b\" \"ccc\")  ;; => \"ccc\"\n(min-key car '(3 x) '(1 x) '(2 x))    ;; => (1 x)",
+    "notes": "All operate on persistent-maps (hash-map returns a pmap). merge-with takes variadic maps. min-key/max-key take variadic elements (at least one required)."
+  },
+  {
+    "id": "clojure-doto-macro",
+    "title": "Clojure doto macro for threading side-effecting calls",
+    "tags": [
+      "clojure",
+      "doto",
+      "threading",
+      "macro",
+      "side-effect",
+      "mutable"
+    ],
+    "imports": [
+      "(except (jerboa prelude) hash-map)",
+      "(std clojure)"
+    ],
+    "code": ";; doto evaluates expr once, threads it as first arg to each form, returns expr\n(let ([h (doto (make-hash-table)\n           (hash-put! 'a 1)\n           (hash-put! 'b 2))])\n  (list (hash-ref h 'a) (hash-ref h 'b)))\n;; => (1 2)",
+    "notes": "doto is a syntax-rules macro. Each form after the initial expression gets the object inserted as its first argument. The return value is the original object, not the result of the last form. Useful for mutable object setup."
+  },
+  {
+    "id": "clojure-dynamic-vars-binding",
+    "title": "Clojure-style dynamic vars with def-dynamic / binding",
+    "tags": [
+      "clojure",
+      "dynamic",
+      "binding",
+      "parameter",
+      "thread-local",
+      "def-dynamic"
+    ],
+    "imports": [
+      "(std clojure)"
+    ],
+    "code": ";; def-dynamic wraps make-parameter\n(def-dynamic *debug* #f)\n\n;; Access current value by calling with no args\n(*debug*)  ;; => #f\n\n;; binding wraps parameterize — temporarily rebinds for body\n(binding ((*debug* #t))\n  (*debug*))  ;; => #t\n\n;; After binding exits, value is restored\n(*debug*)  ;; => #f",
+    "notes": "def-dynamic and binding are thin macros over Chez Scheme's make-parameter and parameterize. Thread-safe: each thread gets its own binding. Must be used at top-level (not inside dlet or let)."
+  },
+  {
+    "id": "clojure-memoize-iterate-repeatedly",
+    "title": "Clojure memoize, iterate, and repeatedly via (std clojure)",
+    "tags": [
+      "clojure",
+      "memoize",
+      "iterate",
+      "repeatedly",
+      "functional",
+      "combinator",
+      "cache"
+    ],
+    "imports": [
+      "(std clojure)"
+    ],
+    "code": ";; memoize — cache function results by arguments\n(let* ([calls 0]\n       [f (memoize (lambda (x) (set! calls (+ calls 1)) (* x x)))])\n  (f 4) (f 4) (f 5) (f 4)\n  (list (f 4) (f 5) calls))\n;; => (16 25 2)  — only 2 actual calls\n\n;; iterate — strict bounded: (iterate n f x) returns n applications\n(iterate 5 (lambda (x) (* x 2)) 1)\n;; => (1 2 4 8 16)\n\n(iterate 0 (lambda (x) x) 1)\n;; => ()\n\n;; repeatedly — call thunk n times, collect results\n(repeatedly 3 (lambda () 42))\n;; => (42 42 42)",
+    "notes": "Unlike Clojure's lazy iterate, Jerboa's iterate is strict and bounded: (iterate n f x) produces a list of n elements. Use let* (not let) when the memoized closure needs to capture a mutable variable from the same binding group."
+  },
+  {
+    "id": "dynamic-wind-engine-gotcha",
+    "title": "Avoid dynamic-wind inside fiber code (engine preemption triggers cleanup)",
+    "tags": [
+      "dynamic-wind",
+      "engine",
+      "fiber",
+      "preemption",
+      "set-timer",
+      "gotcha",
+      "guard"
+    ],
+    "imports": [
+      "(std fiber)"
+    ],
+    "code": ";; BAD: dynamic-wind cleanup fires on every engine preemption (set-timer 1)\n;; This means fiber-yield, fiber-sleep, fiber-join, fiber-channel-send/recv\n;; all trigger cleanup handlers — not just exceptions or abnormal exits.\n;;\n;; (dynamic-wind\n;;   (lambda () ...)          ;; re-enters on every engine resume too!\n;;   (lambda () (fiber-join child))  ;; set-timer 1 → preempt → cleanup fires\n;;   (lambda () (cancel-children!))) ;; WRONG: fires during normal join parking\n;;\n;; GOOD: use guard for error-only cleanup\n(guard (exn\n         [#t\n          ;; Only runs on actual exceptions, not engine preemption\n          (cancel-children!)\n          (raise exn)])\n  (do-work)\n  (wait-for-children))",
+    "notes": "Chez Scheme engines capture continuations on preemption. dynamic-wind's cleanup handlers fire when control exits the dynamic extent — including engine preemption via (set-timer 1). This means ANY fiber operation that parks (yield, sleep, join, channel ops) will trigger dynamic-wind cleanup. Use guard instead for error-path-only cleanup inside fibers. This was discovered while implementing with-fiber-group in (std fiber)."
+  },
+  {
+    "id": "fiber-structured-concurrency",
+    "title": "Structured concurrency with fiber groups",
+    "tags": [
+      "fiber",
+      "group",
+      "structured",
+      "concurrency",
+      "spawn",
+      "with-fiber-group"
+    ],
+    "imports": [
+      "(std fiber)"
+    ],
+    "code": ";; with-fiber-group scopes child fiber lifetimes to the parent.\n;; All children must complete before the group returns.\n;; If any child raises, siblings are cancelled and the error re-raised.\n\n(with-fibers\n  (fiber-spawn* (lambda ()\n    (with-fiber-group\n      (lambda (g)\n        (fiber-group-spawn g (lambda ()\n          (fiber-sleep 100)\n          (displayln \"task A done\")))\n        (fiber-group-spawn g (lambda ()\n          (fiber-sleep 200)\n          (displayln \"task B done\")))))\n    ;; Only reaches here after BOTH children complete\n    (displayln \"all done\"))))",
+    "notes": "with-fiber-group uses guard (NOT dynamic-wind) for cleanup because engine preemption via set-timer triggers dynamic-wind handlers prematurely. If any child raises, all siblings are cancelled cooperatively. The error is re-raised in the parent fiber.",
+    "related": [
+      "dynamic-wind-engine-gotcha"
+    ]
+  },
+  {
+    "id": "fiber-cancellation",
+    "title": "Cancel a fiber cooperatively",
+    "tags": [
+      "fiber",
+      "cancel",
+      "cancellation",
+      "cooperative",
+      "timeout"
+    ],
+    "imports": [
+      "(std fiber)"
+    ],
+    "code": ";; Cooperative cancellation — sets flag, checked at yield/sleep/channel ops\n(with-fibers\n  (let ([f (fiber-spawn* (lambda ()\n              (guard (e [(fiber-cancelled-condition? e)\n                         (displayln \"I was cancelled\")])\n                (fiber-sleep 10000))))])\n    (fiber-spawn* (lambda ()\n      (fiber-sleep 50)\n      (fiber-cancel! f)))))  ;; wakes f, raises &fiber-cancelled at next check\n\n;; With force-cancel timeout (cooperative first, then force after N ms)\n;; (fiber-cancel! f 5000)\n\n;; Check cancellation manually inside a loop\n;; (fiber-check-cancelled!)  ;; raises &fiber-cancelled if flag set",
+    "notes": "Cancellation is cooperative — the flag is checked at cancellation points: fiber-yield, fiber-sleep, fiber-channel-send, fiber-channel-recv, fiber-select. fiber-cancel! with a timeout argument forks an OS thread that force-marks the fiber as done after the deadline. fiber-cancel! is idempotent."
+  },
+  {
+    "id": "fiber-join-error-propagation",
+    "title": "Join a fiber and propagate errors",
+    "tags": [
+      "fiber",
+      "join",
+      "error",
+      "propagation",
+      "timeout",
+      "link"
+    ],
+    "imports": [
+      "(std fiber)"
+    ],
+    "code": ";; fiber-join blocks the current fiber until the target completes\n(with-fibers\n  (let ([result (box #f)])\n    (let ([f (fiber-spawn* (lambda () 42))])\n      (fiber-spawn* (lambda ()\n        (set-box! result (fiber-join f)))))  ;; => 42\n    ))\n\n;; fiber-join re-raises target's exception in the joining fiber\n;; (guard (e [#t (displayln \"child crashed\")])\n;;   (fiber-join crashing-fiber))\n\n;; fiber-join with timeout (raises &fiber-timeout)\n;; (guard (e [(fiber-timeout-condition? e) (displayln \"timed out\")])\n;;   (fiber-join slow-fiber 5000))\n\n;; fiber-link! — Erlang-style: if target crashes, linked fiber gets &fiber-linked-crash\n;; (fiber-link! child)\n;; (guard (e [(fiber-linked-crash? e) (displayln \"linked crash\")])\n;;   (fiber-sleep 10000))",
+    "notes": "fiber-join must be called from inside a fiber. It parks the caller on the target's join-waiters list. When the target completes, all join-waiters are woken. If the target raised an exception, fiber-join re-raises it. fiber-link! is a separate mechanism: it propagates crashes to linked fibers at their next cancellation point."
+  },
+  {
+    "id": "fiber-select-multichannel",
+    "title": "Wait on multiple fiber channels with fiber-select",
+    "tags": [
+      "fiber",
+      "select",
+      "channel",
+      "multiplex",
+      "timeout",
+      "default"
+    ],
+    "imports": [
+      "(std fiber)"
+    ],
+    "code": ";; fiber-select waits on multiple channels simultaneously\n(with-fibers\n  (let ([ch1 (make-fiber-channel)]\n        [ch2 (make-fiber-channel)])\n    (fiber-spawn* (lambda ()\n      (fiber-sleep 100)\n      (fiber-channel-send ch1 'hello)))\n    (fiber-spawn* (lambda ()\n      (fiber-select\n        [ch1 val => (displayln (format \"got ~a from ch1\" val))]\n        [ch2 val => (displayln (format \"got ~a from ch2\" val))]\n        [:timeout 5000 => (displayln \"timed out\")]\n        [:default => (displayln \"nothing ready\")])))))\n\n;; Send clause:   [ch :send value => body]\n;; Recv clause:   [ch var => body]\n;; Timeout:       [:timeout ms => body]\n;; Default:       [:default => body]",
+    "notes": "fiber-select is a macro. It first tries non-blocking poll on all channels. If :default is present and nothing ready, runs default body. Otherwise parks the fiber on all recv channel waiter lists with a shared gate — first channel to fire wins. :timeout registers on the timer queue. The => separator is required syntax."
   }
 ]
