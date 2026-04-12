@@ -657,6 +657,291 @@ Includes channels, cancellation, structured concurrency, and fiber-local storage
   (sort (iota 10000) <))
 ```
 
+### `(std test check)` — Property-Based Testing
+
+```scheme
+(import (std test check))
+
+;; Generators
+(gen:integer)                    ;; random integer
+(gen:integer 0 100)              ;; bounded
+(gen:boolean)                    ;; #t or #f
+(gen:char)                       ;; random character
+(gen:string)                     ;; random string
+(gen:list (gen:integer))         ;; list of random ints
+(gen:one-of (gen:integer) (gen:string))  ;; choice
+(gen:such-that positive? (gen:integer))  ;; filtered
+(gen:fmap abs (gen:integer))     ;; mapped
+(gen:tuple (gen:integer) (gen:string))   ;; fixed-length combo
+(gen:bind (gen:integer) (lambda (n) (gen:list (gen:integer) n))) ;; monadic
+
+;; Property checking
+(check-property 100              ;; 100 trials
+  (for-all ([x (gen:integer)]
+            [y (gen:integer)])
+    (= (+ x y) (+ y x))))       ;; commutativity
+
+;; Quick-check with auto shrinking on failure
+(quick-check 1000
+  (for-all ([xs (gen:list (gen:integer))])
+    (= (length (reverse xs)) (length xs))))
+```
+
+---
+
+## Clojure Compatibility
+
+### `(std clojure)` — Persistent Data Structures & Idioms
+
+```scheme
+(import (std clojure))
+
+;; Persistent hash maps (immutable, structural sharing)
+(def m (hash-map "name" "Alice" "age" 30))
+(get m "name")                   ;; => "Alice"
+(assoc m "city" "NYC")           ;; => new map with city added
+(dissoc m "age")                 ;; => new map without age
+(merge m1 m2)                    ;; => merged map
+(keys m)  (vals m)               ;; => lists
+(select-keys m '("name"))        ;; => map with only "name"
+(get-in m '("a" "b"))           ;; => nested lookup
+(assoc-in m '("a" "b") 42)     ;; => nested update
+(update-in m '("a") f)          ;; => apply f to nested value
+
+;; Persistent hash sets
+(def s (hash-set 1 2 3))
+(conj s 4)                       ;; => #{1 2 3 4}
+(disj s 2)                       ;; => #{1 3}
+(contains? s 2)                  ;; => #t
+
+;; Persistent vectors
+(def v (persistent-vector 1 2 3))
+(conj v 4)                       ;; => [1 2 3 4]
+
+;; Atoms (mutable references)
+(def a (make-atom 0))
+(deref a)                        ;; => 0
+(swap! a + 10)                   ;; => 10
+(reset! a 42)                    ;; => 42
+
+;; Delay/Future/Promise
+(def d (delay (expensive-computation)))
+(deref d)                        ;; forces and caches
+(realized? d)                    ;; => #t after first deref
+
+(def f (future (long-running-task)))
+(deref f)                        ;; blocks until thread completes
+
+(def p (promise))
+(deliver p 42)                   ;; fulfill from another thread
+(deref p)                        ;; => 42
+
+;; Set relational operations (on sets of maps)
+(set-select pred set)            ;; filter elements
+(set-project rel keys)           ;; project columns
+(set-rename rel kmap)            ;; rename keys
+(set-index rel keys)             ;; group by keys
+(set-join r1 r2)                 ;; natural join
+(map-invert m)                   ;; swap keys and values
+```
+
+### `(std lazy-seq)` — Lazy Sequences
+
+```scheme
+(import (std lazy-seq))
+
+;; Constructing lazy sequences
+(lazy-cons 1 (lazy-cons 2 lz-nil))
+(lz-range 0 10)                  ;; lazy 0..9
+(lz-range)                       ;; infinite from 0
+(lz-repeat 42)                   ;; infinite 42s
+(lz-cycle '(1 2 3))              ;; 1 2 3 1 2 3 ...
+(lz-iterate add1 0)              ;; 0 1 2 3 4 ...
+
+;; Operations (all return lazy sequences)
+(lz-map f seq)
+(lz-filter pred seq)
+(lz-take n seq)
+(lz-drop n seq)
+(lz-take-while pred seq)
+(lz-concat seq1 seq2)
+(lz-interleave seq1 seq2)
+(lz-interpose sep seq)
+(lz-mapcat f seq)
+
+;; Realization
+(lz->list (lz-take 5 (lz-range)))  ;; => (0 1 2 3 4)
+(lz-first seq)                      ;; first element
+(lz-rest seq)                       ;; rest (lazy)
+(lz-empty? seq)                     ;; predicate
+
+;; Custom lazy sequence (Clojure-style macro)
+(lazy-seq (cons 1 (lz-map add1 (lz-range))))
+```
+
+### `(std zipper)` — Functional Tree Navigation
+
+```scheme
+(import (std zipper))
+
+;; Create a zipper from a list tree
+(def z (list-zip '(1 (2 3) (4 (5 6)))))
+
+;; Navigate
+(zip-node z)                     ;; => (1 (2 3) (4 (5 6)))
+(def z1 (zip-down z))            ;; move to first child
+(zip-node z1)                    ;; => 1
+(def z2 (zip-right z1))          ;; move to sibling
+(zip-node z2)                    ;; => (2 3)
+
+;; Edit
+(zip-replace z1 99)              ;; replace node
+(zip-edit z2 reverse)            ;; apply function to node
+(zip-insert-left z2 'x)         ;; insert sibling
+(zip-insert-right z2 'y)
+(zip-remove z2)                  ;; remove node
+
+;; Reconstruct
+(zip-root (zip-replace z1 99))  ;; => (99 (2 3) (4 (5 6)))
+
+;; Walk entire tree
+(let loop ([z (list-zip tree)])
+  (if (zip-end? z) (zip-root z)
+    (loop (zip-next (zip-edit z transform)))))
+```
+
+### `(std text edn)` — EDN (Extensible Data Notation)
+
+```scheme
+(import (std text edn))
+
+;; Read EDN strings
+(read-edn-string "{:name \"Alice\" :age 30}")
+(read-edn-string "[1 2 3]")
+(read-edn-string "#{:a :b :c}")
+(read-edn-string "#inst \"2026-01-15T12:00:00Z\"")
+
+;; Write EDN
+(write-edn-string (hash-map "name" "Alice"))
+
+;; Tagged literals
+(edn-register-tag! 'myapp/money
+  (lambda (v) (make-money (car v) (cadr v))))
+
+(read-edn-string "#myapp/money [100 \"USD\"]")
+
+;; Port-based I/O
+(read-edn port)
+(write-edn obj port)
+```
+
+### `(std specter)` — Path Navigation for Nested Data
+
+```scheme
+(import (std specter))
+
+;; Select values at paths
+(sp-select [ALL] '(1 2 3))           ;; => (1 2 3)
+(sp-select [ALL (sp-pred even?)] '(1 2 3 4))  ;; => (2 4)
+(sp-select [(sp-keypath "a")] (hash-map "a" 1 "b" 2))  ;; => (1)
+
+;; Transform values at paths
+(sp-transform [ALL] add1 '(1 2 3))   ;; => (2 3 4)
+(sp-transform [ALL (sp-pred even?)] (* 10) '(1 2 3 4))
+
+;; Set values at paths
+(sp-setval [FIRST] 99 '(1 2 3))      ;; => (99 2 3)
+(sp-setval [LAST] 99 '(1 2 3))       ;; => (1 2 99)
+
+;; Navigators
+ALL                                   ;; every element
+FIRST  LAST                           ;; first/last element
+MAP-KEYS  MAP-VALS                    ;; map keys/values
+INDEXED-VALS                          ;; (index . value) pairs
+(sp-keypath k)                        ;; map key lookup
+(sp-pred pred?)                       ;; filter by predicate
+(sp-filterer nav pred?)               ;; sub-select + filter
+(sp-must k)                           ;; key that must exist
+(sp-nil->val default)                 ;; provide default for nil
+
+;; Compose paths
+(sp-comp ALL (sp-keypath "name"))     ;; all names in list of maps
+(sp-multi-path [FIRST] [LAST])        ;; first AND last
+(sp-if-path pred then-path else-path) ;; conditional navigation
+```
+
+### `(std component)` — Service Lifecycle Management
+
+```scheme
+(import (std component))
+
+;; Define a component
+(def db (component 'database 'host "localhost" 'port 5432))
+
+;; Register lifecycle handlers
+(register-lifecycle! 'database
+  (lambda (c)  ;; start
+    (hashtable-set! (component-config c) 'conn (connect ...))
+    c)
+  (lambda (c)  ;; stop
+    (disconnect (hashtable-ref (component-config c) 'conn #f))
+    c))
+
+;; Build a system with dependencies
+(def sys (system-using
+           (system-map
+             'db    (component 'database 'host "localhost")
+             'cache (component 'cache)
+             'web   (component 'webserver 'port 8080))
+           '((cache . (db))
+             (web   . (db cache)))))
+
+;; Start in dependency order, stop in reverse
+(def running (start sys))
+(system-started? running)        ;; => #t
+(stop running)
+
+;; Inspect
+(component-name c)               ;; => 'database
+(component-state c)              ;; => 'started or 'stopped
+(component-started? c)           ;; => #t/#f
+```
+
+### `(std stm)` — Software Transactional Memory
+
+```scheme
+(import (std stm))
+
+;; Create transactional variables (TVars / Refs)
+(def balance (make-ref 1000))    ;; Clojure-style
+(def tv (make-tvar 42))          ;; native API
+
+;; Atomic transactions
+(dosync                          ;; Clojure-style
+  (alter balance - 100)          ;; read + apply + write
+  (ref-set other-ref 'done))    ;; direct set
+
+(atomically                      ;; native API
+  (tvar-write! tv (+ (tvar-read tv) 1)))
+
+;; Clojure-style API
+(ref-deref balance)              ;; read current value
+(dosync (alter r f arg ...))     ;; apply f to current value
+(dosync (ref-set r val))         ;; set to value
+(dosync (commute r f arg ...))   ;; like alter (commutative hint)
+(dosync (ensure r))              ;; read + pin version
+
+;; Retry and choice
+(atomically
+  (or-else
+    (begin (when (< (tvar-read bal) amount) (retry))
+           (tvar-write! bal (- (tvar-read bal) amount)))
+    (error 'withdraw "insufficient funds")))
+
+;; Concurrent safety — total always preserved
+(dosync (alter account-a - 100) (alter account-b + 100))
+```
+
 ---
 
 ## Utilities
@@ -763,6 +1048,15 @@ Includes channels, cancellation, structured concurrency, and fiber-local storage
 (std db postgresql)   ← PostgreSQL
 
 (std test)            ← test-suite, check, run-tests
+(std test check)      ← property-based testing, generators, shrinking
+
+(std clojure)         ← persistent maps/sets/vectors, atoms, delay/future/promise
+(std lazy-seq)        ← lazy sequences: map, filter, take, range, cycle, iterate
+(std zipper)          ← Huet-style functional tree zippers
+(std text edn)        ← EDN reader/writer with tagged literals
+(std specter)         ← Specter-style path navigation for nested data
+(std component)       ← Stuart Sierra-style service lifecycle management
+(std stm)             ← STM: tvars, refs, dosync, alter, commute
 
 (std misc getopt)     ← CLI arg parsing
 (std misc binary)     ← binary/bytevector utils

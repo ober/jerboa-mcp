@@ -190,9 +190,9 @@ const STDLIB_MODULES: Array<{
   },
   {
     path: '(std stm)',
-    description: 'Software transactional memory',
-    keywords: ['stm', 'transaction', 'atomic', 'tvar', 'concurrent', 'shared'],
-    keyExports: ['make-tvar', 'atomically', 'tvar-read', 'tvar-write!', 'retry', 'or-else'],
+    description: 'Software transactional memory with Clojure-style refs',
+    keywords: ['stm', 'transaction', 'atomic', 'tvar', 'concurrent', 'shared', 'ref', 'dosync', 'alter', 'commute'],
+    keyExports: ['make-tvar', 'atomically', 'tvar-read', 'tvar-write!', 'retry', 'or-else', 'make-ref', 'ref?', 'ref-deref', 'dosync', 'alter', 'ref-set', 'commute', 'ensure'],
   },
   {
     path: '(std seq)',
@@ -220,9 +220,9 @@ const STDLIB_MODULES: Array<{
   },
   {
     path: '(std iter)',
-    description: 'Lazy iterators and iteration forms',
-    keywords: ['iterator', 'iterate', 'lazy', 'stream', 'range', 'sequence', 'for-each'],
-    keyExports: ['for', 'for/collect', 'for/fold', 'in-list', 'in-range', 'in-hash-pairs', 'in-lines'],
+    description: 'Iteration forms with :when, :while, :let clause extensions',
+    keywords: ['iterator', 'iterate', 'lazy', 'stream', 'range', 'sequence', 'for-each', 'when', 'while', 'let', 'clause', 'comprehension'],
+    keyExports: ['for', 'for/collect', 'for/fold', 'for/or', 'for/and', 'in-list', 'in-range', 'in-hash-pairs', 'in-lines'],
   },
   {
     path: '(std sugar)',
@@ -235,6 +235,48 @@ const STDLIB_MODULES: Array<{
     description: 'Sandboxing: restrict capabilities of untrusted code',
     keywords: ['sandbox', 'security', 'restrict', 'capability', 'isolation'],
     keyExports: ['make-sandbox', 'sandbox-eval', 'sandbox-restrict'],
+  },
+  {
+    path: '(std lazy-seq)',
+    description: 'Clojure-style lazy sequences with memoized thunks',
+    keywords: ['lazy', 'sequence', 'infinite', 'stream', 'cycle', 'repeat', 'iterate', 'memoize', 'clojure'],
+    keyExports: ['lazy-seq', 'lazy-cons', 'lz-first', 'lz-rest', 'lz-seq', 'lz-empty?', 'lz-map', 'lz-filter', 'lz-take', 'lz-drop', 'lz-range', 'lz-repeat', 'lz-cycle', 'lz-iterate', 'lz-concat', 'lz-interleave', 'lz->list'],
+  },
+  {
+    path: '(std zipper)',
+    description: 'Huet-style functional zippers for tree navigation and editing',
+    keywords: ['zipper', 'tree', 'navigate', 'edit', 'functional', 'cursor', 'huet', 'ast'],
+    keyExports: ['list-zip', 'vector-zip', 'zip-node', 'zip-down', 'zip-up', 'zip-left', 'zip-right', 'zip-replace', 'zip-edit', 'zip-insert-left', 'zip-insert-right', 'zip-remove', 'zip-root', 'zip-end?', 'zip-next', 'zip-prev'],
+  },
+  {
+    path: '(std test check)',
+    description: 'Property-based testing with generators, shrinking, and check',
+    keywords: ['property', 'test', 'generative', 'quickcheck', 'shrink', 'random', 'generator', 'check'],
+    keyExports: ['gen:integer', 'gen:boolean', 'gen:char', 'gen:string', 'gen:list', 'gen:one-of', 'gen:such-that', 'gen:fmap', 'gen:bind', 'gen:tuple', 'for-all', 'check-property', 'quick-check'],
+  },
+  {
+    path: '(std text edn)',
+    description: 'EDN (Extensible Data Notation) reader and writer with tagged literals',
+    keywords: ['edn', 'data', 'serialize', 'clojure', 'tagged', 'literal', 'notation', 'read', 'write'],
+    keyExports: ['read-edn', 'read-edn-string', 'write-edn', 'write-edn-string', 'edn-tag', 'edn-register-tag!', 'edn-tagged?'],
+  },
+  {
+    path: '(std specter)',
+    description: 'Specter-style composable path navigation for nested data',
+    keywords: ['specter', 'path', 'navigate', 'transform', 'nested', 'lens', 'select', 'update', 'setval'],
+    keyExports: ['sp-select', 'sp-transform', 'sp-setval', 'ALL', 'FIRST', 'LAST', 'MAP-KEYS', 'MAP-VALS', 'INDEXED-VALS', 'sp-filterer', 'sp-pred', 'sp-keypath', 'sp-must', 'sp-nil->val', 'sp-multi-path', 'sp-if-path', 'sp-cond-path', 'sp-comp'],
+  },
+  {
+    path: '(std component)',
+    description: 'Stuart Sierra-style component lifecycle with dependency ordering',
+    keywords: ['component', 'lifecycle', 'system', 'dependency', 'start', 'stop', 'service', 'server', 'sierra'],
+    keyExports: ['component', 'component?', 'component-name', 'component-state', 'component-config', 'register-lifecycle!', 'system-map', 'system-using', 'start', 'stop', 'component-started?', 'system-started?'],
+  },
+  {
+    path: '(std clojure)',
+    description: 'Clojure-style persistent data structures and idioms',
+    keywords: ['clojure', 'persistent', 'immutable', 'hash-map', 'hash-set', 'vector', 'assoc', 'dissoc', 'conj', 'get', 'reduce', 'atom', 'deref', 'swap'],
+    keyExports: ['hash-map', 'hash-set', 'persistent-vector', 'assoc', 'dissoc', 'conj', 'get', 'contains?', 'keys', 'vals', 'merge', 'update', 'select-keys', 'get-in', 'assoc-in', 'update-in', 'make-atom', 'deref', 'swap!', 'reset!', 'delay', 'force', 'future', 'promise', 'deliver', 'realized?', 'set-select', 'set-project', 'set-rename', 'set-index', 'set-join', 'map-invert'],
   },
 ];
 

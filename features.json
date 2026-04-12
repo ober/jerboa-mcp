@@ -33,7 +33,7 @@
     "use_case": "When shipping a design doc or porting guide that contains many worked code examples, before committing. Also for periodic audits of existing docs to catch drift when APIs change. Would have prevented shipping docs/core-async.md with two broken references (`@out` reader sugar that doesn't exist, `(swap! out cons v)` with wrong argument order) — both only discovered by running the example manually after commit.",
     "example_scenario": "docs/core-async.md Section 17 contains a 20-line worked example that ports Clojure's scatter/gather pattern to Jerboa. Two lines use `@out` (Clojure atom-deref reader sugar that doesn't exist in Jerboa) and one uses `(swap! out cons v)` instead of `(swap! out (cut cons v <>))`. A `jerboa_doc_verify docs/core-async.md` call would have compiled the block, noted \"variable @out is not bound\" at the fence's line, and caught both errors in one shot. Instead I wrote a /tmp/test-async-example.ss file, ran it by hand, saw the first error, fixed it, re-ran, saw the second, fixed it, re-ran again. Three iterations that one tool call could collapse into one. Same friction applies to every cookbook recipe on disk and every README code snippet.",
     "estimated_token_reduction": "~1500 tokens per doc-ship session (replaces: write tmp file → read → run → parse error → re-write → re-run → parse → fix → re-run cycle). Multiplicative across every code block in a large doc.",
-    "votes": 0
+    "votes": 1
   },
   {
     "id": "jerboa-safe-prelude-default",
@@ -122,6 +122,23 @@
     "use_case": "Any Jerboa project using (spawn ...) with worker threads that drive a UI or long-running loop. The bug is invisible in development (messages appear to work) but manifests as silent data loss or hangs under load. A static pass that flags this pattern at lint time would save hours of debugging per occurrence.",
     "example_scenario": "jerboa-code TUI spawned a worker thread that called (hash-put! tool-counts name ...) and mutated msg-block lists via a parameterized callback. The main event-loop thread read these same structures to render each frame. Under load the TUI would hang randomly, losing ~1 in 3 events. Took Gemini 3.1 Pro pseudocode analysis to diagnose. A linter that recognized \"callback defined inside parameterize inside spawn\" + \"mutates value reachable from outer scope\" would have flagged this immediately.",
     "estimated_token_reduction": "~3000 tokens per occurrence (avoids multi-round debugging session, .log analysis, thread-safety recipe search)",
+    "votes": 0
+  },
+  {
+    "id": "batch-symbol-existence-check",
+    "title": "Batch symbol-existence check across prelude and (std ...) modules",
+    "description": "A tool that takes an array of symbol names (function/macro/variable names) and returns, for each, whether it exists anywhere in `(jerboa prelude)` + all `(std ...)` modules, with its defining module, kind (proc/macro/syntax/var), and arity if known. Equivalent to running `jerboa_apropos` (or the existing function_signature tool) N times in parallel, but in a single call. Results would look like `[{name: \"merge-with\", exists: false}, {name: \"select-keys\", exists: true, module: \"(std clojure)\", kind: \"proc\", arity: \"2\"}, ...]`. Should default to an exact-name lookup, with an optional `fuzzy` flag to also include close matches.",
+    "impact": "medium",
+    "tags": [
+      "apropos",
+      "symbol",
+      "lookup",
+      "batch",
+      "existence"
+    ],
+    "use_case": "When updating documentation that enumerates whether a set of external-ecosystem names (Clojure's, Racket's, R6RS's) are actually present in Jerboa. Also during porting work, when you need to quickly know which names from a source file will resolve vs need polyfills. Any time the question is \"do these N functions exist in Jerboa?\"",
+    "example_scenario": "While updating `docs/clojure-vs-jerboa.md` to add status markers, I needed to verify whether Clojure names like `merge-with`, `zipmap`, `reduce-kv`, `memoize`, `iterate`, `repeatedly`, `fnil`, `every-pred`, `some-fn`, `trampoline`, `min-key`, `max-key`, `min-by`, `max-by`, `iterate-n` exist in Jerboa. I ran 5 separate `Grep` calls across `lib/` to check — a total of ~15 symbol lookups. A single `jerboa_symbol_exists_batch` call with the list would have returned `{select-keys: exists, merge: exists, everything-else: absent}` in one shot. Also discovered that the existing doc had several stale claims about non-existent functions (iterate-n, min-by, max-by, fnil-in-prelude, every-pred-in-prelude) because no one had cheap way to sanity-check a batch of names.",
+    "estimated_token_reduction": "~600 tokens per doc-verification pass (replaces 4-6 grep calls + result inspection with 1 structured tool call). Higher for porting workflows that cross-check dozens of names.",
     "votes": 0
   }
 ]
