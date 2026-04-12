@@ -140,5 +140,39 @@
     "example_scenario": "While updating `docs/clojure-vs-jerboa.md` to add status markers, I needed to verify whether Clojure names like `merge-with`, `zipmap`, `reduce-kv`, `memoize`, `iterate`, `repeatedly`, `fnil`, `every-pred`, `some-fn`, `trampoline`, `min-key`, `max-key`, `min-by`, `max-by`, `iterate-n` exist in Jerboa. I ran 5 separate `Grep` calls across `lib/` to check — a total of ~15 symbol lookups. A single `jerboa_symbol_exists_batch` call with the list would have returned `{select-keys: exists, merge: exists, everything-else: absent}` in one shot. Also discovered that the existing doc had several stale claims about non-existent functions (iterate-n, min-by, max-by, fnil-in-prelude, every-pred-in-prelude) because no one had cheap way to sanity-check a batch of names.",
     "estimated_token_reduction": "~600 tokens per doc-verification pass (replaces 4-6 grep calls + result inspection with 1 structured tool call). Higher for porting workflows that cross-check dozens of names.",
     "votes": 0
+  },
+  {
+    "id": "detect-fork-in-fiber-context",
+    "title": "Detect fork-unsafe calls (run-safe-eval, subprocess) inside fiber handlers",
+    "description": "Static analysis pass that flags calls to run-safe-eval, open-process-ports, or other fork()-using APIs when they appear inside HTTP handler functions, transducer lambdas (filtering/mapping bodies), or channel callbacks (go blocks, fiber thunks). These contexts are fibers — fork() from a fiber silently corrupts the scheduler. The tool should trace the call graph: if handler-fn calls eval-fn which calls run-safe-eval, flag the whole chain. Should report the fiber entry-point (e.g., route-get handler name) and the unsafe call site.",
+    "impact": "high",
+    "tags": [
+      "fork",
+      "fiber",
+      "run-safe-eval",
+      "scheduler",
+      "static-analysis"
+    ],
+    "use_case": "Any service using fiber-httpd or CSP channels that wants to use sandboxed eval for user-provided code. The fork-in-fiber bug produces zero error output — events simply stop processing. Diagnosing it requires knowing the fork/fiber interaction, which is non-obvious.",
+    "example_scenario": "jerboa-edge Phase 2: eval-user-filter was initially implemented using run-safe-eval inside the transducer (which runs during fiber >!! calls). Filters appeared to register but never dropped events. No error logged anywhere. Root cause only found after ~15 tool calls investigating the filter logic, format strings, and alist key types — all red herrings. Switching to restricted-eval-string fixed it immediately. A static flag at authoring time would have prevented the entire debugging session.",
+    "estimated_token_reduction": "~3000 tokens per occurrence (eliminates multi-round silent-failure debugging: format-string investigation, alist-key investigation, eval environment investigation — all red herrings for a scheduler corruption bug)",
+    "votes": 0
+  },
+  {
+    "id": "auto-balance-check-after-deep-edit",
+    "title": "Auto-run balance check after edits to functions with nesting depth &gt; 4",
+    "description": "When jerboa_balanced_replace, jerboa_splice_form, or jerboa_wrap_form edits a function whose body has nesting depth exceeding a threshold (e.g., 4 levels of let/cond/match nesting), automatically run jerboa_check_balance on the edited region and return any mismatch warnings inline with the edit result. This prevents the failure mode where a deep edit introduces a bracket mismatch that only surfaces as a parse error on the next cold restart — not during the current session where the already-running process masks it.",
+    "impact": "medium",
+    "tags": [
+      "balance",
+      "bracket",
+      "edit",
+      "nesting",
+      "parse-error"
+    ],
+    "use_case": "Any edit to deeply nested Scheme code — especially match+let loop+cond+let* combinations common in actor worker functions. The bug is invisible while the process is running (Chez Scheme re-reads on restart) and only surfaces as a cold-start parse error.",
+    "example_scenario": "jerboa-edge make-worker had a real bracket mismatch (close sequence ))]) instead of ))]])) in a 5-level cond-inside-let*-inside-match-inside-let-loop. The balance checker flagged it each session but it was dismissed as a heuristic warning because the already-running service responded to health checks. On the next cold restart: Exception in read: bracketed list terminated by parenthesis. The entire Phase 2 filter testing session was on a service running from stale code — the fix hadn't taken effect at all.",
+    "estimated_token_reduction": "~500 tokens per deep edit (eliminates the restart→parse-error→debug cycle; inline warning at edit time is 1 line vs 3-5 tool calls to diagnose the cold-start failure)",
+    "votes": 0
   }
 ]

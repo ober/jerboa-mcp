@@ -5117,5 +5117,26 @@
       "restricted-eval-fiber-safe-timeout",
       "actor-pattern"
     ]
+  },
+  {
+    "id": "eval-event-binding-alist-keys",
+    "title": "Bind event data for sandboxed eval — string keys, not symbols",
+    "tags": [
+      "eval",
+      "alist",
+      "assoc",
+      "string-keys",
+      "sandbox",
+      "event-binding"
+    ],
+    "imports": [
+      "(std security restrict)"
+    ],
+    "code": "\n;; When embedding a hash-table event as `evt` for sandboxed eval,\n;; keys survive as STRINGS (not symbols) after hash->alist-deep.\n;; User code MUST use assoc (equal? comparison), not assq (eq? comparison).\n\n;; hash->alist-deep converts nested hash tables to nested alists:\n;;   {\"type\": \"payment\", \"payload\": {\"amount\": 99}}\n;;   → ((\"type\" . \"payment\") (\"payload\" (\"amount\" . 99)))\n;;\n;; WRONG — assq uses eq?, symbol ≠ string:\n;;   (assq 'type evt)           → #f  (silently fails!)\n;;   (cdr (assq 'type evt))     → error: (cdr #f)  caught by guard → #t (permissive)\n;;\n;; RIGHT — assoc uses equal?:\n;;   (assoc \"type\" evt)         → (\"type\" . \"payment\")\n;;   (cdr (assoc \"type\" evt))   → \"payment\"\n;;\n;; Example filter that correctly reads event type:\n;;   (equal? (cdr (assoc \"type\" evt)) \"payment.completed\")\n;;\n;; Example filter reading nested payload field:\n;;   (> (cdr (assoc \"amount\" (cdr (assoc \"payload\" evt)))) 1000)\n\n;; Template for building the eval code string:\n(def (make-eval-code evt filter-or-handler-code)\n  (let ([evt-data (hash->alist-deep evt)])\n    (format \"(let ([evt '~s]) ~a)\" evt-data filter-or-handler-code)))\n\n;; ~s uses write — strings are quoted, numbers unquoted, nesting preserved.\n;; The resulting string is valid Scheme that can be passed to restricted-eval-string.\n",
+    "notes": "This gotcha silently causes all events to pass filters because: (1) assq fails to find the key, returns #f, (2) the catch-all guard in eval-user-filter returns #t (permissive-on-error), so the filter never rejects anything. The bug produces no error message and is invisible in normal operation. Always use assoc with string keys when the alist was built from a hash table with string keys.",
+    "related": [
+      "restricted-eval-fiber-safe-timeout",
+      "restricted-env-custom-bindings-handler"
+    ]
   }
 ]

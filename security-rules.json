@@ -648,5 +648,39 @@
       "crypto",
       "legacy"
     ]
+  },
+  {
+    "id": "run-safe-eval-fiber-unsafe",
+    "title": "run-safe-eval called from potential fiber context",
+    "severity": "high",
+    "scope": "scheme",
+    "pattern": "run-safe-eval",
+    "message": "run-safe-eval uses fork() internally. Calling fork() from within a fiber (e.g., an HTTP handler, transducer lambda, or channel callback) silently corrupts the fiber runtime scheduler — workers stop processing events with no error message. This is safe ONLY from top-level OS threads (e.g., actors spawned with spawn-actor, or fork-thread workers).",
+    "remediation": "Use restricted-eval-string + with-timeout instead. with-timeout uses Chez engines (cooperative preemption, no fork) and is safe from any fiber or thread. See recipe: restricted-eval-fiber-safe-timeout.",
+    "related_recipe": "restricted-eval-fiber-safe-timeout",
+    "tags": [
+      "fork",
+      "fiber",
+      "sandbox",
+      "run-safe-eval",
+      "scheduler-corruption"
+    ]
+  },
+  {
+    "id": "catch-all-guard-masks-errors",
+    "title": "Catch-all guard returning truthy value silently masks failures",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\[#t\\s+(?:#t|#f|\\(void\\)|void)\\]",
+    "message": "A guard clause [#t &lt;truthy-value&gt;] catches ALL exceptions and returns a non-error value (void, #t, #f). When this wraps a procedure call whose result is checked by the caller for errors (e.g., a worker retry machinery doing (ok? result) or (err? result)), all failures silently appear as successes. The caller's error path never fires: no retries, no dead-letter, no alerts.",
+    "remediation": "For filters/classifiers where permissive-on-error is intentional, document it explicitly: ; permissive: treat eval errors as pass. For handlers called by retry machinery, remove the catch-all guard entirely — let exceptions propagate to the worker's (try (ok (handler evt)) (catch (e) (err e))) so retry logic fires normally.",
+    "related_recipe": "restricted-env-custom-bindings-handler",
+    "tags": [
+      "guard",
+      "catch-all",
+      "error-masking",
+      "retry",
+      "silent-failure"
+    ]
   }
 ]
