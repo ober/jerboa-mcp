@@ -5025,5 +5025,97 @@
     ],
     "code": ";; --- Fiber semaphores --- limit concurrent access to a resource ---\n\n(with-fibers\n  (let ([sem (make-fiber-semaphore 2)]  ;; max 2 concurrent holders\n        [log (atom '())])\n    ;; Spawn 4 workers — only 2 can be inside the critical section at once\n    (let ([fibers (map (lambda (i)\n                    (fiber-spawn* (lambda ()\n                      (fiber-semaphore-acquire! sem)\n                      (swap! log cons i)\n                      (fiber-sleep 10)\n                      (fiber-semaphore-release! sem))))\n                  '(1 2 3 4))])\n      (for-each (lambda (f) (fiber-join f 5000)) fibers)\n      (deref log))))\n\n;; Non-blocking acquire — returns #t if acquired, #f if not available\n(fiber-semaphore-try-acquire! sem)\n\n;; --- Fiber-local storage (like thread-local but per-fiber) ---\n\n;; Create a fiber parameter with a default value\n(def *request-id* (make-fiber-parameter \"none\"))\n\n(with-fibers\n  (fiber-spawn* (lambda ()\n    (displayln \"default: \" (*request-id*))   ;; => \"none\"\n    (fiber-parameterize ([*request-id* \"req-123\"])\n      (displayln \"inside: \" (*request-id*))  ;; => \"req-123\"\n      ;; Child fibers do NOT inherit parent's parameterize — each has default\n      (let ([child (fiber-spawn* (lambda ()\n                     (displayln \"child: \" (*request-id*))))])  ;; => \"none\"\n        (fiber-join child 1000)))\n    (displayln \"after: \" (*request-id*)))))  ;; => \"none\" again",
     "notes": "fiber-join MUST be called from inside a fiber (spawned with fiber-spawn*), not from the main thread — it parks the calling fiber until the target completes. fiber-spawn* takes a thunk and an optional name string. Fiber-local parameters (make-fiber-parameter) are isolated per-fiber — each fiber starts with the default value, and fiber-parameterize binds within the dynamic extent only. Unlike Scheme dynamic parameters, child fibers do NOT inherit the parent's bindings."
+  },
+  {
+    "id": "fiber-httpd-route-params",
+    "title": "Fiber-httpd routing with URL parameters",
+    "tags": [
+      "fiber-httpd",
+      "router",
+      "route-param",
+      "url",
+      "params",
+      "http",
+      "rest",
+      "api"
+    ],
+    "imports": [
+      "(std net fiber-httpd)"
+    ],
+    "code": ";; fiber-httpd router supports :param patterns in paths.\n;; Use route-param to extract matched segments.\n\n(let ([r (make-router)])\n  ;; Static route\n  (route-get r \"/health\"\n    (lambda (req) (respond-json 200 \"{\\\"status\\\":\\\"ok\\\"}\")))\n\n  ;; Single param\n  (route-post r \"/hooks/:type\"\n    (lambda (req)\n      (let ([type (route-param req \"type\")])\n        (respond-json 202\n          (string-append \"{\\\"type\\\":\\\"\" type \"\\\"}\")))))\n\n  ;; Param in nested path\n  (route-get r \"/api/events/:id\"\n    (lambda (req)\n      (let ([id (route-param req \"id\")])\n        (respond-json 200\n          (string-append \"{\\\"id\\\":\\\"\" id \"\\\"}\")))))\n\n  ;; WebSocket upgrade via make-websocket-response\n  (route-get r \"/ws\"\n    (lambda (req)\n      (make-websocket-response\n        (lambda (fd poller req)\n          (let ([ws (fiber-ws-upgrade (request-headers req) fd poller)])\n            (when ws\n              (fiber-ws-send ws \"hello\")\n              (let loop ()\n                (let ([msg (fiber-ws-recv ws)])\n                  (when msg (loop))))))))))\n\n  ;; Start server — handler dispatches through router\n  (fiber-httpd-start 8080\n    (lambda (req) (router-dispatch r req))))",
+    "notes": "route-param extracts URL segments matched by :name patterns. Returns the matched string or #f if not found. Params are scoped per-request via a Chez parameter (current-route-params). make-websocket-response returns a special record — when the handler returns it, fiber-httpd performs the WS handshake and calls the ws-handler with (fd poller req). Import (std net fiber-ws) for fiber-ws-upgrade/send/recv/close.",
+    "related": [
+      "chan-xform-transducer-backed",
+      "std-crypto-native-sha256-hmac"
+    ]
+  },
+  {
+    "id": "restricted-eval-fiber-safe-timeout",
+    "title": "Fiber-safe sandboxed eval with engine timeout (NOT fork)",
+    "tags": [
+      "restricted-eval",
+      "sandbox",
+      "fiber-safe",
+      "timeout",
+      "engine",
+      "webhook",
+      "eval"
+    ],
+    "imports": [
+      "(std security restrict)",
+      "(std misc timeout)"
+    ],
+    "code": "\n;; CRITICAL: run-safe-eval uses fork() — DO NOT call from fibers.\n;; Use restricted-eval-string + with-timeout instead. with-timeout uses\n;; Chez engines (cooperative preemption, no fork) — safe from any fiber or thread.\n;;\n;; Pattern: bind event data as `evt` alist, evaluate user code against it.\n;; hash->alist-deep converts hash tables to nested alists for quoting.\n\n(def (hash->alist-deep x)\n  (cond\n    [(hash-table? x)\n     (map (lambda (kv) (cons (car kv) (hash->alist-deep (cdr kv))))\n          (hash->list x))]\n    [(pair? x) (cons (hash->alist-deep (car x)) (hash->alist-deep (cdr x)))]\n    [else x]))\n\n;; Returns #t (pass) or #f (drop). Errors and timeouts → #t (permissive).\n(def (eval-user-filter filter-code event)\n  (let* ([evt-data (hash->alist-deep event)]\n         [code (format \"(let ([evt '~s]) ~a)\" evt-data filter-code)])\n    (guard (exn [#t #t])  ;; permissive on error\n      (let ([result (with-timeout 2.0 #t   ;; timeout value #t = permissive\n                      (lambda () (restricted-eval-string code)))])\n        (and result #t)))))\n\n;; Filter code must use assoc with STRING keys (not assq with symbols):\n;;   WRONG: (assq 'type evt)       → always #f, string keys ≠ symbol keys\n;;   RIGHT: (assoc \"type\" evt)     → works\n;;\n;; Example filter: (equal? (cdr (assoc \"type\" evt)) \"payment.completed\")\n",
+    "notes": "The fork() vs engine distinction is critical for correctness. run-safe-eval (from std security sandbox) calls fork() internally. Calling fork() from within a fiber corrupts the fiber runtime scheduler — workers stop processing events silently. restricted-eval-string uses the Chez engine API (cooperative preemption via 'fuel' ticks) which is fiber-safe. Always use restricted-eval-string + with-timeout for eval in fiber/actor contexts. Another gotcha: hash->alist-deep converts hash table keys to their original types (usually strings). Filter code must use assoc (equal? comparison) not assq (eq? comparison).",
+    "related": [
+      "jerboa-restricted-environment",
+      "jerboa-timeout",
+      "jerboa-engine"
+    ]
+  },
+  {
+    "id": "restricted-env-custom-bindings-handler",
+    "title": "Custom restricted environment with extra bindings for hot handlers",
+    "tags": [
+      "restricted-eval",
+      "sandbox",
+      "custom-bindings",
+      "handler",
+      "displayln",
+      "hot-reload"
+    ],
+    "imports": [
+      "(std security restrict)",
+      "(std misc timeout)"
+    ],
+    "code": "\n;; make-restricted-environment accepts extra bindings as (list (cons symbol proc)).\n;; Build a handler-specific env once at startup, reuse for every invocation.\n;;\n;; IMPORTANT: don't wrap handler in (guard ...) — exceptions must propagate\n;; to the worker's try/catch so the retry machinery fires on failure.\n\n(def handler-env\n  (make-restricted-environment\n    (list (cons 'displayln\n                (lambda args\n                  (for-each display args)\n                  (newline))))))\n\n(def (run-hot-handler evt-data code-string)\n  (let ([code (format \"(let ([evt '~s]) ~a)\" evt-data code-string)])\n    ;; No guard here — propagate errors to caller for retry logic\n    (with-timeout 5.0 (void)\n      (lambda () (restricted-eval-string code handler-env)))))\n\n;; display, newline, write, format are already in safe-bindings.\n;; displayln is a Jerboa extension — must be added explicitly.\n;; safe-bindings is a list of symbols (not a procedure).\n",
+    "notes": "restricted-eval-string accepts an optional environment as second arg. Build the env once (expensive) and reuse it. The guard pattern in eval-user-filter (permissive on error) is WRONG for handlers — it silently swallows exceptions and returns void (truthy), making all failures look like success. Worker retry logic requires exceptions to propagate. Only use guard for filters where permissive-on-error is intentional.",
+    "related": [
+      "restricted-eval-fiber-safe-timeout",
+      "jerboa-restricted-environment"
+    ]
+  },
+  {
+    "id": "actor-retry-fork-thread-backoff",
+    "title": "Exponential backoff retry via fork-thread in actor workers",
+    "tags": [
+      "retry",
+      "backoff",
+      "fork-thread",
+      "actor",
+      "dead-letter",
+      "worker",
+      "channel"
+    ],
+    "imports": [
+      "(std csp clj)",
+      "(std actor)"
+    ],
+    "code": "\n;; Retry pattern for actor workers: fork-thread sleeps then re-enqueues.\n;; fork-thread creates an OS thread (safe from worker actors, which are also OS threads).\n;; The ingest channel (>!!) is thread-safe.\n;;\n;; Dedup transducer must pass retried events: check (> retry-count 0).\n\n(def *max-retries* 3)\n\n(def (schedule-retry! event delay-secs worker-id)\n  (fork-thread\n    (lambda ()\n      (sleep (make-time 'time-duration 0 delay-secs))\n      (displayln \"[worker-\" worker-id \"] re-enqueuing \"\n                 (hash-ref event \"id\" \"?\") \" (retry \" (hash-ref event \"retry-count\" 0) \")\")\n      (>!! ingest-ch event))))\n\n;; In worker loop — retry-count stored on event hash itself:\n(let* ([retry-count (hash-ref event \"retry-count\" 0)]\n       [result      (try (ok (handler event)) (catch (e) (err e)))])\n  (cond\n    [(ok? result)\n     (store-result! event \"ok\")]\n    [(< retry-count *max-retries*)\n     (let* ([e          (unwrap-err result)]\n            [err-msg    (if (message-condition? e) (condition-message e) (format \"~a\" e))]\n            [delay-secs (expt 2 retry-count)])\n       (hash-put! event \"retry-count\" (+ retry-count 1))\n       (schedule-retry! event delay-secs worker-id)\n       (store-result! event \"retrying\"))]\n    [else\n     (store-dead-letter! event err-msg)\n     (store-result! event \"dead-letter\")]))\n\n;; Dedup filter must allow retried events through:\n;; [(> (hash-ref evt \"retry-count\" 0) 0) #t]  ;; retry bypass\n;;\n;; Replay: set retry-count to 1 (not 0) so replay also bypasses dedup.\n;; (list->hash-table `(... (\"retry-count\" . 1) ...))\n",
+    "notes": "fork-thread is the right primitive for delayed re-enqueue in actor workers. Actors are OS threads, so fork-thread is safe. The sleep call uses make-time 'time-duration 0 N (seconds). The event hash is mutated in place (hash-put! event \"retry-count\" N) before passing to schedule-retry! — this is safe because only one worker processes an event at a time. Replay events need retry-count > 0 to bypass the dedup transducer filter that checks (hash-key? seen-ids id).",
+    "related": [
+      "restricted-eval-fiber-safe-timeout",
+      "actor-pattern"
+    ]
   }
 ]

@@ -3,7 +3,7 @@
 ## Project Overview
 
 `jerboa-mcp` is an MCP (Model Context Protocol) server that provides live
-Jerboa Scheme language intelligence to AI coding assistants. It exposes 99
+Jerboa Scheme language intelligence to AI coding assistants. It exposes 119
 tools covering evaluation, syntax checking, compilation, module introspection,
 pattern analysis, code generation, testing, benchmarking, and more.
 
