@@ -195,6 +195,12 @@ const STDLIB_MODULES: Array<{
     keyExports: ['make-tvar', 'atomically', 'tvar-read', 'tvar-write!', 'retry', 'or-else'],
   },
   {
+    path: '(std seq)',
+    description: 'Lazy sequences, transducers, and parallel collections',
+    keywords: ['lazy', 'sequence', 'transducer', 'parallel', 'infinite', 'range', 'iterate', 'cycle', 'repeat', 'map', 'filter'],
+    keyExports: ['lazy-cons', 'lazy-first', 'lazy-rest', 'lazy-nil', 'lazy-range', 'lazy-iterate', 'lazy-repeat', 'lazy-cycle', 'lazy-map', 'lazy-filter', 'lazy-take', 'lazy-drop', 'lazy-take-while', 'lazy-drop-while', 'lazy->list', 'list->lazy', 'lazy-concat', 'lazy-interleave', 'lazy-mapcat', 'lazy-interpose', 'lazy-partition', 'transduce', 'into', 'sequence', 'par-map', 'par-filter', 'par-reduce'],
+  },
+  {
     path: '(std fiber)',
     description: 'M:N green threads with engine-based preemption, channels, cancellation, structured concurrency',
     keywords: ['fiber', 'green-thread', 'coroutine', 'concurrency', 'channel', 'cancel', 'timeout', 'group', 'select', 'join', 'link', 'structured'],

@@ -4855,5 +4855,24 @@
     ],
     "code": ";; fiber-select waits on multiple channels simultaneously\n(with-fibers\n  (let ([ch1 (make-fiber-channel)]\n        [ch2 (make-fiber-channel)])\n    (fiber-spawn* (lambda ()\n      (fiber-sleep 100)\n      (fiber-channel-send ch1 'hello)))\n    (fiber-spawn* (lambda ()\n      (fiber-select\n        [ch1 val => (displayln (format \"got ~a from ch1\" val))]\n        [ch2 val => (displayln (format \"got ~a from ch2\" val))]\n        [:timeout 5000 => (displayln \"timed out\")]\n        [:default => (displayln \"nothing ready\")])))))\n\n;; Send clause:   [ch :send value => body]\n;; Recv clause:   [ch var => body]\n;; Timeout:       [:timeout ms => body]\n;; Default:       [:default => body]",
     "notes": "fiber-select is a macro. It first tries non-blocking poll on all channels. If :default is present and nothing ready, runs default body. Otherwise parks the fiber on all recv channel waiter lists with a shared gate — first channel to fire wins. :timeout registers on the timer queue. The => separator is required syntax."
+  },
+  {
+    "id": "lazy-seq-basics",
+    "title": "Lazy sequences — infinite range, iterate, cycle, repeat",
+    "tags": [
+      "lazy",
+      "sequence",
+      "infinite",
+      "range",
+      "iterate",
+      "cycle",
+      "repeat",
+      "clojure"
+    ],
+    "imports": [
+      "(std clojure)"
+    ],
+    "code": ";; Infinite range (Clojure-style)\n(lazy->list (lazy-take 5 (range)))          ;; => (0 1 2 3 4)\n\n;; Infinite iterate (2-arg = Clojure form)\n(lazy->list (lazy-take 5 (iterate (lambda (x) (* x 2)) 1)))  ;; => (1 2 4 8 16)\n\n;; Infinite repeatedly (1-arg = Clojure form)\n(lazy->list (lazy-take 3 (repeatedly (lambda () (random 100)))))\n\n;; Cycle a list infinitely\n(lazy->list (lazy-take 7 (cycle '(a b c)))) ;; => (a b c a b c a)\n\n;; Repeat a value infinitely\n(lazy->list (lazy-take 4 (repeat 'x)))      ;; => (x x x x)\n\n;; Force all elements to a list\n(doall (lazy-take 5 (lazy-range 10)))        ;; => (0 1 2 3 4)\n\n;; Interleave two infinite sequences\n(lazy->list (lazy-take 6 (lazy-interleave (lazy-iterate add1 0) (lazy-iterate add1 100))))\n;; => (0 100 1 101 2 102)\n\n;; Backwards-compatible strict forms still work:\n(iterate 5 add1 0)         ;; => (0 1 2 3 4)  (3-arg = strict)\n(repeatedly 3 (lambda () 42)) ;; => (42 42 42) (2-arg = strict)",
+    "notes": "Lazy sequences come from (std seq) and are re-exported by (std clojure). The core type is a vector-based lazy-cons with memoized thunks. Use lazy->list to force. (range) with 1-3 args still returns eager lists; 0-arg returns infinite lazy. (iterate f x) is lazy; (iterate n f x) is strict."
   }
 ]
