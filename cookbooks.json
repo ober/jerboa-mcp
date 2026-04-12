@@ -4874,5 +4874,156 @@
     ],
     "code": ";; Infinite range (Clojure-style)\n(lazy->list (lazy-take 5 (range)))          ;; => (0 1 2 3 4)\n\n;; Infinite iterate (2-arg = Clojure form)\n(lazy->list (lazy-take 5 (iterate (lambda (x) (* x 2)) 1)))  ;; => (1 2 4 8 16)\n\n;; Infinite repeatedly (1-arg = Clojure form)\n(lazy->list (lazy-take 3 (repeatedly (lambda () (random 100)))))\n\n;; Cycle a list infinitely\n(lazy->list (lazy-take 7 (cycle '(a b c)))) ;; => (a b c a b c a)\n\n;; Repeat a value infinitely\n(lazy->list (lazy-take 4 (repeat 'x)))      ;; => (x x x x)\n\n;; Force all elements to a list\n(doall (lazy-take 5 (lazy-range 10)))        ;; => (0 1 2 3 4)\n\n;; Interleave two infinite sequences\n(lazy->list (lazy-take 6 (lazy-interleave (lazy-iterate add1 0) (lazy-iterate add1 100))))\n;; => (0 100 1 101 2 102)\n\n;; Backwards-compatible strict forms still work:\n(iterate 5 add1 0)         ;; => (0 1 2 3 4)  (3-arg = strict)\n(repeatedly 3 (lambda () 42)) ;; => (42 42 42) (2-arg = strict)",
     "notes": "Lazy sequences come from (std seq) and are re-exported by (std clojure). The core type is a vector-based lazy-cons with memoized thunks. Use lazy->list to force. (range) with 1-3 args still returns eager lists; 0-arg returns infinite lazy. (iterate f x) is lazy; (iterate n f x) is strict."
+  },
+  {
+    "id": "stm-clojure-ref-dosync",
+    "title": "Clojure-style STM refs with dosync/alter/ref-set/commute",
+    "tags": [
+      "stm",
+      "ref",
+      "dosync",
+      "alter",
+      "transaction",
+      "clojure",
+      "concurrency"
+    ],
+    "imports": [
+      "(std stm)"
+    ],
+    "code": ";; Clojure-style STM — thin aliases over the TVar API\n;; make-ref / ref? / ref-deref are aliases for make-tvar / tvar? / tvar-read\n;; dosync is a macro that wraps `atomically`\n;; alter, ref-set, commute run INSIDE a dosync body\n\n(def account1 (make-ref 100))\n(def account2 (make-ref 200))\n\n;; Transfer atomically — both refs update or neither does\n(dosync\n  (alter account1 - 50)\n  (alter account2 + 50))\n\n(list (ref-deref account1) (ref-deref account2))\n;; => (50 250)\n\n;; ref-set — set to a value directly (no function)\n(dosync (ref-set account1 100))\n\n;; commute — like alter but order-independent (safe for counters)\n(dosync (commute account1 + 1))\n\n;; ensure — read a ref and prevent others from writing it in this tx\n(dosync\n  (ensure account1)\n  (alter account2 + (ref-deref account1)))\n\n;; Read outside a transaction — safe, returns current value\n(ref-deref account2)",
+    "notes": "Use make-ref/dosync/alter for Clojure muscle memory. Under the hood these are tvar/atomically/tvar-write!. The STM is fiber-safe: retry parks fibers instead of blocking OS threads. commute is an alias for alter (not truly commutative-optimized). ensure marks a ref read-only in the transaction to prevent write skew. Do NOT call ref-deref/tvar-ref inside dosync — use tvar-read for transactional reads, or let alter/commute read the current value via their function argument.",
+    "related": [
+      "jerboa-csp-channels",
+      "fiber-structured-concurrency"
+    ]
+  },
+  {
+    "id": "zipper-list-tree-navigation",
+    "title": "Functional tree zippers for immutable tree editing",
+    "tags": [
+      "zipper",
+      "tree",
+      "navigation",
+      "immutable",
+      "functional",
+      "list-zipper",
+      "std-zipper"
+    ],
+    "imports": [
+      "(std zipper)"
+    ],
+    "code": ";; A zipper is a cursor into a tree that supports O(1) navigation and\n;; structural editing without mutation. zip-down goes to first child,\n;; zip-right/zip-left move among siblings, zip-up returns to parent.\n\n(def tree '(1 (2 3) (4 (5 6))))\n\n;; Create a list zipper at the root\n(def z (list-zipper tree))\n\n;; Navigate\n(zip-node z)              ;; => (1 (2 3) (4 (5 6))) — current node\n(zip-branch? z)           ;; => #t — root is a branch\n(def at-1 (zip-down z))   ;; move to first child: 1\n(zip-node at-1)           ;; => 1\n(zip-branch? at-1)        ;; => #f — leaf\n\n(def at-subtree (zip-right at-1))  ;; move to sibling (2 3)\n(zip-node at-subtree)     ;; => (2 3)\n\n;; Go into the subtree\n(def at-2 (zip-down at-subtree))\n(zip-node at-2)           ;; => 2\n(zip-node (zip-right at-2))  ;; => 3\n\n;; Edit — returns a new zipper with node replaced\n(def z2 (zip-replace at-2 99))\n(zip-root z2)             ;; => (1 (99 3) (4 (5 6)))\n\n;; Edit with a function\n(def z3 (zip-edit at-2 * 10))\n(zip-root z3)             ;; => (1 (20 3) (4 (5 6)))\n\n;; Remove a node\n(zip-root (zip-remove at-2))  ;; => (1 (3) (4 (5 6)))\n\n;; Sequential traversal (zip-next walks depth-first)\n(let loop ([loc (zip-down z)] [nodes '()])\n  (if (zip-end? loc)\n    (reverse nodes)\n    (loop (zip-next loc) (cons (zip-node loc) nodes))))",
+    "notes": "list-zipper works on any list tree. vector-zipper works on vectors. To build a custom zipper for another tree type, call (zipper root branch? children make-node). zip-end? signals the sentinel returned after passing the end of a zip-next traversal. Navigation functions return #f when a move isn't possible (e.g. zip-right on the last sibling). Always use zip-root to extract the modified tree after editing."
+  },
+  {
+    "id": "edn-read-write",
+    "title": "Read and write EDN (Extensible Data Notation)",
+    "tags": [
+      "edn",
+      "read",
+      "write",
+      "parse",
+      "serialize",
+      "clojure",
+      "std-text-edn"
+    ],
+    "imports": [
+      "(std text edn)"
+    ],
+    "code": ";; EDN is Clojure's data notation: a superset of JSON with symbols,\n;; keywords, sets, tagged literals, and no string-only keys.\n\n;; Read EDN from a string\n(string->edn \"42\")           ;; => 42\n(string->edn \"[1 2 3]\")      ;; => #(1 2 3) — vector\n(string->edn \"(1 2 3)\")      ;; => (1 2 3) — list\n(string->edn \"{:a 1 :b 2}\")  ;; => hash table with keyword keys\n(string->edn \"#{1 2 3}\")     ;; => edn-set with elements (1 2 3)\n(string->edn \":keyword\")     ;; => the keyword #:keyword\n\n;; Write EDN to a string\n(edn->string '(1 2 3))       ;; => \"(1 2 3)\"\n(edn->string #(1 2 3))       ;; => \"[1 2 3]\"\n\n;; Read/write to/from ports\n(def port (open-input-string \"{:name \\\"Alice\\\" :age 30}\"))\n(def data (read-edn port))\n(edn->string data)           ;; round-trips\n\n;; Tagged literals (unknown tags → tagged-value record)\n(def tv (string->edn \"#my/tag 42\"))\n(tagged-value? tv)           ;; => #t\n(tagged-value-tag tv)        ;; => 'my/tag\n(tagged-value-value tv)      ;; => 42\n\n;; Custom tag readers\n(string->edn \"#uuid \\\"550e8400-e29b-41d4-a716-446655440000\\\"\"\n             edn-tag-readers)  ;; uses built-in handlers\n\n;; EDN sets\n(def s (make-edn-set '(1 2 3)))\n(edn-set? s)                 ;; => #t\n(edn-set-elements s)         ;; => (1 2 3)",
+    "notes": "EDN maps with keyword keys use the Jerboa keyword type (#:name). When round-tripping, vectors become Chez vectors (#(...)). edn-set is distinct from pset — it's a simple wrapper for the EDN #{...} literal. For production use, prefer (std text json) for JSON interchange; EDN is for Clojure/datomic ecosystem interop. read-edn-string is an alias for string->edn; write-edn-string is an alias for edn->string."
+  },
+  {
+    "id": "specter-path-navigation",
+    "title": "Specter: composable path navigation and transformation",
+    "tags": [
+      "specter",
+      "path",
+      "navigate",
+      "transform",
+      "nested",
+      "ALL",
+      "MAP-VALS",
+      "std-specter"
+    ],
+    "imports": [
+      "(std specter)"
+    ],
+    "code": ";; Specter provides composable navigators for selecting and transforming\n;; parts of nested data structures. Like XPath but for Scheme data.\n\n;; select — extract values at a path\n(select ALL '(1 2 3 4 5))            ;; => (1 2 3 4 5)\n(select FIRST '(1 2 3))              ;; => (1)\n(select LAST '(1 2 3))               ;; => (3)\n\n;; transform — apply a function to all selected values\n(transform ALL (lambda (x) (* x 2)) '(1 2 3))   ;; => (2 4 6)\n(transform FIRST add1 '(1 2 3))                   ;; => (2 2 3)\n\n;; setval — set all selected values\n(setval FIRST 99 '(1 2 3))           ;; => (99 2 3)\n\n;; filterer — navigate to elements matching a predicate\n(select (filterer even?) '(1 2 3 4 5))  ;; => (2 4)\n(transform (filterer even?) (lambda (x) (* x 10)) '(1 2 3 4))  ;; => (1 20 3 40)\n\n;; keypath — navigate into a map by key\n(def m (list->hash-table '((\"a\" . (list->hash-table '((\"b\" . 42)))))))\n;; Using keypath for nested maps\n(select (keypath \"a\") m)             ;; => (inner-map)\n\n;; MAP-VALS — navigate into all values of a hash table\n(def scores (list->hash-table '((\"Alice\" . 90) (\"Bob\" . 80))))\n(transform MAP-VALS (lambda (v) (+ v 5)) scores)  ;; all scores +5\n\n;; MAP-KEYS — navigate to all keys\n(select MAP-KEYS scores)             ;; => (\"Alice\" \"Bob\")\n\n;; Compose navigators into a path\n(def path (comp-navs ALL (filterer number?)))\n(select path '((1 \"x\") (2 \"y\") (3 \"z\")))  ;; => (1 2 3)",
+    "notes": "select returns a list of all selected values. select-one returns the first, select-first raises on multiple. transform rebuilds the structure with transformed values — the original is unchanged (works on both mutable and immutable data). Navigators are composable via comp-navs. Built-in navigators: ALL FIRST LAST MAP-KEYS MAP-VALS MAP-ENTRIES INDEXED-VALS. nthpath for indexed access, submap for subset of map keys. NIL->VAL/VAL->NIL for nil-punning. multi-path selects/transforms multiple paths simultaneously."
+  },
+  {
+    "id": "component-lifecycle-system",
+    "title": "Stuart Sierra-style component lifecycle management",
+    "tags": [
+      "component",
+      "lifecycle",
+      "start",
+      "stop",
+      "system",
+      "dependency-injection",
+      "stuart-sierra",
+      "std-component"
+    ],
+    "imports": [
+      "(std component)"
+    ],
+    "code": ";; (std component) implements Stuart Sierra's Component pattern:\n;; named components with start/stop lifecycle, assembled into systems\n;; with declared dependencies.\n\n;; 1. Define components\n(def db (component 'db))\n(def cache (component 'cache))\n(def server (component 'server))\n\n;; 2. Register lifecycle handlers by NAME (symbol), not component object.\n;;    start-fn and stop-fn receive and MUST RETURN the component.\n(register-lifecycle! 'db\n  (lambda (c) (displayln \"Starting DB...\") c)\n  (lambda (c) (displayln \"Stopping DB...\") c))\n\n(register-lifecycle! 'cache\n  (lambda (c) (displayln \"Starting cache...\") c)\n  (lambda (c) (displayln \"Stopping cache...\") c))\n\n(register-lifecycle! 'server\n  (lambda (c)\n    (displayln \"Starting server with deps: \" (component-deps c))\n    c)\n  (lambda (c) (displayln \"Stopping server...\") c))\n\n;; 3. Assemble the system (symbol → component pairs)\n(def sys (system-map\n  'db     db\n  'cache  cache\n  'server server))\n\n;; 4. Declare dependencies (server depends on db and cache)\n(system-using sys\n  '((server . ((db . db) (cache . cache)))))\n\n;; 5. Start and stop in dependency order\n(start sys)   ;; db → cache → server\n(stop sys)    ;; server → cache → db (reverse)\n\n;; Check state\n(component-started? db)      ;; => #t/#f\n(system-started? sys)        ;; => #t if all started\n\n;; Start/stop a single component directly\n(start db)\n(stop db)\n\n;; component-state returns 'started or 'stopped\n(component-state db)",
+    "notes": "CRITICAL: register-lifecycle! takes a SYMBOL (the component name), NOT the component object. Passing the component itself causes a symbol-hash error. The start/stop functions must RETURN the component — the system replaces the entry with the return value. system-using declares dependencies as an alist: (component-name . ((dep-key . provider-name) ...)). system-map takes alternating symbol/component pairs. Lifecycle handlers are registered globally — restarting the REPL without reloading will retain old handlers."
+  },
+  {
+    "id": "test-check-property-based",
+    "title": "Property-based testing with generators and shrinking",
+    "tags": [
+      "property-based",
+      "test",
+      "check",
+      "generator",
+      "shrink",
+      "for-all",
+      "quickcheck",
+      "std-test-check"
+    ],
+    "imports": [
+      "(std test check)"
+    ],
+    "code": ";; (std test check) provides QuickCheck-style property-based testing\n;; with automatic test-case generation and shrinking on failure.\n\n;; Define a property with for-all — binds generators to variables\n(def sort-preserves-length\n  (for-all ([lst (gen:list (gen:integer))])\n    (= (length (sort < lst)) (length lst))))\n\n;; Run with check-property — returns (ok N) or (fail i inputs shrunk depth)\n(check-property 100 sort-preserves-length)  ;; => (ok 100)\n\n;; Generators\n(gen:sample (gen:integer) 5)             ;; size-based integers: (-3 1 0 2 -1)\n(gen:sample (gen:nat) 5)                 ;; non-negative: (0 1 2 0 3)\n(gen:sample (gen:boolean) 4)             ;; (#t #f #t #f)\n(gen:sample (gen:string) 3)              ;; (\"\" \"a\" \"ab\")\n(gen:sample (gen:list (gen:integer)) 3)  ;; (() (1) (-1 2))\n(gen:sample (gen:elements '(a b c)) 5)  ;; (b a c a b)\n(gen:sample (gen:one-of (list (gen:integer) (gen:boolean))) 4)\n\n;; Combinator generators\n(gen:sample (gen:choose -100 100) 5)     ;; uniform integers in range\n(gen:sample (gen:tuple (gen:integer) (gen:boolean)) 3)  ;; paired\n(gen:sample (gen:such-that odd? (gen:integer)) 5)  ;; filtered\n\n;; Custom generator via gen:fmap\n(def gen:positive-even\n  (gen:fmap (lambda (n) (* 2 (abs n))) (gen:integer)))\n(gen:sample gen:positive-even 4)\n\n;; Property with multiple generators\n(check-property 50\n  (for-all ([a (gen:nat)] [b (gen:nat)])\n    (= (+ a b) (+ b a))))  ;; commutativity\n\n;; Example with shrinking (on failure, shrinks to minimal counter-example)\n(check-property 100\n  (for-all ([n (gen:integer)])\n    (< n 50)))  ;; => (fail N (50) (50) 0) — shrunk to 50",
+    "notes": "gen:integer takes 0 args (not a range) — uses gen:sized internally. For a ranged integer use gen:choose. for-all is a macro that returns a (gens . fn) pair; check-property runs it. On failure, result is (fail iteration original-inputs shrunk-inputs shrink-depth). gen:no-shrink wraps a generator to disable shrinking (faster but less minimal failures). gen:generate takes a generator and size: (gen:generate gen:integer 10). gen:sample takes generator and optional count (default 10)."
+  },
+  {
+    "id": "spec-validation",
+    "title": "Clojure.spec-style data validation with (std spec)",
+    "tags": [
+      "spec",
+      "validation",
+      "s-def",
+      "s-valid",
+      "s-conform",
+      "clojure-spec",
+      "std-spec"
+    ],
+    "imports": [
+      "(std spec)"
+    ],
+    "code": ";; (std spec) provides clojure.spec-inspired data validation\n;; with named specs, composable predicates, and conform/explain.\n\n;; Register named specs (name is a quoted symbol, often ::keyword-style)\n(s-def ::age    (s-pred (lambda (x) (and (integer? x) (>= x 0)))))\n(s-def ::name   (s-pred string?))\n(s-def ::person (s-keys '(::name ::age)))\n\n;; Validate\n(s-valid? ::age 25)         ;; => #t\n(s-valid? ::age -1)         ;; => #f\n(s-valid? (s-pred number?) 42)  ;; inline spec\n\n;; Conform — returns :invalid or the value (possibly coerced)\n(s-conform ::age 25)        ;; => 25\n(s-conform ::age \"bad\")     ;; => :invalid\n\n;; Explain — returns alist of problems or #f on success\n(s-explain ::age -1)        ;; => ((path . ()) (pred . ...) (val . -1))\n(s-explain-str ::age -1)    ;; => \"val: -1 fails pred: ...\"\n\n;; Assert — raises on invalid\n(s-assert ::age 25)         ;; => 25\n;; (s-assert ::age -1)      ;; raises with explanation\n\n;; Composable specs\n(s-def ::pos-num (s-and (s-pred number?) (s-pred positive?)))\n(s-def ::num-or-str (s-or 'num (s-pred number?) 'str (s-pred string?)))\n(s-def ::small-list (s-coll-of (s-pred integer?) '(max-count . 5)))\n(s-def ::age-range (s-int-in 0 120))\n(s-def ::maybe-name (s-nilable (s-pred string?)))\n\n;; Collection specs\n(s-def ::tags (s-coll-of (s-pred symbol?)))\n(s-valid? ::tags '(foo bar baz))   ;; => #t\n\n;; Tuple spec (fixed arity)\n(s-def ::pair (s-tuple (s-pred string?) (s-pred integer?)))\n(s-valid? ::pair '(\"Alice\" 30))    ;; => #t\n\n;; Exercise — generate sample values\n(s-exercise ::age-range 3)  ;; => ((42 42) (17 17) (99 99))",
+    "notes": "s-def registers globally by quoted symbol — convention is to use ::name (Clojure-style namespaced keywords) but any quoted symbol works. s-keys takes a list of required spec names; use s-keys-opt for optional keys. s-or requires alternating tag/spec pairs: (s-or 'tag1 spec1 'tag2 spec2). s-fdef / s-check-fn register and check function specs. Unlike Clojure's spec, s-keys does not auto-check key predicates by name — you must declare them explicitly. s-conform returns :invalid (the keyword #:invalid) on failure, not nil."
+  },
+  {
+    "id": "fiber-semaphore-local-storage",
+    "title": "Fiber semaphores and fiber-local parameters",
+    "tags": [
+      "fiber",
+      "semaphore",
+      "fiber-local",
+      "parameter",
+      "fiber-parameterize",
+      "concurrency",
+      "std-fiber"
+    ],
+    "imports": [
+      "(std fiber)"
+    ],
+    "code": ";; --- Fiber semaphores --- limit concurrent access to a resource ---\n\n(with-fibers\n  (let ([sem (make-fiber-semaphore 2)]  ;; max 2 concurrent holders\n        [log (atom '())])\n    ;; Spawn 4 workers — only 2 can be inside the critical section at once\n    (let ([fibers (map (lambda (i)\n                    (fiber-spawn* (lambda ()\n                      (fiber-semaphore-acquire! sem)\n                      (swap! log cons i)\n                      (fiber-sleep 10)\n                      (fiber-semaphore-release! sem))))\n                  '(1 2 3 4))])\n      (for-each (lambda (f) (fiber-join f 5000)) fibers)\n      (deref log))))\n\n;; Non-blocking acquire — returns #t if acquired, #f if not available\n(fiber-semaphore-try-acquire! sem)\n\n;; --- Fiber-local storage (like thread-local but per-fiber) ---\n\n;; Create a fiber parameter with a default value\n(def *request-id* (make-fiber-parameter \"none\"))\n\n(with-fibers\n  (fiber-spawn* (lambda ()\n    (displayln \"default: \" (*request-id*))   ;; => \"none\"\n    (fiber-parameterize ([*request-id* \"req-123\"])\n      (displayln \"inside: \" (*request-id*))  ;; => \"req-123\"\n      ;; Child fibers do NOT inherit parent's parameterize — each has default\n      (let ([child (fiber-spawn* (lambda ()\n                     (displayln \"child: \" (*request-id*))))])  ;; => \"none\"\n        (fiber-join child 1000)))\n    (displayln \"after: \" (*request-id*)))))  ;; => \"none\" again",
+    "notes": "fiber-join MUST be called from inside a fiber (spawned with fiber-spawn*), not from the main thread — it parks the calling fiber until the target completes. fiber-spawn* takes a thunk and an optional name string. Fiber-local parameters (make-fiber-parameter) are isolated per-fiber — each fiber starts with the default value, and fiber-parameterize binds within the dynamic extent only. Unlike Scheme dynamic parameters, child fibers do NOT inherit the parent's bindings."
   }
 ]
