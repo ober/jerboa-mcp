@@ -5138,5 +5138,243 @@
       "restricted-eval-fiber-safe-timeout",
       "restricted-env-custom-bindings-handler"
     ]
+  },
+  {
+    "id": "std-metrics-prometheus-registry",
+    "title": "Prometheus metrics with (std metrics): counters, histograms, gauges",
+    "tags": [
+      "metrics",
+      "prometheus",
+      "counter",
+      "histogram",
+      "gauge",
+      "std metrics",
+      "registry"
+    ],
+    "imports": [
+      "(std metrics)"
+    ],
+    "code": "(import (std metrics))\n\n;; Create a registry — holds all metrics for a single /metrics scrape.\n(define reg (make-registry))\n\n;; Counter: monotonically increasing (events received, errors, etc.)\n;; Signature: (make-counter reg name help [label-names])\n;; CRITICAL: registry is the FIRST argument, not last.\n(define c-received (make-counter reg \"events_received_total\" \"Total events received\"))\n(define c-errors   (make-counter reg \"events_error_total\"   \"Events that errored\"))\n\n;; Gauge: up/down value (active connections, queue depth, etc.)\n;; Signature: (make-gauge reg name help [label-names])\n(define g-conns (make-gauge reg \"active_connections\" \"Active WebSocket connections\"))\n\n;; Histogram: latency/duration distribution\n;; Signature: (make-histogram reg name help [label-names] [buckets])\n;; label-names is a list of strings; buckets is a list of floats.\n;; 4th arg is inferred by content: list of strings = label-names, list of numbers = buckets.\n(define h-duration\n  (make-histogram reg \"processing_duration_seconds\" \"Processing time\"\n                  '()                                           ;; label-names (empty)\n                  '(0.001 0.005 0.01 0.05 0.1 0.5 1.0 5.0)))  ;; custom buckets\n\n;; Update counters\n(counter-inc!  c-received)          ;; +1\n(counter-add!  c-errors   3)        ;; +N (N must be >= 0)\n(counter-value c-received)          ;; => 1\n\n;; Update gauges\n(gauge-inc! g-conns)                ;; +1\n(gauge-inc! g-conns 5)             ;; +N\n(gauge-dec! g-conns)                ;; -1\n(gauge-set! g-conns 42)            ;; set absolute\n(gauge-value g-conns)               ;; => 42\n\n;; Observe histogram\n(histogram-observe! h-duration 0.023)  ;; record one observation\n(histogram-count    h-duration)        ;; => 1\n(histogram-sum      h-duration)        ;; => 0.023\n\n;; Produce Prometheus text format — returns string, optionally writes to port\n;; Signature: (prometheus-format reg [port])\n(define metrics-text (prometheus-format reg))\n;; => \"# HELP events_received_total ...\\n# TYPE ... counter\\n...\"\n\n;; HTTP handler for /metrics endpoint\n(define (handle-metrics req)\n  (respond 200\n    '((\"Content-Type\" . \"text/plain; version=0.0.4; charset=utf-8\"))\n    (prometheus-format reg)))",
+    "notes": "The registry is the FIRST argument to make-counter/make-gauge/make-histogram — NOT the last. This is the opposite of many metrics libraries. Passing #f as registry still creates the metric but doesn't register it. Labels are declared by passing a list of strings as the optional 4th arg, but the simple implementation does NOT track per-label values — counter-inc!/histogram-observe! ignore label arguments. All metrics are single-value. The 4th arg of make-histogram is detected by content: list of strings = label-names, list of numbers = custom buckets. Default histogram buckets: 0.005 0.01 0.025 0.05 0.1 0.25 0.5 1.0 2.5 5.0 10.0."
+  },
+  {
+    "id": "fiber-httpd-sigterm-graceful-shutdown",
+    "title": "Graceful SIGTERM shutdown for fiber-httpd + CSP workers",
+    "tags": [
+      "sigterm",
+      "signal",
+      "shutdown",
+      "fiber-httpd",
+      "graceful",
+      "chan-close",
+      "std os signal"
+    ],
+    "imports": [
+      "(std net fiber-httpd)",
+      "(std os signal)",
+      "(except (std csp) go go-named)",
+      "(std csp clj)"
+    ],
+    "code": "(import (std net fiber-httpd)\n        (std os signal)\n        (except (std csp) go go-named)\n        (std csp clj))\n\n;; Store server handle so the signal handler can reach it.\n;; Set this AFTER fiber-httpd-start returns.\n(define *server* #f)\n\n;; Ingest channel that workers drain with (<!! ch)\n(define ingest-ch (chan 1024))\n\n(define (graceful-shutdown!)\n  ;; Called from SIGTERM handler — runs in OS signal context.\n  (display \"{\\\"msg\\\":\\\"sigterm received\\\"}\\n\")\n\n  ;; 1. Stop accepting new HTTP connections (closes listen socket,\n  ;;    cancels accept fiber, stops runtime). Sleeps 150ms internally.\n  (when *server*\n    (guard (e [#t (void)]) (fiber-httpd-stop! *server*)))\n\n  ;; 2. Close the ingest channel — workers' (<!! ingest-ch) returns EOF.\n  ;;    Workers test: (when (and event (not (eof-object? event))) ...)\n  ;;    and exit their loop naturally.\n  (guard (e [#t (void)]) (chan-close! ingest-ch))\n\n  ;; 3. Drain window — give in-flight events time to finish.\n  (sleep (make-time 'time-duration 0 3))  ;; 3 seconds\n\n  ;; 4. Optional: flush SQLite WAL, close DB, etc.\n  ;; (sqlite-exec *db* \"PRAGMA wal_checkpoint(FULL)\")\n\n  (display \"{\\\"msg\\\":\\\"shutdown complete\\\"}\\n\")\n  (exit 0))\n\n;; Register BEFORE starting the server so no window exists.\n;; add-signal-handler! takes exactly 2 args: signal constant + thunk.\n(add-signal-handler! SIGTERM graceful-shutdown!)\n\n;; Also handle SIGINT for dev convenience\n(add-signal-handler! SIGINT graceful-shutdown!)\n\n;; Start server — save handle for signal handler\n(set! *server* (fiber-httpd-start 8080 (lambda (req) (respond-json 200 \"{}\"))))\n\n;; Block main thread\n(let loop ()\n  (sleep (make-time 'time-duration 0 3600))\n  (loop))",
+    "notes": "add-signal-handler! takes exactly 2 arguments: (add-signal-handler! SIGTERM thunk). The thunk runs in OS signal context. Keep it short — don't do heavy computation, just trigger shutdown. fiber-httpd-stop! closes the listen fd, cancels the accept fiber, and calls (sleep 150ms) internally for cleanup. chan-close! causes subsequent (<!! ch) calls to return the EOF object — workers must test (not (eof-object? event)). The 3-second drain window is a balance: too short loses in-flight events, too long delays deploy. SIGTERM completes in ~3.15s (0.15s fiber-httpd + 3s drain). SIGKILL still kills immediately — this handles graceful deploys only."
+  },
+  {
+    "id": "rustls-tls-with-tcp-raw-http-server",
+    "title": "TLS HTTP server: tcp-raw accept loop + rustls-accept per connection",
+    "tags": [
+      "tls",
+      "rustls",
+      "tcp-raw",
+      "http",
+      "server",
+      "https",
+      "std net tls-rustls",
+      "std net tcp-raw"
+    ],
+    "imports": [
+      "(std net tls-rustls)",
+      "(std net tcp-raw)",
+      "(std net fiber-httpd)"
+    ],
+    "code": "(import (std net tls-rustls)\n        (std net tcp-raw)\n        (std net fiber-httpd))\n\n;; TLS server pattern: tcp-raw provides blocking accept to get a raw fd,\n;; then rustls-accept wraps it with TLS. One OS thread per connection.\n;;\n;; Use when fiber-httpd TLS integration is not available — this OS-thread\n;; approach is not as scalable as fibers but is correct and simple.\n\n(define (run-tls-server! router tls-port cert-path key-path)\n  ;; Create Rust rustls server context (loads cert + key from PEM files)\n  (define server-ctx (rustls-server-ctx-new cert-path key-path))\n\n  ;; Create a blocking TCP listening socket\n  ;; tcp-listen: (tcp-listen port [backlog]) → listen-fd\n  (define listen-fd (tcp-listen tls-port))\n\n  (display (string-append \"{\\\"msg\\\":\\\"tls listening\\\",\\\"port\\\":\\\"\"\n                          (number->string tls-port) \"\\\"}\\n\"))\n\n  ;; Accept loop in a background OS thread\n  (fork-thread\n    (lambda ()\n      (let loop ()\n        ;; tcp-accept: (tcp-accept listen-fd) → client-fd (blocking)\n        (define client-fd (guard (e [#t #f]) (tcp-accept listen-fd)))\n        (when client-fd\n          ;; Each connection in its own OS thread\n          (fork-thread\n            (lambda ()\n              ;; rustls-accept: (rustls-accept server-ctx tcp-fd) → conn-handle\n              ;; Performs TLS handshake synchronously on the given fd.\n              (define conn (guard (e [#t #f]) (rustls-accept server-ctx client-fd)))\n              (when conn\n                (guard (e [#t (void)])\n                  (handle-tls-http conn router))\n                (guard (e [#t (void)])\n                  (rustls-close conn)))))\n          (loop))))))\n\n;; Minimal HTTP handler over a rustls connection\n(define (handle-tls-http conn router)\n  (define buf (make-bytevector 16384))\n  ;; rustls-read: (rustls-read conn-handle buf max-bytes) → n-read\n  (define n (rustls-read conn buf 16384))\n  (when (> n 0)\n    (define raw (let ([out (make-bytevector n)])\n                  (bytevector-copy! buf 0 out 0 n) out))\n    (define req-str (guard (e [#t #f]) (utf8->string raw)))\n    (when req-str\n      ;; Parse request, dispatch via existing router, serialize response\n      ;; (parse-tls-http-request and http-response->bv are app-specific helpers)\n      (define req (parse-tls-http-request req-str))\n      (when req\n        (define resp (guard (e [#t (respond-json 500 \"{\\\"error\\\":\\\"internal\\\"}\")])\n                       (router-dispatch router req)))\n        (define resp-bv (http-response->bv resp))\n        ;; rustls-write: (rustls-write conn-handle bytevector n-bytes) → n-written\n        ;; Auto-flushes after write.\n        (rustls-write conn resp-bv (bytevector-length resp-bv))))))\n\n;; Usage with fiber-httpd for the plain HTTP path\n(define router (make-router))\n(route-get router \"/health\" (lambda (req) (respond-json 200 \"{\\\"status\\\":\\\"ok\\\"}\")))\n\n;; Plain HTTP on port 8080 (fiber-based, high concurrency)\n(define plain-srv (fiber-httpd-start 8080 (lambda (req) (router-dispatch router req))))\n\n;; TLS HTTPS on port 8443 (OS threads, one per connection)\n(when (and (getenv \"EDGE_TLS_CERT\") (getenv \"EDGE_TLS_KEY\"))\n  (run-tls-server! router 8443\n                   (getenv \"EDGE_TLS_CERT\")\n                   (getenv \"EDGE_TLS_KEY\")))",
+    "notes": "rustls-accept takes the SERVER CONTEXT handle (from rustls-server-ctx-new) and a raw TCP file descriptor. The TCP fd comes from tcp-accept on a tcp-listen socket. This is the correct integration pattern — rustls-accept performs the TLS handshake on the already-accepted fd. The single-read 16KB buffer handles most webhook payloads in one TLS record. For large bodies (>16KB), implement a read loop that accumulates until CRLF-CRLF. One OS thread per TLS connection limits concurrency vs the fiber HTTP path — use for optional TLS where plain HTTP fiber path handles the load. rustls-write auto-flushes (calls jerboa_tls_flush internally). Always call rustls-close after handling to free the rustls state. rustls-server-ctx-free releases the context (call at shutdown). For mTLS, use rustls-server-ctx-new-mtls instead.",
+    "related": [
+      "rustls-tls-server"
+    ]
+  },
+  {
+    "id": "sqlite-native-wal-startup-replay",
+    "title": "SQLite WAL persistence with startup state replay into STM",
+    "tags": [
+      "sqlite",
+      "sqlite-native",
+      "wal",
+      "persistence",
+      "stm",
+      "replay",
+      "startup",
+      "std db sqlite-native"
+    ],
+    "imports": [
+      "(std db sqlite-native)",
+      "(std stm)"
+    ],
+    "code": "(import (std db sqlite-native)\n        (std stm)\n        (std pmap))\n\n;; Pattern: optional SQLite persistence for STM state.\n;; On startup, load persisted state into STM.\n;; On each mutation, write to SQLite (fire-and-forget).\n;; On SIGTERM, flush WAL before exit.\n\n;; Global DB handle — #f when EDGE_DB_PATH not set\n(define *db* #f)\n\n;; Initialize SQLite in WAL mode (allows concurrent reads)\n(define (db-init! path)\n  (define db (sqlite-open path))    ;; (sqlite-open path) → db-handle\n  ;; WAL mode: writers don't block readers; much better for concurrent workloads\n  (sqlite-exec db \"PRAGMA journal_mode=WAL\")\n  (sqlite-exec db\n    \"CREATE TABLE IF NOT EXISTS events (\n       id TEXT PRIMARY KEY, type TEXT, status TEXT,\n       received TEXT, processed TEXT)\")\n  (set! *db* db)\n  db)\n\n;; Fire-and-forget write — never crash the caller on SQLite error\n(define (db-store-event! id type status received)\n  (when *db*\n    (guard (e [#t (void)])    ;; swallow all errors\n      ;; sqlite-execute: positional params auto-detect type (int/float/string/bv/#f=NULL)\n      (sqlite-execute *db*\n        \"INSERT OR REPLACE INTO events VALUES (?,?,?,?,?)\"\n        id type status received\n        (number->string (time-second (current-time)))))))\n\n;; Load persisted events into STM on startup\n(define (db-load-events! events-ref)\n  (when *db*\n    ;; sqlite-query: (sqlite-query db sql params...) → list of alists\n    ;; Keys are column name strings. Values are Scheme strings/numbers.\n    (define rows (sqlite-query *db*\n                   \"SELECT id, type, status, received, processed FROM events\"))\n    (for-each\n      (lambda (row)\n        ;; Rows are alists: ((\"id\" . \"evt_1\") (\"type\" . \"payment\") ...)\n        (define id        (cdr (assoc \"id\"        row)))\n        (define type      (cdr (assoc \"type\"      row)))\n        (define status    (cdr (assoc \"status\"    row)))\n        (define received  (cdr (assoc \"received\"  row)))\n        (define processed (cdr (assoc \"processed\" row)))\n        (dosync\n          (alter events-ref\n            (lambda (st)\n              (persistent-map-set st id\n                (list->hash-table\n                  `((\"type\" . ,type) (\"status\" . ,status)\n                    (\"received\" . ,received) (\"processed\" . ,processed))))))))\n      rows)\n    (display (string-append\n               \"{\\\"msg\\\":\\\"state restored\\\",\\\"count\\\":\\\"\"\n               (number->string (length rows)) \"\\\"}\\n\"))))\n\n;; Flush WAL before exit (call from SIGTERM handler)\n(define (db-flush-wal!)\n  (when *db*\n    (guard (e [#t (void)])\n      (sqlite-exec *db* \"PRAGMA wal_checkpoint(FULL)\"))))\n\n;; Usage\n(when (getenv \"EDGE_DB_PATH\")\n  (db-init! (getenv \"EDGE_DB_PATH\")))\n\n(define events-ref (make-ref (make-persistent-map)))\n(db-load-events! events-ref)  ;; no-op when *db* = #f",
+    "notes": "Use (std db sqlite-native) NOT (std db sqlite) — the sqlite module is missing (chez-sqlite library not bundled). sqlite-native uses bundled rusqlite with no external libsqlite3 dependency. sqlite-query returns a list of alists where keys are column name strings — use (assoc \"column-name\" row) with string keys, not symbol keys. sqlite-execute auto-detects parameter types: integers, flonums, strings, bytevectors are bound natively; #f binds as NULL. WAL mode is critical for concurrent service workloads — without it, any reader blocks all writers. Fire-and-forget guard pattern ((guard (e [#t (void)]))) ensures a SQLite error never crashes a worker thread processing an event. Flush WAL at shutdown: PRAGMA wal_checkpoint(FULL) blocks until all WAL pages are written back to the main DB file. sqlite-open \":memory:\" for in-memory databases."
+  },
+  {
+    "id": "actor-transport-startup",
+    "title": "Start a distributed actor transport node with HMAC-auth TCP",
+    "tags": [
+      "actor",
+      "transport",
+      "distributed",
+      "cluster",
+      "tcp",
+      "hmac"
+    ],
+    "imports": [
+      "(std actor)",
+      "(std actor transport)"
+    ],
+    "code": "\n;; 1. Register this process as a named node (returns \"host:port\" node-id)\n(start-node! \"127.0.0.1\" 9000 \"shared-secret-cookie\")\n\n;; 2. Wire the remote-send handler so (send remote-ref msg) goes over TCP\n(set-remote-send-handler! transport-remote-send!)\n\n;; 3. Spawn a local actor that will receive (work ...) messages from peers.\n;;    Capture its numeric ID — peers need this to create remote refs.\n(def *my-actor* #f)\n(def *my-actor-id* #f)\n(let ([a (spawn-actor\n           (lambda (msg)\n             (match msg\n               [(list 'work payload) (displayln \"got work: \" payload)]\n               [_ (void)]))\n           'my-named-actor)])\n  (set! *my-actor* a)\n  (set! *my-actor-id* (actor-ref-id a)))\n\n;; 4. Start TCP server for inbound peer connections\n(start-node-server! 9000)\n\n;; 5. On the REMOTE node: create a ref using the discovered actor-id and node-id\n;;    actor-id is an INTEGER (auto-assigned, not symbolic) — must be shared OOB\n(def remote-ref (make-remote-actor-ref *my-actor-id* \"127.0.0.1:9000\"))\n(send remote-ref (list 'work \"hello from peer\"))\n\n;; 6. Shutdown: close all authenticated TCP connections\n(transport-shutdown!)\n",
+    "notes": "\nWire format: [4-byte BE length][fasl body][32-byte HMAC-SHA256]. Auth: 4-step HMAC challenge-response with per-connection nonce, derives a session key for per-message integrity.\n\nCRITICAL: make-remote-actor-ref takes a NUMERIC actor-ref-id (integer), NOT a symbol. actor-ref-id is auto-assigned per process and not stable across restarts. You must share it out-of-band (e.g. HTTP endpoint, config). The actor-transport does not support symbolic name lookup — that goes via the registry which is separate.\n\nregister! (from (std actor registry)) takes (name actor-ref) — name FIRST. But registered names are NOT visible to transport's lookup-local-actor which uses numeric IDs. The two lookup systems are independent.\n\nset-remote-send-handler! must be called before any (send remote-ref msg) or you get \"remote send not configured\" error. One call per process at startup.\n\n(std crdt) does NOT exist in the stdlib. Use coordinator-routing + per-node STM for replicated state.\n"
+  },
+  {
+    "id": "actor-transport-peer-discovery",
+    "title": "Discover remote actor IDs via HTTP for cross-node refs",
+    "tags": [
+      "actor",
+      "transport",
+      "remote-ref",
+      "peer-discovery",
+      "http",
+      "cluster"
+    ],
+    "imports": [
+      "(std actor)",
+      "(std actor transport)",
+      "(std net request)",
+      "(std text json)"
+    ],
+    "code": "\n;; Problem: make-remote-actor-ref requires a numeric actor-ref-id (integer),\n;; but actor IDs are auto-assigned and not stable across restarts.\n;; Solution: expose actor ID via HTTP and discover it at startup.\n\n;; == On each node: expose the actor ID via HTTP ==\n\n(def *ingest-actor-id* #f)  ;; set when actor is spawned\n\n;; HTTP handler (after actor spawned and ID captured):\n(def (handle-cluster-info req)\n  (respond-json 200\n    (json-object->string\n      (list->hash-table\n        `((\"node_id\"         . ,(or (current-node-id) \"standalone\"))\n          (\"ingest_actor_id\" . ,(or *ingest-actor-id* 0)))))))\n\n;; == On startup: connect to peers ==\n\n(def *peer-refs* '())\n\n(def (connect-to-peers! peer-http-addrs)\n  ;; peer-http-addrs: list of \"host:port\" strings for HTTP endpoints of peers\n  ;; Must be called AFTER local HTTP server is up (so peers can call us too)\n  (let ([refs\n         (filter-map\n           (lambda (peer-http)\n             (guard (exn [#t\n                          (displayln \"peer connect failed: \" peer-http)\n                          #f])\n               (let* ([url  (format \"http://~a/api/cluster/info\" peer-http)]\n                      [resp (http-get url)]\n                      [json (string->json-object (request-text resp))]\n                      [id   (hash-ref json \"ingest_actor_id\" #f)]\n                      [nid  (hash-ref json \"node_id\" #f)])\n                 (when (and id nid)\n                   (make-remote-actor-ref id nid)))))\n           peer-http-addrs)])\n    (set! *peer-refs* refs)))\n\n;; == Round-robin routing across self + peers ==\n\n(def *peer-cursor* 0)\n(def *peer-mutex* (make-mutex))\n\n(def (route-to-peer-or-local! event local-ch)\n  (if (null? *peer-refs*)\n    (>!! local-ch event)\n    (with-mutex *peer-mutex*\n      (let* ([all (cons #f *peer-refs*)]   ;; #f = local\n             [dest (list-ref all (modulo *peer-cursor* (length all)))])\n        (set! *peer-cursor* (+ *peer-cursor* 1))\n        (if (not dest)\n          (>!! local-ch event)\n          (guard (exn [#t (>!! local-ch event)])  ;; fallback to local\n            (send dest (list 'work event))))))))\n",
+    "notes": "\nThe peer's HTTP address (EDGE_PEERS) and transport address (node_id from /api/cluster/info) may differ. HTTP is for discovery; the node_id \"host:port\" is the TRANSPORT address used by make-remote-actor-ref.\n\nconnect-to-peers! MUST be called after the local HTTP server starts — otherwise peers calling back to discover our actor ID will get connection refused.\n\nThe remote actor on each peer receives (work event) messages and enqueues into its local ingest channel. The local actor behavior just does (>!! local-ch event).\n\nactor-ref-id returns an exact integer that increments from 0 per process. It will be different on every restart. Always use the HTTP discovery flow; never hardcode actor IDs.\n"
+  },
+  {
+    "id": "raft-in-process-cluster",
+    "title": "Run an in-process Raft consensus cluster for event ordering",
+    "tags": [
+      "raft",
+      "consensus",
+      "leader-election",
+      "distributed",
+      "commit-log"
+    ],
+    "imports": [
+      "(std raft)"
+    ],
+    "code": "\n;; (std raft) is an in-process simulation using channels (no TCP).\n;; Use it to demonstrate consensus, event ordering, and leader election\n;; within one process. For cross-process Raft, bridge node inboxes\n;; over (std actor transport) manually.\n\n;; 1. Create N-node cluster (nodes wired together via in-memory channels)\n(def cluster (make-raft-cluster 3))\n\n;; 2. Start each node's message loop in a background thread\n(for-each raft-start! (raft-cluster-nodes cluster))\n\n;; 3. Wait for leader election (150–300ms election timeout, wait 500ms)\n(sleep (make-time 'time-duration 500000000 0))\n\n;; 4. Find the current leader\n(def leader (raft-cluster-leader cluster))\n(when leader\n  (displayln \"leader elected, term: \" (raft-term leader)))\n\n;; 5. Propose a command to the Raft log (fire-and-forget)\n;;    Returns (values 'ok index) or (values 'not-leader #f)\n(when leader\n  (guard (exn [#t (void)])\n    (raft-propose! leader '(event \"evt_1\" \"payment.completed\" 1776036929))))\n\n;; 6. Inspect the committed log\n(when leader\n  (displayln \"commit-index: \" (raft-commit-index leader))\n  (displayln \"log: \" (raft-log leader)))\n\n;; 7. Check cluster state\n(raft-leader? leader)          ;; => #t\n(raft-state leader)            ;; => 'leader\n(raft-term leader)             ;; => integer (increments on re-election)\n\n;; 8. Graceful shutdown\n(for-each raft-stop! (raft-cluster-nodes cluster))\n\n;; Helper: fire-and-forget event logging (safe from any thread)\n(def (raft-log-event! cluster event-id event-type)\n  (let ([leader (raft-cluster-leader cluster)])\n    (when leader\n      (guard (exn [#t (void)])\n        (raft-propose! leader\n          `(event ,event-id ,event-type ,(time-second (current-time))))))))\n",
+    "notes": "\n(std raft) is IN-PROCESS ONLY. Uses (std misc channel) for node communication — no TCP. \"Designed to be connected to a transport layer for cross-process operation.\"\n\n(std crdt) does NOT exist in the stdlib — verified at runtime.\n\nraft-node-id is NOT exported — you cannot get a node's integer ID from outside the module. Use raft-state/raft-term/raft-commit-index to inspect nodes.\n\nElection timeout: random 150–300ms. Heartbeat: 50ms. A 500ms sleep after raft-start! is enough to reliably have a leader elected. The cluster may re-elect (term increments) due to timing — this is normal.\n\nraft-propose! is synchronous (blocks until leader enqueues, replies ok/not-leader). For fire-and-forget, wrap in (guard (exn [#t (void)]) ...).\n\nmake-raft-cluster takes a COUNT (integer), not a list of nodes. Nodes get IDs 0..N-1.\n"
+  },
+  {
+    "id": "actor-registry-register",
+    "title": "Register and look up actors by name with (std actor registry)",
+    "tags": [
+      "actor",
+      "registry",
+      "register",
+      "whereis",
+      "named-actor"
+    ],
+    "imports": [
+      "(std actor)"
+    ],
+    "code": "\n;; The registry is itself an actor — start it once before using register!/whereis.\n(start-registry!)\n\n;; Spawn an actor and register it under a name.\n;; register! takes (name actor-ref) — NAME IS FIRST.\n(def worker (spawn-actor (lambda (msg) (displayln \"got: \" msg))))\n(register! 'my-worker worker)   ;; => 'ok or 'already-registered\n\n;; Look up by name\n(def ref (whereis 'my-worker))  ;; => actor-ref or #f\n(when ref (send ref \"hello\"))\n\n;; List all registered names\n(registered-names)  ;; => list of symbols\n\n;; Unregister explicitly (auto-unregistered on actor death via monitor)\n(unregister! 'my-worker)\n\n;; Note: registry uses ask-sync internally — calls block briefly.\n;; The registry actor auto-unregisters names when their actors die\n;; (via monitor DOWN messages).\n\n;; IMPORTANT: The transport layer's lookup-local-actor uses numeric actor-ref-id,\n;; NOT the registry. register!/whereis and transport are two separate lookup systems.\n;; For cross-node refs, share actor-ref-id (integer) out-of-band, not the registry name.\n",
+    "notes": "\nregister! arg order is (name actor-ref) — name FIRST. This is the opposite of what you might expect from Erlang's register/2 which takes (Name, Pid). Easy to swap accidentally.\n\nstart-registry! must be called before any register!/whereis/unregister!/registered-names. The registry is an actor — without it running, ask-sync will hang or error.\n\nThe registry and transport lookup are INDEPENDENT systems:\n- registry: symbolic name → actor-ref (local process only)\n- transport lookup-local-actor: numeric integer ID → actor-ref (used by remote send dispatch)\n\nspawn-actor can optionally take a name: (spawn-actor behavior 'my-name) — this stores the name in actor-ref-name field but does NOT register it in the registry. You must call register! separately.\n"
+  },
+  {
+    "id": "compile-program-r6rs-atom-meta-conflict",
+    "title": "Fix \"multiple definitions for atom? and meta\" in compile-program (R6RS mode)",
+    "tags": [
+      "compile-program",
+      "R6RS",
+      "import-conflict",
+      "atom",
+      "meta",
+      "chezscheme",
+      "WPO",
+      "static-binary"
+    ],
+    "imports": [],
+    "code": "\n;; PROBLEM: When compiling a .ss file with compile-program (R6RS top-level\n;; program mode — used for WPO/static binary builds), you may get:\n;;\n;;   Exception: multiple definitions for meta and atom? in body\n;;              (top-level-program ...)\n;;\n;; CAUSE: Chezscheme exports BOTH `meta` (a Chez syntax keyword) and\n;; `atom?` as names. (jerboa prelude) re-exports its own versions of\n;; both from (std misc meta) and (std misc atom). In --script mode\n;; this is silently resolved by last-wins, but in R6RS top-level\n;; program mode (compile-program) duplicate bindings are a fatal error.\n;;\n;; FIX: Exclude `atom?` and `meta` from chezscheme in the import clause.\n;; This mirrors what the prelude itself does internally.\n\n;; WRONG — works in --script but fails in compile-program:\n#;(import (except (chezscheme)\n            make-hash-table hash-table? sort sort! format printf fprintf\n            iota 1+ 1- path-extension path-absolute?\n            with-input-from-string with-output-to-string\n            make-date partition)\n          (jerboa prelude) ...)\n\n;; CORRECT — add atom? and meta to the except clause:\n(import (except (chezscheme)\n          make-hash-table hash-table?\n          sort sort! format printf fprintf\n          iota 1+ 1-\n          path-extension path-absolute?\n          with-input-from-string with-output-to-string\n          make-date partition\n          atom? meta)       ; ← must add these for compile-program\n        (except (jerboa prelude) make-time or-else)\n        ...)\n\n;; NOTE: `make-time` must also be excluded from the prelude (not chezscheme)\n;; so that Chez's make-time remains available for (make-time 'time-duration ...).\n;; `or-else` conflicts between (jerboa prelude) and (std stm).\n",
+    "notes": "The prelude's own internal import already does (except (chezscheme) ... atom? meta) — so in --script mode the prelude's versions win silently. In compile-program (R6RS top-level program) mode, having both chezscheme AND prelude export the same name is a fatal \"multiple definitions in body\" error even though the error message says \"in body\" (not \"in imports\"). The isolated test with an empty body + full imports will ALSO fail — the error is an import-level conflict despite the misleading \"in body\" message.\n\nAdditional names that may need to be excluded from chezscheme depending on your imports: `merge` (if importing (std ...) modules that export it). The full safe set to exclude from chezscheme when using (jerboa prelude): make-hash-table hash-table? sort sort! format printf fprintf iota 1+ 1- path-extension path-absolute? with-input-from-string with-output-to-string make-date partition make-time atom? meta."
+  },
+  {
+    "id": "static-binary-gcc13-musl-dl-find-object",
+    "title": "Fix \"undefined reference to _dl_find_object\" when linking static binary with GCC 13 + musl",
+    "tags": [
+      "static-binary",
+      "musl",
+      "GCC13",
+      "libgcc_eh",
+      "_dl_find_object",
+      "linker",
+      "c-shim"
+    ],
+    "imports": [],
+    "code": "\n/* PROBLEM: musl-gcc with GCC 13 system toolchain pulls in\n * /usr/lib/gcc/x86_64-linux-gnu/13/libgcc_eh.a which references\n * _dl_find_object — a glibc 2.35+ symbol that musl does not provide.\n *\n * Linker error:\n *   /usr/lib/gcc/x86_64-linux-gnu/13/libgcc_eh.a(unwind-dw2-fde-dip.o):\n *   undefined reference to `_dl_find_object'\n *\n * FIX: Add a stub in your C main file. The function is used by\n * GCC's DWARF unwinder for exception table lookup. Chez Scheme uses\n * its own continuation/exception system, not libgcc unwinding, so\n * returning -1 (not found) is safe.\n */\n\n/* Place this near the other stubs in edge-main.c / your static main: */\nint _dl_find_object(void *addr, void *result) {\n    (void)addr;\n    (void)result;\n    return -1;  /* not found — safe for Chez which doesn't use libgcc unwinding */\n}\n\n/* Also ensure your other stubs are present: */\nstatic int _static_dummy;\nvoid  *dlopen (const char *p, int m) { (void)p; (void)m; return &_static_dummy; }\nvoid  *dlsym  (void *h, const char *n) { (void)h; (void)n; return NULL; }\nint    dlclose(void *h) { (void)h; return 0; }\nchar  *dlerror(void)    { return NULL; }\n",
+    "notes": "This stub is needed when: (1) the build host has GCC 13+ installed and (2) you're using musl-gcc for static linking. The GCC 13 exception handler library references `_dl_find_object` which was added to glibc 2.35 for finding unwind tables in dynamically loaded libraries. Since musl has no such function and Chez Scheme doesn't use GCC-style stack unwinding, the stub returning -1 is safe. This stub must be in the same translation unit as main() to ensure it takes precedence over any weak symbol in the archives."
+  },
+  {
+    "id": "static-binary-jemacs-static-auto-set",
+    "title": "Auto-set JEMACS_STATIC=1 in static binary C main to skip load-shared-object",
+    "tags": [
+      "static-binary",
+      "JEMACS_STATIC",
+      "putenv",
+      "load-shared-object",
+      "C-main",
+      "stdlib"
+    ],
+    "imports": [],
+    "code": "\n/* In the C main of a static Chez binary, call putenv(\"JEMACS_STATIC=1\")\n * BEFORE Sscheme_init. This tells Jerboa stdlib modules that use the\n * JEMACS_STATIC check to skip their load-shared-object calls.\n *\n * Without this, modules like (std net io) call (load-shared-object #f)\n * at startup to load libc symbols — which crashes in a musl static binary\n * since musl's load-shared-object throws \"not supported\".\n */\n\n#include \"scheme.h\"\n#include <stdlib.h>  /* for putenv */\n\nint main(int argc, const char *argv[]) {\n    /* Must be set BEFORE Sscheme_init — Scheme module initializers\n     * run during Sbuild_heap and check this variable. */\n    putenv(\"JEMACS_STATIC=1\");\n\n    Sscheme_init(NULL);\n    Sregister_boot_file_bytes(\"petite\", petite_boot_data, petite_boot_size);\n    Sregister_boot_file_bytes(\"scheme\", scheme_boot_data, scheme_boot_size);\n    Sbuild_heap(NULL, custom_init);  /* custom_init registers Sforeign_symbol */\n\n    const char *prog = write_program_tmpfile();\n    Sscheme_program(prog, argc, argv);\n    unlink(prog);\n    Sscheme_deinit();\n    return 0;\n}\n\n/* ── In stdlib .sls modules: use this check pattern ── */\n/*\n(define _native-loaded\n  ;; In static builds (JEMACS_STATIC=1), symbols pre-registered — skip .so load.\n  (let ([static? (let ([v (getenv \"JEMACS_STATIC\")])\n                   (and v (not (string=? v \"\")) (not (string=? v \"0\"))))])\n    (if static?\n        #t\n        (or (guard (e [#t #f]) (load-shared-object \"libfoo.so\") #t)\n            (error 'mymodule \"libfoo.so not found\")))))\n*/\n",
+    "notes": "Two modules in the Jerboa stdlib that had hard (error ...) at the end of their load-shared-object chain and needed JEMACS_STATIC guards added: (std db sqlite-native) and (std os epoll-native). Modules like (std net tls-rustls) and (std crypto native-rust) already ended with #t and degraded gracefully. The check pattern used in (std net io) and added to others: `(let ([v (getenv \"JEMACS_STATIC\")]) (and v (not (string=? v \"\")) (not (string=? v \"0\"))))` — handles unset (v=#f), empty string, and \"0\" as all meaning \"not static\".\n\nNote: (std net io) uses this check to skip `(load-shared-object #f)` — the `#f` form loads the current process's symbols via dlopen(NULL). In a static binary this is unnecessary since all symbols are pre-registered via Sforeign_symbol."
+  },
+  {
+    "id": "libjerboa-native-actual-crypto-symbol-names",
+    "title": "Correct libjerboa_native.a crypto symbol names for Sforeign_symbol registration",
+    "tags": [
+      "libjerboa_native",
+      "Sforeign_symbol",
+      "crypto",
+      "static-binary",
+      "FFI",
+      "symbol-names"
+    ],
+    "imports": [],
+    "code": "\n/* libjerboa_native.a (Rust) uses SPECIFIC names — not generic wrappers.\n * Always verify with: nm libjerboa_native.a | grep \"^[0-9a-f].*T jerboa_\"\n *\n * WRONG names (commonly guessed):     CORRECT names (from archive):\n *   jerboa_sha(int, ...)          →   jerboa_sha1, jerboa_sha256,\n *                                       jerboa_sha384, jerboa_sha512\n *   jerboa_hmac_sha(int, ...)     →   jerboa_hmac_sha256\n *                                       jerboa_hmac_sha256_verify\n *   jerboa_hkdf_sha(int, ...)     →   jerboa_hkdf_sha256\n *   jerboa_md(int, ...)           →   jerboa_md5\n *   jerboa_chacha(...)            →   jerboa_chacha20_seal\n *                                       jerboa_chacha20_open\n *   jerboa_argon(...)             →   jerboa_argon2id_hash\n *                                       jerboa_argon2id_verify\n *   jerboa_pbkdf(int, ...)        →   jerboa_pbkdf2_derive\n *                                       jerboa_pbkdf2_verify\n *   jerboa_eventfd_signal(int)    →   same name but returns int (not void)\n *   jerboa_eventfd_drain(int)     →   same name but returns int (not void)\n *\n * Complete Sforeign_symbol registration block for crypto:\n */\nSforeign_symbol(\"jerboa_sha1\",               (void *)jerboa_sha1);\nSforeign_symbol(\"jerboa_sha256\",             (void *)jerboa_sha256);\nSforeign_symbol(\"jerboa_sha384\",             (void *)jerboa_sha384);\nSforeign_symbol(\"jerboa_sha512\",             (void *)jerboa_sha512);\nSforeign_symbol(\"jerboa_hmac_sha256\",        (void *)jerboa_hmac_sha256);\nSforeign_symbol(\"jerboa_hmac_sha256_verify\", (void *)jerboa_hmac_sha256_verify);\nSforeign_symbol(\"jerboa_hkdf_sha256\",        (void *)jerboa_hkdf_sha256);\nSforeign_symbol(\"jerboa_md5\",                (void *)jerboa_md5);\nSforeign_symbol(\"jerboa_chacha20_seal\",      (void *)jerboa_chacha20_seal);\nSforeign_symbol(\"jerboa_chacha20_open\",      (void *)jerboa_chacha20_open);\nSforeign_symbol(\"jerboa_argon2id_hash\",      (void *)jerboa_argon2id_hash);\nSforeign_symbol(\"jerboa_argon2id_verify\",    (void *)jerboa_argon2id_verify);\nSforeign_symbol(\"jerboa_pbkdf2_derive\",      (void *)jerboa_pbkdf2_derive);\nSforeign_symbol(\"jerboa_pbkdf2_verify\",      (void *)jerboa_pbkdf2_verify);\nSforeign_symbol(\"jerboa_scrypt\",             (void *)jerboa_scrypt);\nSforeign_symbol(\"jerboa_aead_seal\",          (void *)jerboa_aead_seal);\nSforeign_symbol(\"jerboa_aead_open\",          (void *)jerboa_aead_open);\nSforeign_symbol(\"jerboa_random_bytes\",       (void *)jerboa_random_bytes);\nSforeign_symbol(\"jerboa_timing_safe_equal\",  (void *)jerboa_timing_safe_equal);\n\n/* Networking: getsockname and getpeername are also required */\nSforeign_symbol(\"getsockname\",  (void *)getsockname);\nSforeign_symbol(\"getpeername\",  (void *)getpeername);\n\n/* Correct extern declarations for crypto functions: */\nextern int jerboa_sha1(unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_sha256(unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_sha384(unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_sha512(unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_hmac_sha256(unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_hmac_sha256_verify(unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_hkdf_sha256(unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_md5(unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern unsigned long long jerboa_chacha20_seal(unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern unsigned long long jerboa_chacha20_open(unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_argon2id_hash(unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned long long,unsigned long long,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_argon2id_verify(unsigned char*,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_pbkdf2_derive(int,unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_pbkdf2_verify(int,unsigned char*,unsigned long long,unsigned char*,unsigned long long,unsigned long long,unsigned char*,unsigned long long);\nextern int jerboa_eventfd_create(void);\nextern int jerboa_eventfd_signal(int);   /* returns int, not void */\nextern int jerboa_eventfd_drain(int);    /* returns int, not void */\n",
+    "notes": "The musl-target libjerboa_native.a is pre-built in the Docker image. If you add new Rust FFI functions (like jerboa_eventfd_* was added), the archive may be stale. Rebuild inside Docker:\n\n```bash\ndocker run --rm -v ~/mine/jerboa:/build/mine/jerboa -w /build/mine/jerboa/jerboa-native-rs \\\n  jerboa21/jerboa cargo build --release --target x86_64-unknown-linux-musl --no-default-features\n```\n\nNote the `:ro` flag is removed for the rebuild run, then restored for the actual static build.\n\nTo check what's actually in the archive:\n```bash\nnm libjerboa_native.a | grep \"^[0-9a-f].*T jerboa_\" | awk '{print $3}' | sort\n```"
+  },
+  {
+    "id": "cloj-reader-mode",
+    "title": "Enable Clojure reader compatibility mode (#!cloj / reader-cloj-mode)",
+    "tags": [
+      "clojure",
+      "reader",
+      "cloj",
+      "syntax",
+      "compatibility",
+      "fn-literal"
+    ],
+    "imports": [
+      "(jerboa cloj)"
+    ],
+    "code": "\n;; === Option 1: file directive (Jerboa reader only — REPL, jerboa-read-file) ===\n;; Put at the top of any .ss file loaded through the Jerboa reader:\n#!cloj\n;; Now Clojure syntax is active for the rest of this file:\n;;   {}        → hash-map literal     {:a 1 :b 2}\n;;   #()       → anonymous function   #(+ % 1)  → (lambda (%1) (+ %1 1))\n;;   :name     → keyword              :foo  → #:foo\n;;   nil       → #f\n;;   true/#f   → #t / #f\n;;   @x        → (deref x)            (always-on, no mode needed)\n;;   #{}       → eq-hashtable set     #{1 2 3}  (always-on)\n\n;; === Option 2: programmatic activation ===\n(import (jerboa cloj))\n(activate-cloj-reader!)   ; sets (reader-cloj-mode #t) in current scope\n\n;; === Option 3: use (jerboa clojure) — activates automatically ===\n(import (jerboa clojure))\n;; reader-cloj-mode, fn-literal, activate-cloj-reader! all re-exported\n\n;; === fn-literal examples ===\n;; #(+ % 1)          → (lambda (%1) (+ %1 1))\n;; #(str %1 \" \" %2)  → (lambda (%1 %2) (str %1 \" \" %2))\n;; #(apply + %&)     → (lambda %& (apply + %&))\n;; Can also call fn-literal directly (without reader mode):\n(import (jerboa cloj))\n(def double (fn-literal (* %1 2)))  ; same as (lambda (%1) (* %1 2))\n(double 5)  ; => 10\n\n;; === Mode query ===\n(reader-cloj-mode)       ; → #t or #f\n(reader-cloj-mode #t)    ; activate\n(reader-cloj-mode #f)    ; deactivate (restore Jerboa defaults)\n",
+    "notes": "\nIMPORTANT: Clojure reader syntax ({}  #()  :name  nil/true/false) ONLY works via the Jerboa reader pipeline (REPL, jerboa-read-file, jerboa-read-string). It does NOT work in files run with `scheme --script` or jerbuild-compiled .ss files — those use Chez's native (read port).\n\nSyntax gated on (reader-cloj-mode):\n  {}      — default=method dispatch {method obj args}, cloj=hash-map literal\n  #()     — default=vector #(1 2 3), cloj=anonymous function #(+ % 1)\n  :name   — default=module path :std/sort, cloj=keyword :foo\n  nil/true/false — default=symbols, cloj=mapped to #f/#t/#f\n\nAlways-on (no mode needed):\n  @x      — deref (clojure atom deref)\n  #{}     — eq-hashtable set literal (hash-set items)\n\nfn-literal: % is alias for %1. %& collects rest args. No nesting — #() inside #() is undefined.\n\nParameter scoping: (reader-cloj-mode #t) in a compiled library body does NOT persist to importing code. Use activate-cloj-reader! as an exported function that callers invoke, or rely on #!cloj at file top.\n",
+    "related": [
+      "hash-set",
+      "keyword-syntax",
+      "reader-extensions"
+    ]
   }
 ]

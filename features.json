@@ -15,7 +15,7 @@
     "use_case": "When preparing a Jerboa project for static binary compilation (musl or otherwise), before spending 30+ minutes on a Docker build that fails at runtime.",
     "example_scenario": "Building jemacs-qt static: (chez-qt ffi) calls load-shared-object at top level. Without JEMACS_STATIC=1 the compilation step fails with a dlopen error inside the container. Finding this required reading vendor/chez-qt/chez-qt/ffi.ss manually. A tool scan would have flagged it immediately.",
     "estimated_token_reduction": "~800 tokens per static build session (eliminates 3-5 grep/read cycles to find unguarded FFI calls)",
-    "votes": 0
+    "votes": 1
   },
   {
     "id": "doc-code-block-verify",
@@ -33,7 +33,7 @@
     "use_case": "When shipping a design doc or porting guide that contains many worked code examples, before committing. Also for periodic audits of existing docs to catch drift when APIs change. Would have prevented shipping docs/core-async.md with two broken references (`@out` reader sugar that doesn't exist, `(swap! out cons v)` with wrong argument order) — both only discovered by running the example manually after commit.",
     "example_scenario": "docs/core-async.md Section 17 contains a 20-line worked example that ports Clojure's scatter/gather pattern to Jerboa. Two lines use `@out` (Clojure atom-deref reader sugar that doesn't exist in Jerboa) and one uses `(swap! out cons v)` instead of `(swap! out (cut cons v <>))`. A `jerboa_doc_verify docs/core-async.md` call would have compiled the block, noted \"variable @out is not bound\" at the fence's line, and caught both errors in one shot. Instead I wrote a /tmp/test-async-example.ss file, ran it by hand, saw the first error, fixed it, re-ran, saw the second, fixed it, re-ran again. Three iterations that one tool call could collapse into one. Same friction applies to every cookbook recipe on disk and every README code snippet.",
     "estimated_token_reduction": "~1500 tokens per doc-ship session (replaces: write tmp file → read → run → parse error → re-write → re-run → parse → fix → re-run cycle). Multiplicative across every code block in a large doc.",
-    "votes": 1
+    "votes": 2
   },
   {
     "id": "jerboa-safe-prelude-default",
@@ -139,7 +139,7 @@
     "use_case": "When updating documentation that enumerates whether a set of external-ecosystem names (Clojure's, Racket's, R6RS's) are actually present in Jerboa. Also during porting work, when you need to quickly know which names from a source file will resolve vs need polyfills. Any time the question is \"do these N functions exist in Jerboa?\"",
     "example_scenario": "While updating `docs/clojure-vs-jerboa.md` to add status markers, I needed to verify whether Clojure names like `merge-with`, `zipmap`, `reduce-kv`, `memoize`, `iterate`, `repeatedly`, `fnil`, `every-pred`, `some-fn`, `trampoline`, `min-key`, `max-key`, `min-by`, `max-by`, `iterate-n` exist in Jerboa. I ran 5 separate `Grep` calls across `lib/` to check — a total of ~15 symbol lookups. A single `jerboa_symbol_exists_batch` call with the list would have returned `{select-keys: exists, merge: exists, everything-else: absent}` in one shot. Also discovered that the existing doc had several stale claims about non-existent functions (iterate-n, min-by, max-by, fnil-in-prelude, every-pred-in-prelude) because no one had cheap way to sanity-check a batch of names.",
     "estimated_token_reduction": "~600 tokens per doc-verification pass (replaces 4-6 grep calls + result inspection with 1 structured tool call). Higher for porting workflows that cross-check dozens of names.",
-    "votes": 0
+    "votes": 2
   },
   {
     "id": "detect-fork-in-fiber-context",
@@ -173,6 +173,94 @@
     "use_case": "Any edit to deeply nested Scheme code — especially match+let loop+cond+let* combinations common in actor worker functions. The bug is invisible while the process is running (Chez Scheme re-reads on restart) and only surfaces as a cold-start parse error.",
     "example_scenario": "jerboa-edge make-worker had a real bracket mismatch (close sequence ))]) instead of ))]])) in a 5-level cond-inside-let*-inside-match-inside-let-loop. The balance checker flagged it each session but it was dismissed as a heuristic warning because the already-running service responded to health checks. On the next cold restart: Exception in read: bracketed list terminated by parenthesis. The entire Phase 2 filter testing session was on a service running from stale code — the fix hadn't taken effect at all.",
     "estimated_token_reduction": "~500 tokens per deep edit (eliminates the restart→parse-error→debug cycle; inline warning at edit time is 1 line vs 3-5 tool calls to diagnose the cold-start failure)",
+    "votes": 0
+  },
+  {
+    "id": "module-doc-with-calling-convention-example",
+    "title": "jerboa_doc should include a minimal working usage example for each exported symbol",
+    "description": "jerboa_doc and jerboa_module_catalog currently return type, arity, and qualified name — but not a usage example. For modules with non-obvious calling conventions (argument order, overloaded variadic signatures, registry patterns), arity alone is misleading and forces reading the full stdlib source. A short 2-5 line example showing the correct call pattern would prevent the wrong-arg-order failure mode entirely.",
+    "impact": "high",
+    "tags": [
+      "doc",
+      "example",
+      "calling-convention",
+      "module-catalog",
+      "arity",
+      "usage"
+    ],
+    "use_case": "When writing code that uses a stdlib module for the first time, especially modules with variadic signatures or unusual argument ordering (registry-first, config-last, etc.).",
+    "example_scenario": "Implementing (std metrics) in jerboa-edge Phase 3: make-counter reported \"3 or more arguments (variadic, arity mask: -8)\" — unhelpful. Three successive jerboa_eval attempts failed (registry last, then registry as #f, then keyword syntax) before reading the full 200-line stdlib source to discover that registry is the FIRST argument: (make-counter reg name help [label-names]). A jerboa_doc call returning \"(make-counter reg name help) ;; reg is the registry\" would have resolved this in 1 tool call instead of 5 (3 eval + 1 stdlib_source read + 1 eval to confirm).",
+    "estimated_token_reduction": "~800 tokens per unfamiliar module (replaces 3 failed evals + stdlib source read + confirm eval with 1 doc call showing correct pattern)",
+    "votes": 1
+  },
+  {
+    "id": "verify-shebang-script-support",
+    "title": "jerboa_verify and jerboa_compile_check should handle shebang-line script files",
+    "description": "When a .ss file starts with a shebang line (#!/usr/bin/env ... or #!/usr/bin/env -S scheme ...), jerboa_verify reports \"invalid syntax scheme\" and jerboa_compile_check (with force_chez_reader) reports \"invalid syntax #!/usr/bin/env at char 0\". The tools should strip the shebang before analysis, the same way the Chez scheme interpreter does when running --script. Script files (.ss with shebang) are a common deployment pattern for single-file services — all jerboa-edge phases use this form.",
+    "impact": "medium",
+    "tags": [
+      "verify",
+      "shebang",
+      "script",
+      "compile-check",
+      "edge"
+    ],
+    "use_case": "Verifying a single-file Jerboa service that uses a shebang for direct execution (chmod +x edge.ss && ./edge.ss). Currently jerboa_verify always fails on these files, forcing fallback to make check + bash.",
+    "example_scenario": "jerboa-edge/edge.ss starts with #!/usr/bin/env -S scheme --libdirs lib --script. Running jerboa_verify on it returns \"Exception: invalid syntax scheme\" — a false positive. The only way to confirm the file is valid is to run make check (which only checks that the scheme binary runs, not the file itself) or start the server via bash. This costs 2-3 extra tool calls per edit cycle.",
+    "estimated_token_reduction": "~300 tokens per verify session on script files (eliminates fallback to make check + bash startup test)",
+    "votes": 0
+  },
+  {
+    "id": "module-exists-check",
+    "title": "Quick check whether a stdlib module path exists without loading it",
+    "description": "A lightweight tool that checks whether a module path like (std crdt) or (std actor transport) exists in the Jerboa stdlib, without loading or importing it. Returns exists: true/false plus the .sls file path if found. Currently the only way to check is jerboa_module_exports (which errors loudly if absent) or grepping lib/. The tool should accept both (std ...) and :std/... path forms.",
+    "impact": "low",
+    "tags": [
+      "module",
+      "exists",
+      "stdlib",
+      "check",
+      "discovery"
+    ],
+    "use_case": "When a design doc or plan mentions a module and you need to confirm it exists before writing code that imports it — especially for modules you're less sure about.",
+    "example_scenario": "Phase 4 of jerboa-edge planned to use (std crdt) for replicated state. Confirmed non-existence required attempting jerboa_module_exports which returned an error message — one extra tool call plus a confusing error. A jerboa_module_exists (std crdt) returning {exists: false} in 0 tokens of error noise would be cleaner and could be batched with other checks.",
+    "estimated_token_reduction": "~150 tokens per check (converts loud error from module_exports into clean boolean; batchable for multiple modules)",
+    "votes": 1
+  },
+  {
+    "id": "static-binary-sforeign-symbol-coverage-check",
+    "title": "Check that C main Sforeign_symbol registrations cover all foreign-procedure symbols in a WPO binary",
+    "description": "Given a C main source file and a set of .sls library files (or a project directory), extract: (1) all `Sforeign_symbol(\"name\", ...)` registrations from the .c file and (2) all `(foreign-procedure \"name\" ...)` strings from the .sls files. Report the diff: symbols referenced by foreign-procedure but NOT registered in Sforeign_symbol will cause \"no entry for name\" crashes at runtime. Also report symbols registered but not referenced (harmless but cluttering). Should optionally cross-check against the actual archive with `nm` to catch wrong symbol names (e.g., `jerboa_sha` vs actual `jerboa_sha256`).",
+    "impact": "high",
+    "tags": [
+      "static-binary",
+      "Sforeign_symbol",
+      "foreign-procedure",
+      "FFI",
+      "coverage",
+      "musl"
+    ],
+    "use_case": "When writing or updating the C main for a static Jerboa binary, before spending 30 minutes on a Docker build that then crashes at runtime with \"no entry for getsockname\".",
+    "example_scenario": "Building jerboa-edge static binary: the C main had `jerboa_sha`, `jerboa_hmac_sha`, `jerboa_argon`, `jerboa_pbkdf`, `jerboa_chacha` as registered names. The actual archive had `jerboa_sha256`, `jerboa_hmac_sha256`, `jerboa_argon2id_hash`, etc. The linker errored on all of them as undefined references (15+ symbols). Additionally `getsockname` and `getpeername` were used by (std net io) but not registered, causing runtime \"no entry\" crashes. Finding each missing symbol required: (1) Docker build → linker error or runtime crash → (2) grep stdlib source for foreign-procedure uses → (3) nm archive to verify actual name → (4) edit C main → repeat. A coverage check tool would have reported all gaps in one shot before the first build attempt.",
+    "estimated_token_reduction": "~2000 tokens per static build (eliminates 4-6 round-trips of build→crash→grep→nm→fix, each ~300-400 tokens)",
+    "votes": 0
+  },
+  {
+    "id": "doc-implementation-status-audit",
+    "title": "Audit design doc claims against actual file/module existence",
+    "description": "Scan a markdown design document for implementation status claims (tables with \"Done\"/\"Complete\" markers, file path references like `src/foo/bar.ss` or `lib/foo/bar.sls`, module path references like `(jerboa-db core)`) and verify each one against the filesystem. Report: (1) files claimed to exist but missing, (2) modules claimed but not importable, (3) status markers (\"Done\", \"Complete\", \"Implemented\") on features with no corresponding source. Returns a diff-style report: \"MISSING: src/jerboa-db/datom.ss (claimed in Phase 1 table, line 452)\" etc.",
+    "impact": "high",
+    "tags": [
+      "doc",
+      "audit",
+      "status",
+      "implementation",
+      "design",
+      "verify"
+    ],
+    "use_case": "When reviewing or inheriting a design document that claims implementation status. Prevents shipping docs that say \"All 8 phases complete\" when zero implementation files exist — which wastes entire sessions on false assumptions.",
+    "example_scenario": "docs/jerboa-db.md claimed \"All 8 phases implemented (31 files, ~6200 lines, 34/34 tests passing)\" with every scorecard row marked \"Done\". In reality, zero of the 31 src/jerboa-db/*.ss files existed. Discovering this required: (1) grep -r for datom/datomic across lib/src/tests (found nothing), (2) spawning an Explore agent to search comprehensively, (3) manually checking src/jerboa-db/ directory existence. A single `jerboa_doc_status_audit docs/jerboa-db.md` would have returned \"0/31 claimed files exist, 52 features marked Done with no source\" in one call.",
+    "estimated_token_reduction": "~2000 tokens per doc review session (eliminates multiple grep/find/agent cycles to verify claims; prevents entire sessions wasted on false assumptions about what's already built)",
     "votes": 0
   }
 ]
