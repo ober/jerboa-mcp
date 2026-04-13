@@ -210,8 +210,11 @@ export function registerBalancedReplaceTool(server: McpServer): void {
       const newBalance = checkBalance(replaced!);
 
       // Decision logic
+      const origErrCount = originalBalance.errors.length;
+      const newErrCount = newBalance.errors.length;
+
       if (originalBalance.ok && !newBalance.ok) {
-        // Check net delimiter change across ALL edits
+        // Was balanced, now broken — check net delimiter change across ALL edits
         let totalOldCounts: Record<string, number> = { '(': 0, ')': 0, '[': 0, ']': 0, '{': 0, '}': 0 };
         let totalNewCounts: Record<string, number> = { '(': 0, ')': 0, '[': 0, ']': 0, '{': 0, '}': 0 };
         for (const edit of editList) {
@@ -252,17 +255,48 @@ export function registerBalancedReplaceTool(server: McpServer): void {
           };
         }
         // Net change is zero — allow the edit with a note
+      } else if (!originalBalance.ok && !newBalance.ok && newErrCount > origErrCount) {
+        // Pre-existing issues and this edit makes them worse — reject
+        const errorDetails = newBalance.errors
+          .map((err) => {
+            switch (err.kind) {
+              case 'unclosed':
+                return `  Unclosed '${err.char}' at line ${err.line}, col ${err.col}${err.context ? ` (near '${err.context}')` : ''}`;
+              case 'unexpected':
+                return `  Unexpected closer '${err.char}' at line ${err.line}, col ${err.col}`;
+              case 'mismatch':
+                return `  Mismatched '${err.char}' at line ${err.line}, col ${err.col} — expected '${err.expected}'`;
+            }
+          })
+          .join('\n');
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text:
+              `REJECTED: This edit would increase balance errors from ${origErrCount} to ${newErrCount}.\n\n` +
+              `Balance errors in result:\n${errorDetails}\n\n` +
+              `The file was NOT modified. Adjust your new_string to reduce (not increase) the error count.`,
+          }],
+          isError: true,
+        };
       }
+
+      // Helper: format balance status line
+      const balanceStatusLine = (bal: typeof newBalance) =>
+        bal.ok
+          ? `Balance: OK (${bal.topLevelForms} top-level forms)`
+          : `Balance: ${bal.errors.length} error(s) remaining — file still has unbalanced delimiters`;
 
       // Compute summary
       const lines: string[] = [];
 
       if (!originalBalance.ok && newBalance.ok) {
-        lines.push('Note: This edit FIXES a pre-existing balance issue.');
+        lines.push('Note: This edit FIXES the pre-existing balance issue.');
       } else if (!originalBalance.ok && !newBalance.ok) {
         lines.push(
-          'Warning: The file has pre-existing balance issues. ' +
-          'The edit does not make them worse, but the file is still unbalanced.',
+          `Warning: File had ${origErrCount} balance error(s) before this edit; ` +
+          `${newErrCount} remain after. File is still unbalanced.`,
         );
       }
 
@@ -290,7 +324,7 @@ export function registerBalancedReplaceTool(server: McpServer): void {
           lines.push('---');
           lines.push('');
         }
-        lines.push(`Balance: OK (${newBalance.topLevelForms} top-level forms)`);
+        lines.push(balanceStatusLine(newBalance));
         lines.push('');
         lines.push('Set dry_run to false to apply this change.');
 
@@ -303,7 +337,7 @@ export function registerBalancedReplaceTool(server: McpServer): void {
       await writeFile(file_path, replaced!, 'utf-8');
 
       lines.push(`Applied ${editSummary} in ${file_path}`);
-      lines.push(`Balance: OK (${newBalance.topLevelForms} top-level forms)`);
+      lines.push(balanceStatusLine(newBalance));
 
       return {
         content: [{ type: 'text' as const, text: lines.join('\n') }],
