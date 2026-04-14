@@ -111,7 +111,7 @@
     "message": "hash-ref called with missing key (2-arg form raises error)",
     "explanation": "In Jerboa, hash-ref with 2 args raises an error if the key is missing. hash-ref with 3 args returns a default. hash-get always returns #f for missing keys (it's a macro).",
     "fix": "Use (hash-get table key) for safe access (returns #f), or (hash-ref table key default) with a default value, or check with (hash-key? table key) first.",
-    "code_example": "; Wrong: (hash-ref table 'key) \u2014 error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
+    "code_example": "; Wrong: (hash-ref table 'key) — error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
     "imports": [
       "(jerboa prelude)"
     ],
@@ -377,7 +377,7 @@
     "pattern": "server closed connection|server EOF|disconnected.*unexpect",
     "type": "EINTR Spontaneous Disconnect",
     "message": "Client/server connection drops randomly during operation",
-    "explanation": "C FFI wrappers for recv/send/read return -1 on EINTR (signal interruption) without retrying. The Scheme layer interprets -1 as EOF/error and closes the connection. SIGCHLD from child processes is the most common trigger \u2014 any time a subprocess exits, the signal interrupts blocking I/O.",
+    "explanation": "C FFI wrappers for recv/send/read return -1 on EINTR (signal interruption) without retrying. The Scheme layer interprets -1 as EOF/error and closes the connection. SIGCHLD from child processes is the most common trigger — any time a subprocess exits, the signal interrupts blocking I/O.",
     "fix": "Wrap all blocking I/O syscalls in C shims with do { n = syscall(...); } while (n < 0 && errno == EINTR); loops. Check both recv, send, and read wrappers.",
     "code_example": "/* Before (broken): */\nssize_t n = recv(fd, buf, len, 0);\nif (n < 0) return -1;  /* EINTR treated as error! */\n\n/* After (fixed): */\nssize_t n;\ndo { n = recv(fd, buf, len, 0); } while (n < 0 && errno == EINTR);\nif (n < 0) return -1;",
     "imports": [],
@@ -392,8 +392,8 @@
     "type": "do-loop Infinite Loop",
     "message": "do-loop with = test never terminates when bound is negative",
     "explanation": "Chez do-loops conventionally use = for termination: (do ([r 0 (+ r 1)]) ((= r N)) ...). If N is negative (e.g., from (- rows 1) where rows=0), r increments past -1 and the loop never terminates. This caused a server hang in render-single-pane when terminal dimensions were 0x0.",
-    "fix": "Guard the input: (max 1 value) before subtraction, or use >= instead of = for the termination test. Also validate terminal dimensions at protocol boundaries \u2014 default 0 to 80/24.",
-    "code_example": ";; BROKEN: (do ([r 0 (+ r 1)]) ((= r (- 0 1))) ...) \u2192 infinite\n;; FIXED:\n(let ([rows (max 1 rows)])\n  (do ([r 0 (+ r 1)])\n      ((= r (- rows 1)))\n    (render-row r)))",
+    "fix": "Guard the input: (max 1 value) before subtraction, or use >= instead of = for the termination test. Also validate terminal dimensions at protocol boundaries — default 0 to 80/24.",
+    "code_example": ";; BROKEN: (do ([r 0 (+ r 1)]) ((= r (- 0 1))) ...) → infinite\n;; FIXED:\n(let ([rows (max 1 rows)])\n  (do ([r 0 (+ r 1)])\n      ((= r (- rows 1)))\n    (render-row r)))",
     "imports": [],
     "related_recipes": [
       "chez-terminal-size-zero-guard",
@@ -446,7 +446,7 @@
     "message": "Custom function name conflicts with auto-generated record accessor",
     "explanation": "define-record-type auto-generates accessors named recordtype-fieldname. Defining a function with the same name in the library body causes 'multiple definitions' at compile time.",
     "fix": "Rename the custom function to avoid collision with the auto-generated accessor. E.g., use -alloc-id instead of -next-id.",
-    "code_example": ";; Record has field next-id \u2192 generates table-next-id\n;; WRONG: (define (table-next-id t) ...)\n;; RIGHT: (define (table-alloc-id t) (let ([id (table-next-id t)]) ...))",
+    "code_example": ";; Record has field next-id → generates table-next-id\n;; WRONG: (define (table-next-id t) ...)\n;; RIGHT: (define (table-alloc-id t) (let ([id (table-next-id t)]) ...))",
     "imports": [],
     "related_recipes": [
       "chez-r6rs-library-duplicate-definition"
@@ -459,7 +459,7 @@
     "message": "SSH server rejects packets with 'MAC incorrect' after kex succeeds",
     "explanation": "OpenSSL's EVP_chacha20_poly1305() implements RFC 8439 AEAD which pads AAD/ciphertext to 16-byte boundaries and appends 8-byte LE length fields before computing Poly1305. OpenSSH's chacha20-poly1305@openssh.com uses raw Poly1305 over the plain concatenation (enc_length || enc_payload). The MAC tags are different.",
     "fix": "Do NOT use EVP_chacha20_poly1305(). Instead use EVP_chacha20() for encryption and EVP_MAC(\"POLY1305\") for raw MAC. Generate poly key from ChaCha20(K2, counter=0), encrypt with counter=1, MAC over raw concatenation.",
-    "code_example": "/* Wrong: EVP_chacha20_poly1305() \u2014 RFC 8439 AEAD */\n/* Right: EVP_chacha20() + EVP_MAC(\"POLY1305\") \u2014 raw */",
+    "code_example": "/* Wrong: EVP_chacha20_poly1305() — RFC 8439 AEAD */\n/* Right: EVP_chacha20() + EVP_MAC(\"POLY1305\") — raw */",
     "imports": [],
     "related_recipes": [
       "chez-ssh-chacha20-poly1305-openssh"
@@ -469,10 +469,10 @@
     "id": "stale-daemon-after-rebuild",
     "pattern": "fix doesn't work|still not working|still broken|still hangs|does not exit|deleted",
     "type": "Stale Daemon Process",
-    "message": "Changes not taking effect after rebuild \u2014 daemon running old binary",
+    "message": "Changes not taking effect after rebuild — daemon running old binary",
     "explanation": "When a daemon process is fork-exec'd via /proc/self/exe, it gets the current binary at that moment. After rebuilding, the daemon still runs the OLD code in memory. /proc/<pid>/exe will show '(deleted)' after the binary is overwritten. No amount of rebuilding will fix the running daemon.",
-    "fix": "1. Check: ls -la /proc/<pid>/exe \u2014 look for '(deleted)'\n2. Kill the old daemon: kill <pid>\n3. Start a new daemon with the rebuilt binary",
-    "code_example": ";; $ ls -la /proc/$(cat /run/user/$UID/jsh/default.pid)/exe\n;; ...jsh-musl (deleted)  \u2190 STALE!\n;; $ kill $(cat /run/user/$UID/jsh/default.pid)\n;; Then: ,server",
+    "fix": "1. Check: ls -la /proc/<pid>/exe — look for '(deleted)'\n2. Kill the old daemon: kill <pid>\n3. Start a new daemon with the rebuilt binary",
+    "code_example": ";; $ ls -la /proc/$(cat /run/user/$UID/jsh/default.pid)/exe\n;; ...jsh-musl (deleted)  ← STALE!\n;; $ kill $(cat /run/user/$UID/jsh/default.pid)\n;; Then: ,server",
     "imports": [],
     "related_recipes": [
       "chez-proc-self-exe-stale"
@@ -513,7 +513,7 @@
     "message": "pqueue-pop! or pqueue-peek called on empty queue",
     "explanation": "Attempted to pop or peek at an empty priority queue. Both operations error on empty queues.",
     "fix": "Check pqueue-empty? before calling pqueue-pop! or pqueue-peek.",
-    "code_example": "(import (std misc pqueue))\n(define pq (make-pqueue))\n;; WRONG: (pqueue-pop! pq)  \u2014 errors if empty\n;; RIGHT:\n(unless (pqueue-empty? pq)\n  (pqueue-pop! pq))",
+    "code_example": "(import (std misc pqueue))\n(define pq (make-pqueue))\n;; WRONG: (pqueue-pop! pq)  — errors if empty\n;; RIGHT:\n(unless (pqueue-empty? pq)\n  (pqueue-pop! pq))",
     "imports": [
       "(std misc pqueue)"
     ],
@@ -600,8 +600,8 @@
     "type": "symbol-hash Import Conflict",
     "message": "symbol-hash conflicts with Chez's builtin",
     "explanation": "Chez Scheme already provides symbol-hash natively. If a module tries to export/define symbol-hash, it conflicts with the (chezscheme) import.",
-    "fix": "Don't define or export symbol-hash \u2014 use Chez's builtin directly. Import (std misc symbol) for symbol-append, make-symbol, etc. but symbol-hash comes from (chezscheme).",
-    "code_example": ";; symbol-hash is a Chez builtin \u2014 just use it:\n(symbol-hash 'hello)  ;; => fixnum hash\n\n;; For other symbol utils:\n(import (std misc symbol))\n(symbol-append 'foo 'bar)  ;; => foobar",
+    "fix": "Don't define or export symbol-hash — use Chez's builtin directly. Import (std misc symbol) for symbol-append, make-symbol, etc. but symbol-hash comes from (chezscheme).",
+    "code_example": ";; symbol-hash is a Chez builtin — just use it:\n(symbol-hash 'hello)  ;; => fixnum hash\n\n;; For other symbol utils:\n(import (std misc symbol))\n(symbol-append 'foo 'bar)  ;; => foobar",
     "imports": [],
     "related_recipes": [
       "jerboa-symbol-utils"
@@ -1036,6 +1036,18 @@
     "related_recipes": [
       "capsicum-compute-only-preset",
       "capsicum-path-pre-open"
+    ]
+  },
+  {
+    "id": "curly-brace-in-quoted-transact",
+    "pattern": "~s is not a pair|Unknown attribute in pattern|transport apply: skip failed tx",
+    "fix": "Use alist format: (list '((person/name . \"Alice\") (person/age . 30))). Never use curly-brace entity syntax inside quoted lists passed to transact! or cluster-transact!.",
+    "type": "Wrong transaction format — curly braces in quoted lists",
+    "explanation": "The Jerboa reader expands {f arg1 arg2} to (~ arg1 'f arg2) BEFORE quoting. So '({person/name \"Alice\" person/age 30}) becomes '((~ \"Alice\" 'person/name person/age 30)) — a method-call form, not an entity map. transact! receives wrong data and fails with \"~s is not a pair\" or similar.",
+    "code_example": ";; CORRECT: alist format\n(cluster-transact! leader\n  (list '((person/name . \"Alice\") (person/age . 30))))\n\n;; Also correct for multiple entities:\n(cluster-transact! leader\n  (list '((person/name . \"Alice\") (person/age . 30))\n        '((person/name . \"Bob\")   (person/age . 25))))",
+    "wrong_example": ";; WRONG: curly braces inside a quoted list\n(cluster-transact! leader '({person/name \"Alice\" person/age 30}))",
+    "related_recipes": [
+      "raft-tcp-transport-staged-setup"
     ]
   }
 ]

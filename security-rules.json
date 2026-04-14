@@ -682,5 +682,40 @@
       "retry",
       "silent-failure"
     ]
+  },
+  {
+    "id": "jerbuild-set-bang-duplicate-define-syntax",
+    "title": "jerbuild wrap-mutable-exports emits duplicate define-syntax for set!-reassigned functions",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "\\(set!\\s+(\\w[\\w\\-\\?\\!\\*\\/]*)\\s+\\w",
+    "message": "A (set! name ...) at module top-level reassigns a name that may also be wrapped by jerbuild's wrap-mutable-exports pass. If name is also defined as (def (name ...) ...) in the same module, jerbuild will emit both (define name ...) and (define-syntax name ...) — a duplicate definition that causes a compile error in the generated .sls.",
+    "remediation": "In jerbuild's wrap-mutable-exports pass, collect all (set! name ...) targets from the body and add them to the skip list alongside locally-function-vars. Do not emit a define-syntax wrapper for any name that is both locally defined as a function AND appears as a set! target. See recipe jerbuild-set-reassignment-mutable-export-guard for the corrected implementation.",
+    "related_recipe": "jerbuild-set-reassignment-mutable-export-guard",
+    "tags": [
+      "jerbuild",
+      "set!",
+      "mutable-exports",
+      "duplicate",
+      "define-syntax",
+      "transpiler"
+    ]
+  },
+  {
+    "id": "unguarded-long-running-thread",
+    "title": "Long-running thread loop without guard — silent death on any exception",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "fork-thread\\s*\\(\\s*lambda\\s*\\(\\s*\\)[^)]*let loop",
+    "message": "A fork-thread body containing a let loop with no guard around the loop iteration. Any unhandled exception — including a (cdr #f) from a missing assv lookup, a failed channel-put, or a network error — will kill the thread permanently and silently. For infrastructure threads (Raft message loop, apply fibers, accept loops), a dead thread is catastrophic: the node stops processing, elections stall, and there is no error output.",
+    "remediation": "Wrap the loop body (or the message-dispatch call) in (guard (exn [#t (void)]) ...) so exceptions are swallowed and the loop continues. For loops that read from a channel and dispatch to a handler, guard the handler call: (guard (exn [#t (void)]) (handle-message! node msg)). For per-iteration side effects, guard each effectful call individually so one bad peer/entry cannot abort processing of all others.",
+    "tags": [
+      "thread",
+      "guard",
+      "loop",
+      "exception",
+      "silent-failure",
+      "fork-thread"
+    ]
   }
 ]

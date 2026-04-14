@@ -5376,5 +5376,198 @@
       "keyword-syntax",
       "reader-extensions"
     ]
+  },
+  {
+    "id": "sort-list-argument-order",
+    "title": "Correct sort argument order: (sort list comparator)",
+    "tags": [
+      "sort",
+      "list",
+      "comparator",
+      "argument-order",
+      "prelude"
+    ],
+    "imports": [],
+    "code": ";; Jerboa sort: LIST first, comparator second\n(sort '(3 1 2) <)              ;; → (1 2 3)\n(sort '(\"c\" \"a\" \"b\") string<?) ;; → (\"a\" \"b\" \"c\")\n(sort items (lambda (a b) (> (car a) (car b)))) ;; descending by car\n\n;; WRONG (predicate first — causes \"not a procedure\" runtime error):\n;; (sort < '(3 1 2))         ← DO NOT USE",
+    "notes": "CLAUDE.md incorrectly claims (sort predicate list) is 'Chez arg order'. The actual Jerboa/Chez sort is (sort list comparator) — list FIRST, comparator SECOND. Passing predicate first causes a cryptic 'Exception in list-sort: ... is not a procedure' error because sort tries to call the list as a procedure."
+  },
+  {
+    "id": "chez-map-right-to-left-side-effects",
+    "title": "Chez map applies lambda right-to-left — never use set! mutations inside map",
+    "tags": [
+      "map",
+      "evaluation-order",
+      "set!",
+      "mutation",
+      "chez",
+      "gotcha"
+    ],
+    "imports": [],
+    "code": "\n;; WRONG: Chez map applies lambda right-to-left when building the result list.\n;; Counter increments from the rightmost element first, so indices are reversed.\n(let ([i 0])\n  (map (lambda (x)\n         (let ([s (list x i)])\n           (set! i (+ i 1))\n           s))\n       '(a b c)))\n;; => ((a 2) (b 1) (c 0))   ← WRONG: c gets 0 not 2\n\n;; CORRECT: use an explicit left-to-right tail-recursive loop\n(let loop ([lst '(a b c)] [i 0] [acc '()])\n  (if (null? lst)\n      (reverse acc)\n      (loop (cdr lst) (+ i 1)\n            (cons (list (car lst) i) acc))))\n;; => ((a 0) (b 1) (c 2))   ← correct\n",
+    "notes": "Chez Scheme's (map f lst) internally recurses on the cdr before calling f on car, so side effects (set!) run from right to left even though the result list is in left-to-right order. This bit us hard in streaming aggregation slot index computation: agg-spec slots (agg count 0) (agg avg 1) were emitted as (agg count 1) (agg avg 0) because avg (rightmost) got ai=0. Fix: always use an explicit loop with acc+reverse when you need left-to-right evaluation order with counters."
+  },
+  {
+    "id": "jerboa-db-analytics-duckdb",
+    "title": "Export jerboa-db datoms to DuckDB for OLAP queries",
+    "tags": [
+      "duckdb",
+      "analytics",
+      "jerboa-db",
+      "olap",
+      "sql"
+    ],
+    "imports": [
+      "(jerboa prelude)",
+      "(jerboa-db core)"
+    ],
+    "code": ";; Export current db snapshot to an in-memory DuckDB engine\n(def conn (connect \":memory:\"))\n;; ... transact schema and data ...\n\n;; Create analytics engine from current db snapshot\n(def adb (analytics-export! (db conn)))\n\n;; Run SQL against two tables: datoms(e,a,a_name,v_long,v_double,v_string,v_bool,v_ref,v_instant,tx,added)\n;;                             and attrs(id,ident,value_type,cardinality)\n(def rows (analytics-query adb \"SELECT COUNT(*) as cnt FROM datoms\"))\n(display (cdr (assoc \"cnt\" (car rows)))) ;; => integer count\n\n;; Self-join to compute per-department average age\n(def avg-rows (analytics-query adb\n  \"SELECT dept.v_string as dept, AVG(age.v_long) as avg_age\n   FROM datoms dept JOIN datoms age ON dept.e = age.e\n   WHERE dept.a_name = 'person/dept' AND age.a_name = 'person/age'\n     AND dept.added = TRUE AND age.added = TRUE\n   GROUP BY dept.v_string ORDER BY dept.v_string\"))\n\n;; Re-sync after more transactions\n(transact! conn '(...))\n(analytics-sync! adb (db conn))  ;; full refresh (truncate + reload)\n\n;; Close when done\n(analytics-close! adb)",
+    "notes": "analytics-export! = new-analytics-engine + analytics-sync! in one call. Returns an analytics-engine. analytics-query returns list of alists (column-name . value). The 'added' boolean column distinguishes assertions from retractions — always filter WHERE added = TRUE for current values. DuckDB loaded lazily so the native library (libjerboa_native.so with duckdb feature) is only required when analytics functions are first called, not at import time. Requires libjerboa_native.so built with 'duckdb' feature (add duckdb = { version = \\\"1\\\", features = [\\\"bundled\\\"] } to Cargo.toml and mod duckdb_native in lib.rs, then make native in jerboa repo)."
+  },
+  {
+    "id": "jerbuild-chez-reader-char-void-normalize",
+    "title": "Normalize #\\escape and #!void before feeding source to Chez csv10 reader",
+    "tags": [
+      "jerbuild",
+      "reader",
+      "chez",
+      "csv10",
+      "char",
+      "void",
+      "preprocessing"
+    ],
+    "imports": [],
+    "code": ";; PROBLEM: Docker Chez Scheme csv10 rejects two token forms even with\n;; #!chezscheme mode prefix:\n;;   #\\escape  → \"invalid character name\"  (use #\\esc instead)\n;;   #!void    → \"invalid syntax #!void\"   (use (void) instead)\n;;\n;; SOLUTION: Text-preprocess the source string before handing it to\n;; (with-input-from-string src read) in jerbuild.\n\n(def (normalize-chez-reader-tokens src)\n  ;; Replace #!void with (void) — exact token, word boundary via space/paren\n  (let* ([s (re-replace-all (re \"#!void\") src \"(void)\")]\n         ;; Replace #\\escape with #\\esc\n         [s (re-replace-all (re \"#\\\\\\\\escape\") s \"#\\\\esc\")])\n    s))\n\n;; Usage in jerbuild's read loop:\n(def (read-forms-from-string src)\n  (let ([normalized (normalize-chez-reader-tokens src)])\n    (with-input-from-string normalized\n      (lambda ()\n        (let loop ([forms '()])\n          (let ([form (read)])\n            (if (eof-object? form)\n                (reverse forms)\n                (loop (cons form forms)))))))))",
+    "notes": "This only affects jerbuild's .ss→.sls transpiler pipeline when targeting Chez csv10 (the Docker build). Interactive Chez sessions and newer Chez releases may accept #\\escape. The preprocess step must happen on the raw source string, BEFORE calling read — you cannot fix this at the AST level because the reader fails before producing an AST. Apply normalization once per source file, not per form."
+  },
+  {
+    "id": "jerbuild-drop-imports-missing-module",
+    "title": "Handle Gerbil stdlib modules missing from Jerboa via a drop-imports list in jerbuild",
+    "tags": [
+      "jerbuild",
+      "import",
+      "missing-module",
+      "gerbil",
+      "signal",
+      "hash"
+    ],
+    "imports": [],
+    "code": ";; PROBLEM: Gerbil .ss files may import modules that don't exist in the Jerboa\n;; distribution. Known absent modules (as of jerboa-shell/compartment):\n;;\n;;   (std os signal-handler)  → add-signal-handler!/remove-signal-handler! are\n;;                               in (std os signal) instead\n;;   (std misc hash)          → hash operations come from (jerboa core) / prelude\n;;\n;; SOLUTION: Maintain a *drop-imports* alist in jerbuild mapping a missing module\n;; to either #f (drop entirely) or a replacement module path.\n\n(def *drop-imports*\n  '(;; Module path as symbol list      → replacement or #f\n    ((std os signal-handler)           . (std os signal))\n    ((std misc hash)                   . #f)        ;; provided by (jerboa core)\n  ))\n\n(def (translate-import imp)\n  (let ([entry (assoc imp *drop-imports*)])\n    (cond\n      [(not entry) imp]                             ;; keep as-is\n      [(cdr entry) => (lambda (rep) rep)]           ;; replace\n      [else #f])))                                  ;; drop (filter out #f)\n\n;; In jerbuild's import-rewriting pass:\n(def (rewrite-imports imports)\n  (filter-map translate-import imports))",
+    "notes": "The drop/replace list is distribution-specific — update it whenever porting new Gerbil modules. If a symbol from the dropped module is actually used, you'll get an unbound-variable error at compile time, which is better than a module-not-found error at load time. For (std misc hash), the symbols (hash-ref, hash-put!, etc.) are already in (jerboa core) so no replacement import is needed."
+  },
+  {
+    "id": "jerbuild-inter-library-conflict-rules",
+    "title": "Add inter-library conflict rules in jerbuild when (jerboa core) re-exports from co-imported modules",
+    "tags": [
+      "jerbuild",
+      "conflict",
+      "duplicate-export",
+      "jerboa-core",
+      "string-index",
+      "except"
+    ],
+    "imports": [],
+    "code": ";; PROBLEM: jerbuild auto-imports (jerboa core) into every generated .sls file.\n;; (jerboa core) re-exports symbols from several std modules, including:\n;;   - string-index  (from (std misc string) and (jsh util))\n;;   - partition     (and others from (std misc list))\n;;   - path-normalize (from (std misc path))\n;;   - error-message  (from (std error))\n;;\n;; If the .ss file also explicitly imports (std misc string), (jsh util), etc.,\n;; the generated .sls gets duplicate export errors.\n;;\n;; SOLUTION: Define conflict rules as an alist of (co-import → symbols-to-exclude-from-jerboa-core).\n;; When generating the import clause for (jerboa core), wrap it in (except ...) for\n;; any conflicting symbols detected in the file's import list.\n\n(def *jerboa-core-conflict-rules*\n  ;; (co-imported-module . (symbols exported by BOTH (jerboa core) AND co-import))\n  '(((std misc string)  . (string-index string-pad-right string-pad-left))\n    ((jsh util)         . (string-index))\n    ((std misc list)    . (partition append-map filter-map))\n    ((std misc path)    . (path-normalize))\n    ((std error)        . (error-message))))\n\n(def (compute-jerboa-core-excepts file-imports)\n  ;; Collect all symbols to exclude from (jerboa core) given what else is imported\n  (apply append\n    (filter-map\n      (lambda (rule)\n        (and (member (car rule) file-imports)\n             (cdr rule)))\n      *jerboa-core-conflict-rules*)))\n\n(def (make-jerboa-core-import file-imports)\n  (let ([excepts (compute-jerboa-core-excepts file-imports)])\n    (if (null? excepts)\n        '(jerboa core)\n        `(except (jerboa core) ,@excepts))))\n\n;; Usage in jerbuild's .sls generation:\n;; (make-jerboa-core-import '((std misc string) (std net request)))\n;; → (except (jerboa core) string-index string-pad-right string-pad-left)",
+    "notes": "The conflict rules list must be kept in sync with (jerboa core)'s actual exports. Run `jerboa_module_exports (jerboa core)` to get the current full list if you suspect new conflicts. The approach of excluding from (jerboa core) (rather than from the specific module) is preferred because (jerboa core) is auto-injected and harder to control, while the explicit module import is explicit and expected. Add new rules when you see \"multiple definitions for X\" during a jerbuild-generated compile.",
+    "related": [
+      "jerbuild-prelude-conflict-workaround"
+    ]
+  },
+  {
+    "id": "jerbuild-set-reassignment-mutable-export-guard",
+    "title": "Guard jerbuild's wrap-mutable-exports against set! reassignment of defined functions",
+    "tags": [
+      "jerbuild",
+      "set!",
+      "mutable-exports",
+      "define-syntax",
+      "duplicate",
+      "wrap"
+    ],
+    "imports": [],
+    "code": ";; PROBLEM: jerbuild's wrap-mutable-exports pass wraps every exported variable\n;; in a (define-syntax name (identifier-syntax (get-mutable-var 'name))) form\n;; to make it mutable across library boundaries.\n;;\n;; When a module body contains BOTH:\n;;   (def (fn args...) body)       ;; defines fn as a function\n;;   (set! fn other-fn)            ;; reassigns fn to another function\n;;\n;; jerbuild incorrectly generates (define-syntax fn ...) as a wrapper AND\n;; also keeps the original (define fn ...) — producing \"duplicate definition for fn\".\n;;\n;; SOLUTION: Before wrapping a name, check whether it appears as a (set! name ...)\n;; target in the body. If so, it is already handled as a mutable cell and must NOT\n;; get an additional define-syntax wrapper.\n\n(def (set!-targets body-forms)\n  ;; Collect all names that appear as (set! name ...) in the top-level body\n  (filter-map\n    (lambda (form)\n      (match form\n        (('set! name _) name)\n        (_ #f)))\n    body-forms))\n\n(def (wrap-mutable-exports exports body-forms locally-function-vars)\n  ;; Don't wrap names that are either locally defined as functions (they get\n  ;; a proper (define ...) in the output) or are set! targets (they are\n  ;; already mutable cells and re-wrapping causes duplicate definition).\n  (let ([skip (append locally-function-vars (set!-targets body-forms))])\n    (filter-map\n      (lambda (name)\n        (if (memq name skip)\n            #f\n            `(define-syntax ,name\n               (identifier-syntax (get-mutable-var ',name)))))\n      exports)))",
+    "notes": "The root cause is that Gerbil allows (set! fn other-fn) to reassign module-level functions freely; in the R6RS .sls output, jerbuild models this with mutable cells. But when fn is also locally defined (def (fn ...) ...), adding a define-syntax wrapper on top is a duplicate. The fix requires consulting both locally-function-vars (already tracked) and set!-targets (newly tracked) before wrapping. This bug only surfaces when a module uses set! to reassign a named function, not for reassigning plain variables.",
+    "related": [
+      "jerbuild-prelude-conflict-workaround",
+      "jerbuild-inter-library-conflict-rules"
+    ]
+  },
+  {
+    "id": "jerbuild-root-override-vs-patch",
+    "title": "Use root-level .ss overrides instead of build-jerboa.ss patches for missing functionality",
+    "tags": [
+      "jerbuild",
+      "build-jerboa",
+      "patch",
+      "override",
+      "root-override",
+      "sls-generated"
+    ],
+    "imports": [],
+    "code": ";; PROBLEM: The old build pipeline (build-jerboa.ss) patched generated .sls files\n;; after transpilation — e.g., injecting recorder-ensure-record-key! into recorder.sls,\n;; or adding extra define forms. In the new jerbuild flow, these patches NEVER run.\n;; Functions added only via build-jerboa.ss patches are silently absent.\n;;\n;; SOLUTION: Instead of patching, create a root-level .ss override file.\n;; jerbuild resolves source files in this priority order:\n;;   1. ./name.ss   (project root)   ← takes priority\n;;   2. gerbil-shell/name.ss         ← upstream submodule fallback\n;;\n;; To add missing functionality to e.g. recorder.ss without touching the submodule:\n\n;; Step 1: Check if a root override already exists\n;;   ls ./recorder.ss 2>/dev/null || echo \"falls back to gerbil-shell/recorder.ss\"\n\n;; Step 2: If not, copy from submodule and update imports\n;;   cp gerbil-shell/recorder.ss ./recorder.ss\n;;   # Change :gsh/ imports to :jsh/\n\n;; Step 3: Add the missing function directly in the .ss source\n(def (recorder-ensure-record-key! rec key)\n  ;; ... implementation ...\n  (unless (hash-key? (recorder-data rec) key)\n    (hash-put! (recorder-data rec) key '())))\n\n;; Step 4: Build — jerbuild will pick up ./recorder.ss automatically.\n;;\n;; NEVER edit src/jsh/*.sls directly — they are overwritten on every build.",
+    "notes": "The shell/ directory (shell/recorder.ss etc.) is NOT used by the build — it contains dead copies. Only ./name.ss (root) and gerbil-shell/name.ss (submodule) matter. When copying from the submodule, change all import paths from :gsh/foo to :jsh/foo. If the missing function was injected by build-jerboa.ss via a string-contains/string-append patch, you need to read build-jerboa.ss carefully to understand what was being injected — it is usually a define or a set! — and replicate it properly in the .ss source.",
+    "related": [
+      "jerbuild-inter-library-conflict-rules",
+      "jerbuild-drop-imports-missing-module"
+    ]
+  },
+  {
+    "id": "raft-tcp-transport-staged-setup",
+    "title": "Start a 2-node TCP Raft cluster with staged peer registration",
+    "tags": [
+      "raft",
+      "transport",
+      "tcp",
+      "cluster",
+      "peer",
+      "staged"
+    ],
+    "imports": [
+      "(jerboa-db transport)",
+      "(jerboa-db cluster)"
+    ],
+    "code": ";; Staged setup: port numbers are OS-assigned, so we can't know them until after start.\n;; 1. Start node-a with no peers (port 0 = OS-assigned).\n(define-values (tnode-a rconn-a)\n  (start-transport-db-node! 'node-a '() \":memory:\" 0))\n(define port-a (transport-node-listen-port tnode-a))\n\n;; 2. Start node-b knowing node-a's port.\n(define-values (tnode-b rconn-b)\n  (start-transport-db-node! 'node-b `((node-a \"127.0.0.1\" ,port-a)) \":memory:\" 0))\n(define port-b (transport-node-listen-port tnode-b))\n\n;; 3. Tell node-a about node-b now that we know its port.\n;;    Use transport-node-add-peer! (not raft-node-peers-set!) — it is thread-safe\n;;    and also updates next-index/match-index if the node is already a leader.\n(transport-node-add-peer! tnode-a 'node-b \"127.0.0.1\" port-b)\n\n;; 4. Wait for leader election (~150–300ms).\n(sleep (make-time 'time-duration 500000000 0))\n\n;; 5. Identify leader.\n(define leader   (if (cluster-leader? rconn-a) rconn-a rconn-b))\n(define follower (if (cluster-leader? rconn-a) rconn-b rconn-a))\n\n;; 6. Transact through leader (use alist format — NOT curly braces in quoted lists).\n(cluster-transact! leader\n  (list '((db/ident . person/name)\n          (db/valueType . db.type/string)\n          (db/cardinality . db.cardinality/one))))\n\n;; 7. Query from either node.\n(q '[(find ?n) (where (?e person/name ?n))] (cluster-db leader))\n\n;; 8. Stop both nodes.\n(stop-transport-node! tnode-a)\n(stop-transport-node! tnode-b)",
+    "notes": "CRITICAL: Transaction data must use alist format ((attr . val) ...), NOT {attr val} curly-brace syntax inside quoted lists. The Jerboa reader expands {f obj args} to (~ obj 'f args) before quoting, producing method-call forms instead of entity maps. Use (list '((attr . val))) instead of '({attr val}).\n\ntransport-node-add-peer! uses raft-node-add-peer! which is thread-safe and also updates next-index/match-index on leader nodes, preventing send-heartbeats! from crashing with (cdr #f) on the new peer.\n\nThe apply fiber polls every 50ms. For follower replication queries, add a short wait or use wait-until polling.",
+    "related": [
+      "cluster-transact-local",
+      "raft-local-cluster"
+    ]
+  },
+  {
+    "id": "chez-random-not-thread-safe",
+    "title": "Chez (random n) is not thread-safe — add node-specific jitter for concurrent timers",
+    "tags": [
+      "random",
+      "thread-safe",
+      "prng",
+      "concurrent",
+      "election",
+      "timer",
+      "raft"
+    ],
+    "imports": [],
+    "code": ";; PROBLEM: Chez Scheme's (random n) is NOT thread-safe.\n;; Two threads that call (random n) concurrently can read the same PRNG state\n;; and return identical values — even with large n.\n;;\n;; This causes ~50% failure rate when two nodes start simultaneously and both\n;; compute election timeouts from (+ 150 (random 150)):\n;;   Thread A: (random 150) → 73   → timeout = 223ms\n;;   Thread B: (random 150) → 73   → timeout = 223ms  (same! → split vote every time)\n;;\n;; FIX: Add a deterministic, identity-derived constant offset so different nodes\n;; always get different base timeouts regardless of PRNG state:\n\n(define (node-id-hash id)\n  (cond\n    [(integer? id) id]\n    [(symbol? id)\n     (let* ([s (symbol->string id)] [n (string-length s)])\n       (let loop ([i 0] [h 0])\n         (if (= i n) h\n             (loop (+ i 1) (+ (* h 31) (char->integer (string-ref s i)))))))]\n    [else 0]))\n\n;; Usage: each node gets a unique base, random adds further jitter\n(define (election-timeout-ms node-id)\n  ;; 150ms base + 0-74ms id-hash + 0-74ms random = 150-298ms total\n  ;; Guaranteed non-equal for different node-ids even if random returns same value\n  (+ 150\n     (modulo (node-id-hash node-id) 75)\n     (random 75)))",
+    "notes": "This pattern is critical for any distributed algorithm where multiple nodes start simultaneously and need randomized timeouts that must not collide. Without it, 2-node Raft clusters exhibit ~50% election failure rate.\n\nThe fix works because the id-hash component is a compile-time constant per node — no PRNG involved — so even if (random 75) returns the same value for both threads, the total timeouts differ by the hash offset.\n\nFor truly thread-safe random, you could use a per-thread PRNG seeded with the thread ID, but the hash-offset approach is simpler and sufficient for most distributed timer use cases."
+  },
+  {
+    "id": "raft-apply-fiber-per-node-log",
+    "title": "Apply Raft committed entries to a DB connection via replication-for-each-committed!",
+    "tags": [
+      "raft",
+      "replication",
+      "apply",
+      "committed",
+      "fiber",
+      "transport",
+      "jerboa-db"
+    ],
+    "imports": [
+      "(jerboa-db replication)",
+      "(jerboa-db core)"
+    ],
+    "code": ";; For TCP/multi-process clusters, each node applies from its OWN raft-node log.\n;; (Contrast with in-process clusters which read the LEADER's log directly.)\n;;\n;; replication-for-each-committed! iterates newly committed entries beyond\n;; last-applied-index and calls (proc entry-index tx-ops) for each tx entry.\n;; It also advances the watermark (last-applied-index) before each call —\n;; at-most-once semantics so a crash mid-apply still moves forward.\n\n(define (start-apply-fiber! conn state)\n  (fork-thread\n    (lambda ()\n      (let loop ()\n        (sleep (chez-make-time 'time-duration 50000000 0)) ;; 50ms poll\n        (when (replication-running? state)\n          (replication-for-each-committed! state\n            (lambda (entry-index tx-ops)\n              (guard (exn [#t\n                           (display\n                             (string-append \"apply: skip tx at index \"\n                                            (number->string entry-index) \"\\n\"))])\n                (transact! conn tx-ops))))\n          (loop))))))\n\n;; NOTE: This requires the (std raft) AppendEntries bug fix:\n;; The follower's log handler must use (<= entry-index prev-idx) when keeping\n;; existing entries — NOT (< entry-index prev-idx). The < version drops the\n;; verified pivot entry on every RPC, leaving followers with only the single\n;; most-recent log entry and causing \"Unknown attribute in pattern\" errors\n;; when earlier schema transactions are missing from the replay.",
+    "notes": "Use this pattern (per-node log) for TCP/multi-process clusters where you cannot read the leader's raft-node object directly.\n\nFor in-process clusters (start-local-db-cluster), use apply-committed-from-cluster! which reads the LEADER's log directly — this avoids the (std raft) log-truncation bug without needing the <= fix, and is the approach used in cluster.ss.\n\nThe guard around (transact! conn tx-ops) is essential: a failed tx (e.g. schema violation, serialization error) must not abort the apply fiber. The watermark has already advanced, so the failed entry will not be retried.",
+    "related": [
+      "raft-tcp-transport-staged-setup"
+    ]
   }
 ]

@@ -262,5 +262,58 @@
     "example_scenario": "docs/jerboa-db.md claimed \"All 8 phases implemented (31 files, ~6200 lines, 34/34 tests passing)\" with every scorecard row marked \"Done\". In reality, zero of the 31 src/jerboa-db/*.ss files existed. Discovering this required: (1) grep -r for datom/datomic across lib/src/tests (found nothing), (2) spawning an Explore agent to search comprehensively, (3) manually checking src/jerboa-db/ directory existence. A single `jerboa_doc_status_audit docs/jerboa-db.md` would have returned \"0/31 claimed files exist, 52 features marked Done with no source\" in one call.",
     "estimated_token_reduction": "~2000 tokens per doc review session (eliminates multiple grep/find/agent cycles to verify claims; prevents entire sessions wasted on false assumptions about what's already built)",
     "votes": 0
+  },
+  {
+    "id": "jerbuild-reader-token-validator",
+    "title": "jerboa_verify should flag Chez csv10-incompatible reader tokens (#\\escape, #!void)",
+    "description": "When validating .ss files destined for jerbuild transpilation, jerboa_verify (and jerboa_check_syntax) should detect token forms that are valid in newer Chez but rejected by csv10 (the Docker/static build toolchain): specifically #\\escape (use #\\esc) and #!void (use (void)). These cause silent build failures — the reader error surfaces only inside Docker, far from the source edit. The tool should report the file, line, offending token, and the correct replacement.",
+    "impact": "medium",
+    "tags": [
+      "jerbuild",
+      "reader",
+      "csv10",
+      "char",
+      "void",
+      "compat"
+    ],
+    "use_case": "When editing .ss files that will be transpiled by jerbuild for static/Docker builds using an older Chez csv10 toolchain. The incompatibility is invisible during local development with a newer Chez and only surfaces in Docker.",
+    "example_scenario": "A .ss file uses #\\escape as a character literal. Local jerboa_verify passes. The Docker build (Chez csv10) fails with \"invalid character name: escape\" deep in the build log. Finding the source location requires searching all .ss files for #\\escape manually. A jerboa_verify warning would have caught it immediately at edit time.",
+    "estimated_token_reduction": "~400 tokens per occurrence (eliminates full Docker build cycle + grep search to locate the offending token)",
+    "votes": 0
+  },
+  {
+    "id": "jerbuild-conflict-rule-generator",
+    "title": "Tool to compute inter-library conflict rules for jerbuild given a set of co-imports",
+    "description": "Given a list of module imports that will be combined with jerbuild's auto-injected (jerboa core) and (jerboa runtime), compute the exact (except ...) clauses needed to avoid duplicate-export errors. The tool inspects the actual export lists of all named modules, intersects them with (jerboa core)'s exports, and returns a ready-to-paste conflict rule alist for jerbuild's *jerboa-core-conflict-rules* table. This replaces the current workflow of: compile → see \"multiple definitions for X\" → grep to find which module also exports X → manually add the rule → repeat.",
+    "impact": "medium",
+    "tags": [
+      "jerbuild",
+      "conflict",
+      "duplicate-export",
+      "jerboa-core",
+      "except",
+      "inter-library"
+    ],
+    "use_case": "When adding a new explicit import to a jerbuild-managed .ss file and the generated .sls produces \"multiple definitions for X\" errors. Also useful when initially porting a new Gerbil module to the jerbuild pipeline.",
+    "example_scenario": "Porting shell.ss adds (import (std misc string)). The build fails with \"multiple definitions for string-index\". To fix it: check what (jerboa core) exports, check what (std misc string) exports, find the intersection, add an (except (jerboa core) string-index ...) rule. This took 3 tool calls (module_exports x2 + manual diff). A single jerboa_jerbuild_conflict_rules call with the import list would return the complete rule in one shot.",
+    "estimated_token_reduction": "~600 tokens per new module addition (replaces 2-3 module_exports calls + manual set intersection + trial-and-error compile cycle)",
+    "votes": 0
+  },
+  {
+    "id": "run-tests-project-path-libdirs",
+    "title": "jerboa_run_tests: support project_path / extra libdirs like jerboa_make does",
+    "description": "jerboa_run_tests currently only knows about the jerboa stdlib libdir. It cannot run tests in projects that have their own lib/ directory (e.g. jerboa-db, jerboa-edge) — it fails immediately with \"library (project-lib core) not found\". jerboa_make works correctly for these projects because it reads the Makefile and passes the right --libdirs. jerboa_run_tests should accept a project_path parameter (like jerboa_make) and auto-derive libdirs from the Makefile, OR accept an explicit extra_libdirs list like [\"lib\", \"/home/user/mine/jerboa/lib\"].",
+    "impact": "medium",
+    "tags": [
+      "run_tests",
+      "libdirs",
+      "project",
+      "test",
+      "library"
+    ],
+    "use_case": "Running tests for any Jerboa project that has its own lib/ directory alongside the jerboa stdlib. Currently must fall back to jerboa_make with target=\"test-X\" which loses the filter/timeout granularity of jerboa_run_tests.",
+    "example_scenario": "Working on jerboa-db transport tests: calling jerboa_run_tests with file_path=\"tests/test-transport.ss\" immediately fails with \"library (jerboa-db core) not found\". Had to use jerboa_make with target=\"test-transport\" for every run, losing the ability to filter by test name or set per-test timeouts. If jerboa_run_tests accepted project_path=\"/home/jafourni/mine/jerboa-db\" it could read the Makefile's LIBDIRS variable and pass --libdirs \"lib:/home/jafourni/mine/jerboa/lib\" automatically.",
+    "estimated_token_reduction": "~100 tokens per test run (eliminates the fallback round-trip; more importantly, restores filter/timeout capabilities that jerboa_make doesn't expose)",
+    "votes": 0
   }
 ]
