@@ -441,3 +441,80 @@ describe('jerboa_verify', () => {
     expect(result.isError === true || text.includes('✗')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('divergence pre-scan', () => {
+  it('flags known-wrong identifiers before invoking Chez', async () => {
+    const mod = await import('../dist/tools/shared-hallucinations.js');
+    const hits = mod.preScanDivergence(`
+(import (jerboa prelude))
+(define h (make-equal-hashtable))
+(hash-table-set! h 'a 1)
+`);
+    const idents = hits.map((h: { identifier: string }) => h.identifier);
+    expect(idents).toContain('make-equal-hashtable');
+    expect(idents).toContain('hash-table-set!');
+  });
+
+  it('ignores occurrences inside strings and comments', async () => {
+    const mod = await import('../dist/tools/shared-hallucinations.js');
+    const hits = mod.preScanDivergence(
+      `; a comment mentioning thread-sleep! should be skipped
+(define s "string with make-equal-hashtable inside")
+(+ 1 2)`,
+    );
+    expect(hits.length).toBe(0);
+  });
+
+  it('enriches hints with dialect attribution from divergence.json', async () => {
+    const mod = await import('../dist/tools/shared-hallucinations.js');
+    const hinted = mod.injectHallucinationHints(
+      'Exception: variable make-equal-hashtable is not bound',
+    );
+    expect(hinted).toContain('make-hash-table');
+    expect(hinted.toLowerCase()).toContain('r6rs');
+  });
+
+  it('populates KNOWN_HALLUCINATIONS from divergence data', async () => {
+    const mod = await import('../dist/tools/shared-hallucinations.js');
+    // divergence.json carries dozens of simple-id entries; if the load
+    // failed the map would be empty.
+    expect(Object.keys(mod.KNOWN_HALLUCINATIONS).length).toBeGreaterThan(20);
+    expect(mod.KNOWN_HALLUCINATIONS['thread-sleep!']).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('structured error formatting', () => {
+  it('extracts unbound-identifier summaries', async () => {
+    const mod = await import('../dist/tools/error-formatter.js');
+    const raw = 'Exception: variable thread-yield is not bound at line 5, char 12 of /tmp/x.ss';
+    const out = mod.structureError(raw);
+    expect(out.split('\n')[0]).toContain('ERROR [unbound-identifier]');
+    expect(out.split('\n')[0]).toContain('thread-yield');
+    expect(out.split('\n')[0]).toContain('/tmp/x.ss:5:12');
+    // Original trace preserved:
+    expect(out).toContain(raw);
+  });
+
+  it('summarises missing-import errors', async () => {
+    const mod = await import('../dist/tools/error-formatter.js');
+    const raw = 'Exception: missing import for make-mutex ... at line 99, char 11 of /path/core.sls';
+    const out = mod.structureError(raw);
+    expect(out.split('\n')[0]).toContain('ERROR [missing-import]');
+    expect(out.split('\n')[0]).toContain('make-mutex');
+  });
+
+  it('passes through untouched when no pattern matches', async () => {
+    const mod = await import('../dist/tools/error-formatter.js');
+    const raw = 'Garbled output from some tool\nwith no Chez signature';
+    expect(mod.structureError(raw)).toBe(raw);
+  });
+
+  it('returns null from parseSchemeError when input is empty', async () => {
+    const mod = await import('../dist/tools/error-formatter.js');
+    expect(mod.parseSchemeError('')).toBe(null);
+  });
+});
