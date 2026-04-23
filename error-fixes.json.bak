@@ -111,7 +111,7 @@
     "message": "hash-ref called with missing key (2-arg form raises error)",
     "explanation": "In Jerboa, hash-ref with 2 args raises an error if the key is missing. hash-ref with 3 args returns a default. hash-get always returns #f for missing keys (it's a macro).",
     "fix": "Use (hash-get table key) for safe access (returns #f), or (hash-ref table key default) with a default value, or check with (hash-key? table key) first.",
-    "code_example": "; Wrong: (hash-ref table 'key) \u2014 error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
+    "code_example": "; Wrong: (hash-ref table 'key) — error if missing\n; Right:\n(hash-get table 'key)           ; => #f if missing\n(hash-ref table 'key \"default\") ; => \"default\" if missing\n(when (hash-key? table 'key)\n  (hash-ref table 'key))",
     "imports": [
       "(jerboa prelude)"
     ],
@@ -377,7 +377,7 @@
     "pattern": "server closed connection|server EOF|disconnected.*unexpect",
     "type": "EINTR Spontaneous Disconnect",
     "message": "Client/server connection drops randomly during operation",
-    "explanation": "C FFI wrappers for recv/send/read return -1 on EINTR (signal interruption) without retrying. The Scheme layer interprets -1 as EOF/error and closes the connection. SIGCHLD from child processes is the most common trigger \u2014 any time a subprocess exits, the signal interrupts blocking I/O.",
+    "explanation": "C FFI wrappers for recv/send/read return -1 on EINTR (signal interruption) without retrying. The Scheme layer interprets -1 as EOF/error and closes the connection. SIGCHLD from child processes is the most common trigger — any time a subprocess exits, the signal interrupts blocking I/O.",
     "fix": "Wrap all blocking I/O syscalls in C shims with do { n = syscall(...); } while (n < 0 && errno == EINTR); loops. Check both recv, send, and read wrappers.",
     "code_example": "/* Before (broken): */\nssize_t n = recv(fd, buf, len, 0);\nif (n < 0) return -1;  /* EINTR treated as error! */\n\n/* After (fixed): */\nssize_t n;\ndo { n = recv(fd, buf, len, 0); } while (n < 0 && errno == EINTR);\nif (n < 0) return -1;",
     "imports": [],
@@ -392,8 +392,8 @@
     "type": "do-loop Infinite Loop",
     "message": "do-loop with = test never terminates when bound is negative",
     "explanation": "Chez do-loops conventionally use = for termination: (do ([r 0 (+ r 1)]) ((= r N)) ...). If N is negative (e.g., from (- rows 1) where rows=0), r increments past -1 and the loop never terminates. This caused a server hang in render-single-pane when terminal dimensions were 0x0.",
-    "fix": "Guard the input: (max 1 value) before subtraction, or use >= instead of = for the termination test. Also validate terminal dimensions at protocol boundaries \u2014 default 0 to 80/24.",
-    "code_example": ";; BROKEN: (do ([r 0 (+ r 1)]) ((= r (- 0 1))) ...) \u2192 infinite\n;; FIXED:\n(let ([rows (max 1 rows)])\n  (do ([r 0 (+ r 1)])\n      ((= r (- rows 1)))\n    (render-row r)))",
+    "fix": "Guard the input: (max 1 value) before subtraction, or use >= instead of = for the termination test. Also validate terminal dimensions at protocol boundaries — default 0 to 80/24.",
+    "code_example": ";; BROKEN: (do ([r 0 (+ r 1)]) ((= r (- 0 1))) ...) → infinite\n;; FIXED:\n(let ([rows (max 1 rows)])\n  (do ([r 0 (+ r 1)])\n      ((= r (- rows 1)))\n    (render-row r)))",
     "imports": [],
     "related_recipes": [
       "chez-terminal-size-zero-guard",
@@ -446,7 +446,7 @@
     "message": "Custom function name conflicts with auto-generated record accessor",
     "explanation": "define-record-type auto-generates accessors named recordtype-fieldname. Defining a function with the same name in the library body causes 'multiple definitions' at compile time.",
     "fix": "Rename the custom function to avoid collision with the auto-generated accessor. E.g., use -alloc-id instead of -next-id.",
-    "code_example": ";; Record has field next-id \u2192 generates table-next-id\n;; WRONG: (define (table-next-id t) ...)\n;; RIGHT: (define (table-alloc-id t) (let ([id (table-next-id t)]) ...))",
+    "code_example": ";; Record has field next-id → generates table-next-id\n;; WRONG: (define (table-next-id t) ...)\n;; RIGHT: (define (table-alloc-id t) (let ([id (table-next-id t)]) ...))",
     "imports": [],
     "related_recipes": [
       "chez-r6rs-library-duplicate-definition"
@@ -459,7 +459,7 @@
     "message": "SSH server rejects packets with 'MAC incorrect' after kex succeeds",
     "explanation": "OpenSSL's EVP_chacha20_poly1305() implements RFC 8439 AEAD which pads AAD/ciphertext to 16-byte boundaries and appends 8-byte LE length fields before computing Poly1305. OpenSSH's chacha20-poly1305@openssh.com uses raw Poly1305 over the plain concatenation (enc_length || enc_payload). The MAC tags are different.",
     "fix": "Do NOT use EVP_chacha20_poly1305(). Instead use EVP_chacha20() for encryption and EVP_MAC(\"POLY1305\") for raw MAC. Generate poly key from ChaCha20(K2, counter=0), encrypt with counter=1, MAC over raw concatenation.",
-    "code_example": "/* Wrong: EVP_chacha20_poly1305() \u2014 RFC 8439 AEAD */\n/* Right: EVP_chacha20() + EVP_MAC(\"POLY1305\") \u2014 raw */",
+    "code_example": "/* Wrong: EVP_chacha20_poly1305() — RFC 8439 AEAD */\n/* Right: EVP_chacha20() + EVP_MAC(\"POLY1305\") — raw */",
     "imports": [],
     "related_recipes": [
       "chez-ssh-chacha20-poly1305-openssh"
@@ -469,10 +469,10 @@
     "id": "stale-daemon-after-rebuild",
     "pattern": "fix doesn't work|still not working|still broken|still hangs|does not exit|deleted",
     "type": "Stale Daemon Process",
-    "message": "Changes not taking effect after rebuild \u2014 daemon running old binary",
+    "message": "Changes not taking effect after rebuild — daemon running old binary",
     "explanation": "When a daemon process is fork-exec'd via /proc/self/exe, it gets the current binary at that moment. After rebuilding, the daemon still runs the OLD code in memory. /proc/<pid>/exe will show '(deleted)' after the binary is overwritten. No amount of rebuilding will fix the running daemon.",
-    "fix": "1. Check: ls -la /proc/<pid>/exe \u2014 look for '(deleted)'\n2. Kill the old daemon: kill <pid>\n3. Start a new daemon with the rebuilt binary",
-    "code_example": ";; $ ls -la /proc/$(cat /run/user/$UID/jsh/default.pid)/exe\n;; ...jsh-musl (deleted)  \u2190 STALE!\n;; $ kill $(cat /run/user/$UID/jsh/default.pid)\n;; Then: ,server",
+    "fix": "1. Check: ls -la /proc/<pid>/exe — look for '(deleted)'\n2. Kill the old daemon: kill <pid>\n3. Start a new daemon with the rebuilt binary",
+    "code_example": ";; $ ls -la /proc/$(cat /run/user/$UID/jsh/default.pid)/exe\n;; ...jsh-musl (deleted)  ← STALE!\n;; $ kill $(cat /run/user/$UID/jsh/default.pid)\n;; Then: ,server",
     "imports": [],
     "related_recipes": [
       "chez-proc-self-exe-stale"
@@ -513,7 +513,7 @@
     "message": "pqueue-pop! or pqueue-peek called on empty queue",
     "explanation": "Attempted to pop or peek at an empty priority queue. Both operations error on empty queues.",
     "fix": "Check pqueue-empty? before calling pqueue-pop! or pqueue-peek.",
-    "code_example": "(import (std misc pqueue))\n(define pq (make-pqueue))\n;; WRONG: (pqueue-pop! pq)  \u2014 errors if empty\n;; RIGHT:\n(unless (pqueue-empty? pq)\n  (pqueue-pop! pq))",
+    "code_example": "(import (std misc pqueue))\n(define pq (make-pqueue))\n;; WRONG: (pqueue-pop! pq)  — errors if empty\n;; RIGHT:\n(unless (pqueue-empty? pq)\n  (pqueue-pop! pq))",
     "imports": [
       "(std misc pqueue)"
     ],
@@ -600,8 +600,8 @@
     "type": "symbol-hash Import Conflict",
     "message": "symbol-hash conflicts with Chez's builtin",
     "explanation": "Chez Scheme already provides symbol-hash natively. If a module tries to export/define symbol-hash, it conflicts with the (chezscheme) import.",
-    "fix": "Don't define or export symbol-hash \u2014 use Chez's builtin directly. Import (std misc symbol) for symbol-append, make-symbol, etc. but symbol-hash comes from (chezscheme).",
-    "code_example": ";; symbol-hash is a Chez builtin \u2014 just use it:\n(symbol-hash 'hello)  ;; => fixnum hash\n\n;; For other symbol utils:\n(import (std misc symbol))\n(symbol-append 'foo 'bar)  ;; => foobar",
+    "fix": "Don't define or export symbol-hash — use Chez's builtin directly. Import (std misc symbol) for symbol-append, make-symbol, etc. but symbol-hash comes from (chezscheme).",
+    "code_example": ";; symbol-hash is a Chez builtin — just use it:\n(symbol-hash 'hello)  ;; => fixnum hash\n\n;; For other symbol utils:\n(import (std misc symbol))\n(symbol-append 'foo 'bar)  ;; => foobar",
     "imports": [],
     "related_recipes": [
       "jerboa-symbol-utils"
@@ -931,7 +931,7 @@
     "type": "Linker Error",
     "message": "_dl_find_object undefined when linking Rust static library with musl-gcc",
     "explanation": "libgcc_eh.a (Rust's unwinding support) references _dl_find_object, which is a glibc-only symbol not available in musl. This appears when linking a Rust static library (.a) built with the musl target into a musl-gcc binary.",
-    "fix": "Add a stub function to your glibc-compat C shim: int _dl_find_object(void *a, void *b) { return -1; } \u2014 This safely indicates 'not found' which causes the runtime to fall back to non-DWARF unwinding. With panic=\"abort\" in Cargo.toml, unwinding never actually runs.",
+    "fix": "Add a stub function to your glibc-compat C shim: int _dl_find_object(void *a, void *b) { return -1; } — This safely indicates 'not found' which causes the runtime to fall back to non-DWARF unwinding. With panic=\"abort\" in Cargo.toml, unwinding never actually runs.",
     "code_example": "/* In glibc-compat.c or ffi-shim.c */\nint _dl_find_object(void *a, void *b) { return -1; }",
     "imports": [],
     "related_recipes": [
@@ -1011,7 +1011,7 @@
     "id": "mtls-handshake-failure",
     "pattern": "mTLS.*failed|TLS accept failed|handshake.*client.*cert|certificate required",
     "type": "mTLS Handshake Failure",
-    "message": "mTLS handshake rejected \u2014 client certificate missing or invalid",
+    "message": "mTLS handshake rejected — client certificate missing or invalid",
     "explanation": "The server was configured with rustls-server-ctx-new-mtls (requires client certs) but the client connected without presenting a cert, or the client cert was not signed by the CA specified in client-ca-path. For self-signed mTLS, the same cert.pem must be used as server cert, client cert, AND CA cert.",
     "fix": "Ensure client uses rustls-connect-mtls (not rustls-connect) and passes the correct cert-path, key-path, and ca-cert-path. For self-signed: all three server args and all three client args should reference the same cert/key pair.",
     "code_example": ";; Server: same cert as both server identity and client CA\n(define ctx (rustls-server-ctx-new-mtls \"cert.pem\" \"key.pem\" \"cert.pem\"))\n\n;; Client: same cert as client identity, verify server against same CA\n(define conn (rustls-connect-mtls \"host\" 8443 \"cert.pem\" \"key.pem\" \"cert.pem\"))",
@@ -1027,7 +1027,7 @@
     "pattern": "ENOTCAPABLE|not permitted.*capability|Operation not permitted.*cap",
     "type": "Capsicum Rights Violation",
     "message": "Operation denied by Capsicum capability rights",
-    "explanation": "After cap_enter(), an operation was attempted on an fd that lacks the required capability right. For example, trying to write to an fd restricted to (read) only, or trying to seek on an fd without seek rights. cap_rights_limit is monotonically decreasing \u2014 you cannot add rights back.",
+    "explanation": "After cap_enter(), an operation was attempted on an fd that lacks the required capability right. For example, trying to write to an fd restricted to (read) only, or trying to seek on an fd without seek rights. cap_rights_limit is monotonically decreasing — you cannot add rights back.",
     "fix": "Ensure the fd has the required rights BEFORE calling capsicum-apply-preset! or capsicum-enter!. Add missing rights to your preset alist. Common rights: read, write, seek, fstat, event, lookup, mmap, ftruncate.",
     "code_example": ";; Add seek right if you need random access\n(define preset\n  `((0 . (read event))\n    (1 . (write event))\n    (4 . (read write seek fstat))))  ;; data fd needs seek\n(capsicum-apply-preset! preset)",
     "imports": [
@@ -1042,460 +1042,12 @@
     "id": "curly-brace-in-quoted-transact",
     "pattern": "~s is not a pair|Unknown attribute in pattern|transport apply: skip failed tx",
     "fix": "Use alist format: (list '((person/name . \"Alice\") (person/age . 30))). Never use curly-brace entity syntax inside quoted lists passed to transact! or cluster-transact!.",
-    "type": "Wrong transaction format \u2014 curly braces in quoted lists",
-    "explanation": "The Jerboa reader expands {f arg1 arg2} to (~ arg1 'f arg2) BEFORE quoting. So '({person/name \"Alice\" person/age 30}) becomes '((~ \"Alice\" 'person/name person/age 30)) \u2014 a method-call form, not an entity map. transact! receives wrong data and fails with \"~s is not a pair\" or similar.",
+    "type": "Wrong transaction format — curly braces in quoted lists",
+    "explanation": "The Jerboa reader expands {f arg1 arg2} to (~ arg1 'f arg2) BEFORE quoting. So '({person/name \"Alice\" person/age 30}) becomes '((~ \"Alice\" 'person/name person/age 30)) — a method-call form, not an entity map. transact! receives wrong data and fails with \"~s is not a pair\" or similar.",
     "code_example": ";; CORRECT: alist format\n(cluster-transact! leader\n  (list '((person/name . \"Alice\") (person/age . 30))))\n\n;; Also correct for multiple entities:\n(cluster-transact! leader\n  (list '((person/name . \"Alice\") (person/age . 30))\n        '((person/name . \"Bob\")   (person/age . 25))))",
     "wrong_example": ";; WRONG: curly braces inside a quoted list\n(cluster-transact! leader '({person/name \"Alice\" person/age 30}))",
     "related_recipes": [
       "raft-tcp-transport-staged-setup"
     ]
-  },
-  {
-    "id": "hallucinated-gerbil-symbol-lt",
-    "pattern": "(variable\\s+symbol<\\?\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+symbol<\\?)",
-    "type": "Hallucinated Identifier",
-    "message": "'symbol<?' is not a Jerboa identifier (from gerbil, srfi-1)",
-    "explanation": "No symbol<? in Jerboa/Chez. Compare via symbol->string + string<?.",
-    "fix": "'symbol<?' does not exist in Jerboa/Chez. Use (lambda (a b) (string<? (symbol->string a) (symbol->string b))) instead. See divergence catalog id 'gerbil-symbol-lt'.",
-    "code_example": "(sort (lambda (a b) (string<? (symbol->string a) (symbol->string b))) '(b a c))",
-    "wrong_example": "(sort symbol<? '(b a c))",
-    "imports": [],
-    "related_divergence": "gerbil-symbol-lt"
-  },
-  {
-    "id": "hallucinated-racket-string-contains-predicate",
-    "pattern": "(variable\\s+string\\-contains\\?\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+string\\-contains\\?)",
-    "type": "Compat Import Needed",
-    "message": "'string-contains?' is not a Jerboa identifier (from racket)",
-    "explanation": "AVAILABLE in Jerboa via: (std misc string-more). Jerboa's string-contains (no ?) returns an index or #f, NOT a boolean. Both values are truthy/falsy in conditionals, so `if` works directly.",
-    "fix": "'string-contains?' is not in the prelude. Import one of: (std misc string-more). Or use the Jerboa idiom: string-contains.",
-    "code_example": "(if (string-contains s \"foo\") ...)  ;; returns index or #f \u2014 truthy if found",
-    "wrong_example": "(if (string-contains? s \"foo\") ...)",
-    "imports": [
-      "(std misc string-more)"
-    ],
-    "related_divergence": "racket-string-contains-predicate"
-  },
-  {
-    "id": "hallucinated-racket-define-struct",
-    "pattern": "(variable\\s+define\\-struct\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+define\\-struct)",
-    "type": "Hallucinated Identifier",
-    "message": "'define-struct' is not a Jerboa identifier (from racket)",
-    "explanation": "Generates make-point, point?, point-x, point-y, point-x-set!. For inheritance: (defstruct (circle shape) (radius)).",
-    "fix": "'define-struct' does not exist in Jerboa/Chez. Use defstruct instead. See divergence catalog id 'racket-define-struct'.",
-    "code_example": "(defstruct point (x y))",
-    "wrong_example": "(define-struct point (x y))",
-    "imports": [],
-    "related_divergence": "racket-define-struct"
-  },
-  {
-    "id": "hallucinated-gerbil-environment-bound",
-    "pattern": "(variable\\s+environment\\-bound\\?\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+environment\\-bound\\?)",
-    "type": "Hallucinated Identifier",
-    "message": "'environment-bound?' is not a Jerboa identifier (from gerbil)",
-    "explanation": "No direct Chez equivalent. Probe via eval + catch for undefined-variable.",
-    "fix": "'environment-bound?' does not exist in Jerboa/Chez. Use (try (eval 'foo (interaction-environment)) (catch (e) #f)) instead. See divergence catalog id 'gerbil-environment-bound'.",
-    "code_example": "(try (begin (eval 'foo (interaction-environment)) #t) (catch (e) #f))",
-    "wrong_example": "(environment-bound? 'foo)",
-    "imports": [],
-    "related_divergence": "gerbil-environment-bound"
-  },
-  {
-    "id": "hallucinated-gambit-time-to-seconds",
-    "pattern": "(variable\\s+time\\->seconds\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+time\\->seconds)",
-    "type": "Compat Import Needed",
-    "message": "'time->seconds' is not a Jerboa identifier (from gambit, gerbil)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std srfi srfi-19). Use (time-second t) for epoch seconds, (time-nanosecond t) for sub-second part.",
-    "fix": "'time->seconds' is not in the prelude. Import one of: (jerboa core), (std gambit-compat), (std srfi srfi-19). Or use the Jerboa idiom: time-second.",
-    "code_example": "(time-second (current-time))",
-    "wrong_example": "(time->seconds (current-time))",
-    "imports": [
-      "(jerboa core)"
-    ],
-    "related_divergence": "gambit-time-to-seconds"
-  },
-  {
-    "id": "hallucinated-gambit-thread-sleep",
-    "pattern": "(variable\\s+thread\\-sleep!\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+thread\\-sleep!)",
-    "type": "Compat Import Needed",
-    "message": "'thread-sleep!' is not a Jerboa identifier (from gambit, gerbil)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std misc thread). Chez sleep takes a time-duration object: (make-time 'time-duration NANOSECONDS SECONDS). For fractional secs, use the nanosecond field.",
-    "fix": "'thread-sleep!' is not in the prelude. Import one of: (jerboa core), (std gambit-compat), (std misc thread). Or use the Jerboa idiom: sleep.",
-    "code_example": "(sleep (make-time 'time-duration 500000000 1))",
-    "wrong_example": "(thread-sleep! 1.5)",
-    "imports": [
-      "(jerboa core)"
-    ],
-    "related_divergence": "gambit-thread-sleep"
-  },
-  {
-    "id": "hallucinated-gambit-thread-yield",
-    "pattern": "(variable\\s+thread\\-yield!\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+thread\\-yield!)",
-    "type": "Compat Import Needed",
-    "message": "'thread-yield!' is not a Jerboa identifier (from gambit)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std misc thread). Chez has no thread-yield. sleep with zero duration is the closest equivalent (yields to scheduler).",
-    "fix": "'thread-yield!' is not in the prelude. Import one of: (jerboa core), (std gambit-compat), (std misc thread). Or use the Jerboa idiom: (sleep (make-time 'time-duration 0 0)).",
-    "code_example": "(sleep (make-time 'time-duration 0 0))",
-    "wrong_example": "(thread-yield!)",
-    "imports": [
-      "(jerboa core)"
-    ],
-    "related_divergence": "gambit-thread-yield"
-  },
-  {
-    "id": "hallucinated-gerbil-process-status",
-    "pattern": "(variable\\s+process\\-status\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+process\\-status)",
-    "type": "Compat Import Needed",
-    "message": "'process-status' is not a Jerboa identifier (from gerbil)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std os fd). Gerbil's process model does not map directly. Use run-process from (std misc process).",
-    "fix": "'process-status' is not in the prelude. Import one of: (jerboa core), (std gambit-compat), (std os fd). Or use the Jerboa idiom: (std misc process) API.",
-    "code_example": "(import (std misc process))\n(run-process [\"ls\"])  ;; returns status+output",
-    "wrong_example": "(process-status proc)",
-    "imports": [
-      "(std misc process)"
-    ],
-    "related_divergence": "gerbil-process-status"
-  },
-  {
-    "id": "hallucinated-gerbil-user-info-home",
-    "pattern": "(variable\\s+user\\-info\\-home\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+user\\-info\\-home)",
-    "type": "Compat Import Needed",
-    "message": "'user-info-home' is not a Jerboa identifier (from gerbil)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat). Jerboa/Chez has no user-info record. Read $HOME directly.",
-    "fix": "'user-info-home' is not in the prelude. Import one of: (jerboa core), (std gambit-compat). Or use the Jerboa idiom: (getenv \"HOME\").",
-    "code_example": "(getenv \"HOME\")",
-    "wrong_example": "(user-info-home)",
-    "imports": [
-      "(jerboa core)"
-    ],
-    "related_divergence": "gerbil-user-info-home"
-  },
-  {
-    "id": "hallucinated-gerbil-condition-report-string",
-    "pattern": "(variable\\s+condition/report\\-string\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+condition/report\\-string)",
-    "type": "Hallucinated Identifier",
-    "message": "'condition/report-string' is not a Jerboa identifier (from gerbil)",
-    "explanation": "Chez formats conditions via display-condition; capture with with-output-to-string.",
-    "fix": "'condition/report-string' does not exist in Jerboa/Chez. Use (with-output-to-string (lambda () (display-condition c))) instead. See divergence catalog id 'gerbil-condition-report-string'.",
-    "code_example": "(with-output-to-string (lambda () (display-condition c)))",
-    "wrong_example": "(condition/report-string c)",
-    "imports": [],
-    "related_divergence": "gerbil-condition-report-string"
-  },
-  {
-    "id": "hallucinated-gerbil-make-class-type",
-    "pattern": "(variable\\s+make\\-class\\-type\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+make\\-class\\-type)",
-    "type": "Hallucinated Identifier",
-    "message": "'make-class-type' is not a Jerboa identifier (from gerbil)",
-    "explanation": "Gerbil's class system is lower-level. Jerboa provides defstruct (define-record-type) and defclass.",
-    "fix": "'make-class-type' does not exist in Jerboa/Chez. Use defstruct or defclass instead. See divergence catalog id 'gerbil-make-class-type'.",
-    "code_example": "(defstruct point (x y))\n(defclass shape () (name))",
-    "wrong_example": "(make-class-type ...)",
-    "imports": [],
-    "related_divergence": "gerbil-make-class-type"
-  },
-  {
-    "id": "hallucinated-gerbil-string-subst",
-    "pattern": "(variable\\s+string\\-subst\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+string\\-subst)",
-    "type": "Compat Import Needed",
-    "message": "'string-subst' is not a Jerboa identifier (from gerbil)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat). Use string-replace (Jerboa) or re-replace-all from the regex module for regex-based replacement.",
-    "fix": "'string-subst' is not in the prelude. Import one of: (jerboa core), (std gambit-compat). Or use the Jerboa idiom: string-replace.",
-    "code_example": "(string-replace \"hello\" \"l\" \"L\")",
-    "wrong_example": "(string-subst \"hello\" \"l\" \"L\")",
-    "imports": [
-      "(jerboa core)"
-    ],
-    "related_divergence": "gerbil-string-subst"
-  },
-  {
-    "id": "hallucinated-gambit-open-fd-pair",
-    "pattern": "(variable\\s+open\\-fd\\-pair\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+open\\-fd\\-pair)",
-    "type": "Hallucinated Identifier",
-    "message": "'open-fd-pair' is not a Jerboa identifier (from gambit)",
-    "explanation": "No direct equivalent; use pipe operations from (std os fd) or run-process with piped stdin/stdout.",
-    "fix": "'open-fd-pair' does not exist in Jerboa/Chez. Use (std os fd) pipe API instead. See divergence catalog id 'gambit-open-fd-pair'.",
-    "code_example": "(import (std os fd))\n(make-pipe)  ;; check actual API",
-    "wrong_example": "(open-fd-pair)",
-    "imports": [
-      "(std os fd)"
-    ],
-    "related_divergence": "gambit-open-fd-pair"
-  },
-  {
-    "id": "hallucinated-racket-arithmetic-shift",
-    "pattern": "(variable\\s+arithmetic\\-shift\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+arithmetic\\-shift)",
-    "type": "Compat Import Needed",
-    "message": "'arithmetic-shift' is not a Jerboa identifier (from racket, r6rs)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std srfi srfi-151). Chez has bitwise-arithmetic-shift and a short alias ash. arithmetic-shift is not bound.",
-    "fix": "'arithmetic-shift' is not in the prelude. Import one of: (jerboa core), (std gambit-compat), (std srfi srfi-151). Or use the Jerboa idiom: bitwise-arithmetic-shift.",
-    "code_example": "(bitwise-arithmetic-shift n 3)  ;; or (ash n 3)",
-    "wrong_example": "(arithmetic-shift n 3)",
-    "imports": [
-      "(jerboa core)"
-    ],
-    "related_divergence": "racket-arithmetic-shift"
-  },
-  {
-    "id": "hallucinated-racket-pregexp-match",
-    "pattern": "(variable\\s+pregexp\\-match\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+pregexp\\-match)",
-    "type": "Compat Import Needed",
-    "message": "'pregexp-match' is not a Jerboa identifier (from racket)",
-    "explanation": "AVAILABLE in Jerboa via: (std pregexp). Jerboa's regex uses a unified API: re to compile, re-search/re-match?/re-find-all/re-replace. In prelude.",
-    "fix": "'pregexp-match' is not in the prelude. Import one of: (std pregexp). Or use the Jerboa idiom: re-search.",
-    "code_example": "(re-search (re \"\\\\d+\") s)",
-    "wrong_example": "(pregexp-match \"\\\\d+\" s)",
-    "imports": [
-      "(std pregexp)"
-    ],
-    "related_divergence": "racket-pregexp-match"
-  },
-  {
-    "id": "hallucinated-racket-regexp-match",
-    "pattern": "(variable\\s+regexp\\-match\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+regexp\\-match)",
-    "type": "Hallucinated Identifier",
-    "message": "'regexp-match' is not a Jerboa identifier (from racket)",
-    "explanation": "LLMs commonly reach for 'regexp-match' from racket training data. Jerboa uses 're-search'.",
-    "fix": "'regexp-match' does not exist in Jerboa/Chez. Use re-search instead. See divergence catalog id 'racket-regexp-match'.",
-    "code_example": "(re-search (re \"\\\\d+\") s)",
-    "wrong_example": "(regexp-match #px\"\\\\d+\" s)",
-    "imports": [],
-    "related_divergence": "racket-regexp-match"
-  },
-  {
-    "id": "hallucinated-cl-defun",
-    "pattern": "(variable\\s+defun\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+defun)",
-    "type": "Hallucinated Identifier",
-    "message": "'defun' is not a Jerboa identifier (from common-lisp, emacs-lisp)",
-    "explanation": "LLMs commonly reach for 'defun' from common-lisp, emacs-lisp training data. Jerboa uses 'def'.",
-    "fix": "'defun' does not exist in Jerboa/Chez. Use def instead. See divergence catalog id 'cl-defun'.",
-    "code_example": "(def (f x) (* x 2))",
-    "wrong_example": "(defun f (x) (* x 2))",
-    "imports": [],
-    "related_divergence": "cl-defun"
-  },
-  {
-    "id": "hallucinated-cl-defvar",
-    "pattern": "(variable\\s+defvar\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+defvar)",
-    "type": "Hallucinated Identifier",
-    "message": "'defvar' is not a Jerboa identifier (from common-lisp, emacs-lisp)",
-    "explanation": "LLMs commonly reach for 'defvar' from common-lisp, emacs-lisp training data. Jerboa uses 'def'.",
-    "fix": "'defvar' does not exist in Jerboa/Chez. Use def instead. See divergence catalog id 'cl-defvar'.",
-    "code_example": "(def x 42)",
-    "wrong_example": "(defvar *x* 42)",
-    "imports": [],
-    "related_divergence": "cl-defvar"
-  },
-  {
-    "id": "hallucinated-cl-defparameter",
-    "pattern": "(variable\\s+defparameter\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+defparameter)",
-    "type": "Hallucinated Identifier",
-    "message": "'defparameter' is not a Jerboa identifier (from common-lisp)",
-    "explanation": "For dynamic scoping, use make-parameter + parameterize, not a global var.",
-    "fix": "'defparameter' does not exist in Jerboa/Chez. Use define or make-parameter instead. See divergence catalog id 'cl-defparameter'.",
-    "code_example": "(define max-p (make-parameter 100))\n(max-p)  ;; 100\n(parameterize ((max-p 200)) (max-p))  ;; 200",
-    "wrong_example": "(defparameter *max* 100)",
-    "imports": [],
-    "related_divergence": "cl-defparameter"
-  },
-  {
-    "id": "hallucinated-cl-progn",
-    "pattern": "(variable\\s+progn\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+progn)",
-    "type": "Hallucinated Identifier",
-    "message": "'progn' is not a Jerboa identifier (from common-lisp, emacs-lisp)",
-    "explanation": "LLMs commonly reach for 'progn' from common-lisp, emacs-lisp training data. Jerboa uses 'begin'.",
-    "fix": "'progn' does not exist in Jerboa/Chez. Use begin instead. See divergence catalog id 'cl-progn'.",
-    "code_example": "(begin e1 e2 e3)",
-    "wrong_example": "(progn e1 e2 e3)",
-    "imports": [],
-    "related_divergence": "cl-progn"
-  },
-  {
-    "id": "hallucinated-cl-setq",
-    "pattern": "(variable\\s+setq\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+setq)",
-    "type": "Hallucinated Identifier",
-    "message": "'setq' is not a Jerboa identifier (from common-lisp)",
-    "explanation": "LLMs commonly reach for 'setq' from common-lisp training data. Jerboa uses 'set!'.",
-    "fix": "'setq' does not exist in Jerboa/Chez. Use set! instead. See divergence catalog id 'cl-setq'.",
-    "code_example": "(set! x 10)",
-    "wrong_example": "(setq x 10)",
-    "imports": [],
-    "related_divergence": "cl-setq"
-  },
-  {
-    "id": "hallucinated-clojure-defn",
-    "pattern": "(variable\\s+defn\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+defn)",
-    "type": "Compat Import Needed",
-    "message": "'defn' is not a Jerboa identifier (from clojure)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa clojure), (jerboa prelude), (std prelude), (std sugar). Square brackets for params ARE supported (same as parens), but the macro is def not defn.",
-    "fix": "'defn' is not in the prelude. Import one of: (jerboa clojure), (jerboa prelude), (std prelude), (std sugar). Or use the Jerboa idiom: def.",
-    "code_example": "(def (f x) (* x 2))",
-    "wrong_example": "(defn f [x] (* x 2))",
-    "imports": [
-      "(jerboa clojure)"
-    ],
-    "related_divergence": "clojure-defn"
-  },
-  {
-    "id": "hallucinated-clojure-fn",
-    "pattern": "(variable\\s+fn\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+fn)",
-    "type": "Hallucinated Identifier",
-    "message": "'fn' is not a Jerboa identifier (from clojure)",
-    "explanation": "No fn in Jerboa prelude. Use lambda.",
-    "fix": "'fn' does not exist in Jerboa/Chez. Use lambda instead. See divergence catalog id 'clojure-fn'.",
-    "code_example": "(lambda (x) (* x 2))",
-    "wrong_example": "(fn [x] (* x 2))",
-    "imports": [],
-    "related_divergence": "clojure-fn"
-  },
-  {
-    "id": "hallucinated-gerbil-with-exception-handler",
-    "pattern": "(variable\\s+with\\-exception\\-catcher\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+with\\-exception\\-catcher)",
-    "type": "Compat Import Needed",
-    "message": "'with-exception-catcher' is not a Jerboa identifier (from gambit)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat). Jerboa's try/catch is the idiomatic form. guard and with-exception-handler (R6RS) also work.",
-    "fix": "'with-exception-catcher' is not in the prelude. Import one of: (jerboa core), (std gambit-compat). Or use the Jerboa idiom: try/catch.",
-    "code_example": "(try (thunk-body) (catch (e) (handler e)))",
-    "wrong_example": "(with-exception-catcher handler thunk)",
-    "imports": [
-      "(jerboa core)"
-    ],
-    "related_divergence": "gerbil-with-exception-handler"
-  },
-  {
-    "id": "hallucinated-r7rs-error-object",
-    "pattern": "(variable\\s+error\\-object\\?\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+error\\-object\\?)",
-    "type": "Hallucinated Identifier",
-    "message": "'error-object?' is not a Jerboa identifier (from r7rs)",
-    "explanation": "Chez uses the R6RS condition system. condition?, message-condition?, irritants-condition?, etc.",
-    "fix": "'error-object?' does not exist in Jerboa/Chez. Use condition? instead. See divergence catalog id 'r7rs-error-object'.",
-    "code_example": "(condition? e)",
-    "wrong_example": "(error-object? e)",
-    "imports": [],
-    "related_divergence": "r7rs-error-object"
-  },
-  {
-    "id": "hallucinated-srfi-hash-table-walk",
-    "pattern": "(variable\\s+hash\\-table\\-walk\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+hash\\-table\\-walk)",
-    "type": "Hallucinated Identifier",
-    "message": "'hash-table-walk' is not a Jerboa identifier (from srfi-69)",
-    "explanation": "Argument order: proc first, table second \u2014 opposite of SRFI-69.",
-    "fix": "'hash-table-walk' does not exist in Jerboa/Chez. Use hash-for-each instead. See divergence catalog id 'srfi-hash-table-walk'.",
-    "code_example": "(hash-for-each (lambda (k v) ...) ht)",
-    "wrong_example": "(hash-table-walk ht (lambda (k v) ...))",
-    "imports": [],
-    "related_divergence": "srfi-hash-table-walk"
-  },
-  {
-    "id": "hallucinated-srfi-hash-table-keys",
-    "pattern": "(variable\\s+hash\\-table\\-keys\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+hash\\-table\\-keys)",
-    "type": "Compat Import Needed",
-    "message": "'hash-table-keys' is not a Jerboa identifier (from srfi-69)",
-    "explanation": "AVAILABLE in Jerboa via: (std srfi srfi-125).",
-    "fix": "'hash-table-keys' is not in the prelude. Import one of: (std srfi srfi-125). Or use the Jerboa idiom: hash-keys.",
-    "code_example": "(hash-keys ht)",
-    "wrong_example": "(hash-table-keys ht)",
-    "imports": [
-      "(std srfi srfi-125)"
-    ],
-    "related_divergence": "srfi-hash-table-keys"
-  },
-  {
-    "id": "hallucinated-clojure-count",
-    "pattern": "(variable\\s+count\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+count)",
-    "type": "Compat Import Needed",
-    "message": "'count' is not a Jerboa identifier (from clojure)",
-    "explanation": "AVAILABLE in Jerboa via: (jerboa clojure), (std clojure), (std srfi srfi-1).",
-    "fix": "'count' is not in the prelude. Import one of: (jerboa clojure), (std clojure), (std srfi srfi-1). Or use the Jerboa idiom: length.",
-    "code_example": "(length lst)  ;; for lists\n(vector-length v) ;; vectors\n(string-length s) ;; strings\n(hash-table-size ht) ;; hash tables",
-    "wrong_example": "(count lst)",
-    "imports": [
-      "(jerboa clojure)"
-    ],
-    "related_divergence": "clojure-count"
-  },
-  {
-    "id": "hallucinated-clojure-nil",
-    "pattern": "(variable\\s+nil\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+nil)",
-    "type": "Hallucinated Identifier",
-    "message": "'nil' is not a Jerboa identifier (from clojure, common-lisp)",
-    "explanation": "Scheme distinguishes #f (false) from '() (empty list). There is no unified nil.",
-    "fix": "'nil' does not exist in Jerboa/Chez. Use #f or '() instead. See divergence catalog id 'clojure-nil'.",
-    "code_example": "(if (not x) ...)  ;; #f-tested\n(if (null? lst) ...)  ;; empty-list-tested",
-    "wrong_example": "(if (= x nil) ...)",
-    "imports": [],
-    "related_divergence": "clojure-nil"
-  },
-  {
-    "id": "hallucinated-hallucinated-when-not",
-    "pattern": "(variable\\s+when\\-not\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+when\\-not)",
-    "type": "Hallucinated Identifier",
-    "message": "'when-not' is not a Jerboa identifier (from clojure)",
-    "explanation": "LLMs commonly reach for 'when-not' from clojure training data. Jerboa uses 'unless'.",
-    "fix": "'when-not' does not exist in Jerboa/Chez. Use unless instead. See divergence catalog id 'hallucinated-when-not'.",
-    "code_example": "(unless x body)",
-    "wrong_example": "(when-not x body)",
-    "imports": [],
-    "related_divergence": "hallucinated-when-not"
-  },
-  {
-    "id": "hallucinated-r7rs-error-irritants-accessor",
-    "pattern": "(variable\\s+error\\-object\\-irritants\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+error\\-object\\-irritants)",
-    "type": "Hallucinated Identifier",
-    "message": "'error-object-irritants' is not a Jerboa identifier (from r7rs)",
-    "explanation": "LLMs commonly reach for 'error-object-irritants' from r7rs training data. Jerboa uses 'condition-irritants'.",
-    "fix": "'error-object-irritants' does not exist in Jerboa/Chez. Use condition-irritants instead. See divergence catalog id 'r7rs-error-irritants-accessor'.",
-    "code_example": "(condition-irritants e)  ;; or &irritants",
-    "wrong_example": "(error-object-irritants e)",
-    "imports": [],
-    "related_divergence": "r7rs-error-irritants-accessor"
-  },
-  {
-    "id": "hallucinated-r7rs-error-message-accessor",
-    "pattern": "(variable\\s+error\\-object\\-message\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+error\\-object\\-message)",
-    "type": "Hallucinated Identifier",
-    "message": "'error-object-message' is not a Jerboa identifier (from r7rs)",
-    "explanation": "LLMs commonly reach for 'error-object-message' from r7rs training data. Jerboa uses 'condition-message'.",
-    "fix": "'error-object-message' does not exist in Jerboa/Chez. Use condition-message instead. See divergence catalog id 'r7rs-error-message-accessor'.",
-    "code_example": "(condition-message e)",
-    "wrong_example": "(error-object-message e)",
-    "imports": [],
-    "related_divergence": "r7rs-error-message-accessor"
-  },
-  {
-    "id": "hallucinated-python-len",
-    "pattern": "(variable\\s+len\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+len)",
-    "type": "Hallucinated Identifier",
-    "message": "'len' is not a Jerboa identifier (from python)",
-    "explanation": "LLMs commonly reach for 'len' from python training data. Jerboa uses 'length / string-length / vector-length'.",
-    "fix": "'len' does not exist in Jerboa/Chez. Use length / string-length / vector-length instead. See divergence catalog id 'python-len'.",
-    "code_example": "(length lst)",
-    "wrong_example": "(len lst)",
-    "imports": [],
-    "related_divergence": "python-len"
-  },
-  {
-    "id": "hallucinated-hallucinated-string-starts-with",
-    "pattern": "(variable\\s+string\\-starts\\-with\\?\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+string\\-starts\\-with\\?)",
-    "type": "Hallucinated Identifier",
-    "message": "'string-starts-with?' is not a Jerboa identifier (from hallucination, racket-string)",
-    "explanation": "Note arg order is (string-prefix? PREFIX STRING). Opposite of some Racket naming.",
-    "fix": "'string-starts-with?' does not exist in Jerboa/Chez. Use string-prefix? instead. See divergence catalog id 'hallucinated-string-starts-with'.",
-    "code_example": "(string-prefix? \"he\" \"hello\")  ;; NOTE arg order: prefix first",
-    "wrong_example": "(string-starts-with? \"hello\" \"he\")",
-    "imports": [],
-    "related_divergence": "hallucinated-string-starts-with"
-  },
-  {
-    "id": "hallucinated-hallucinated-string-ends-with",
-    "pattern": "(variable\\s+string\\-ends\\-with\\?\\s+is\\s+not\\s+bound|unbound\\s+identifier\\s+string\\-ends\\-with\\?)",
-    "type": "Hallucinated Identifier",
-    "message": "'string-ends-with?' is not a Jerboa identifier (from hallucination)",
-    "explanation": "LLMs commonly reach for 'string-ends-with?' from hallucination training data. Jerboa uses 'string-suffix?'.",
-    "fix": "'string-ends-with?' does not exist in Jerboa/Chez. Use string-suffix? instead. See divergence catalog id 'hallucinated-string-ends-with'.",
-    "code_example": "(string-suffix? \"lo\" \"hello\")  ;; suffix first, string second",
-    "wrong_example": "(string-ends-with? \"hello\" \"lo\")",
-    "imports": [],
-    "related_divergence": "hallucinated-string-ends-with"
   }
 ]
