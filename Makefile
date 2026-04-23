@@ -1,7 +1,39 @@
-.PHONY: build start test clean update update-opencode update-claude
+.PHONY: build start test clean update update-opencode update-claude \
+        regen-api regen-strict-prelude regen-docs regen-changelog regen-all
 
 build: node_modules
 	npm run build
+
+## Regeneration targets -------------------------------------------------------
+## Usage: make regen-all JERBOA_ROOT=/path/to/jerboa
+JERBOA_ROOT ?= $(HOME)/mine/jerboa
+
+regen-api:
+	python3 scripts/extract-api.py --root $(JERBOA_ROOT) --out api-signatures.json
+
+regen-strict-prelude:
+	python3 scripts/gen-strict-prelude.py \
+		--api api-signatures.json \
+		--divergence divergence.json \
+		--out $(JERBOA_ROOT)/lib/jerboa/prelude/strict.sls
+
+regen-docs:
+	python3 scripts/gen-divergence-md.py --json divergence.json \
+		--out $(JERBOA_ROOT)/docs/divergence.md
+	python3 scripts/gen-api-index.py --api api-signatures.json \
+		--out $(JERBOA_ROOT)/docs/api-index.md
+
+## Diff api-signatures.json against its previous git revision and append
+## a changelog entry. Expects a clean working tree under git.
+regen-changelog:
+	git show HEAD:api-signatures.json > /tmp/jerboa-api-prev.json
+	python3 scripts/diff-api-signatures.py \
+		--old /tmp/jerboa-api-prev.json \
+		--new api-signatures.json \
+		--append-to changelog.json
+
+regen-all: regen-api regen-strict-prelude regen-docs
+	@echo "All generated artifacts refreshed."
 
 node_modules: package.json
 	npm install

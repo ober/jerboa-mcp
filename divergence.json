@@ -1,0 +1,1897 @@
+{
+  "version": "1.0",
+  "generated": "2026-04-22",
+  "description": "Catalog of identifiers and forms LLMs commonly reach for from other Scheme dialects (Gerbil, Gambit, Racket, R6RS, R7RS, Common Lisp, Clojure, SRFI) that are wrong in Jerboa/Chez. Each entry pairs the hallucinated form with the correct Jerboa equivalent. Machine-readable companion to divergence.md. Load into jerboa_verify to catch known-wrong usages before code ships.",
+  "schema": {
+    "id": "kebab-case unique identifier",
+    "wrong": "the hallucinated identifier or form",
+    "wrong_source": "list of dialects where the form is valid",
+    "wrong_example": "code showing the wrong usage",
+    "correct": "the correct Jerboa identifier or form",
+    "correct_example": "working Jerboa code",
+    "imports": "imports required for the correct form (empty = in prelude)",
+    "category": "classification for filtering",
+    "severity": "error (won't work), warning (works but wrong idiom), aliased (hallucination now accepted as prelude alias)",
+    "notes": "additional context"
+  },
+  "entries": [
+    {
+      "id": "racket-hash-has-key",
+      "wrong": "hash-has-key?",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(hash-has-key? ht \"k\")",
+      "correct": "hash-key?",
+      "correct_example": "(hash-key? ht \"k\")",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "aliased",
+      "notes": "hash-has-key? is aliased to hash-key? in (jerboa prelude) for Racket-familiarity.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa prelude)"
+      ]
+    },
+    {
+      "id": "racket-hash-table-set-bang",
+      "wrong": "hash-table-set!",
+      "wrong_source": [
+        "racket",
+        "srfi-69"
+      ],
+      "wrong_example": "(hash-table-set! ht k v)",
+      "correct": "hash-put!",
+      "correct_example": "(hash-put! ht k v)",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "aliased",
+      "notes": "hash-table-set! is aliased to hash-put! in the prelude.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa prelude)",
+        "(std srfi srfi-125)"
+      ]
+    },
+    {
+      "id": "gambit-directory-exists",
+      "wrong": "directory-exists?",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(directory-exists? \"/tmp\")",
+      "correct": "file-directory?",
+      "correct_example": "(file-directory? \"/tmp\")",
+      "imports": [],
+      "category": "filesystem",
+      "severity": "aliased",
+      "notes": "directory-exists? is aliased to file-directory? in the prelude.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa prelude)",
+        "(std os path-util)"
+      ]
+    },
+    {
+      "id": "cl-eql-predicate",
+      "wrong": "eql?",
+      "wrong_source": [
+        "common-lisp"
+      ],
+      "wrong_example": "(eql? 1 1.0)",
+      "correct": "eqv?",
+      "correct_example": "(eqv? 1 1.0)",
+      "imports": [],
+      "category": "equality",
+      "severity": "aliased",
+      "notes": "eql? is aliased to eqv? in the prelude.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa prelude)"
+      ]
+    },
+    {
+      "id": "gambit-random-integer",
+      "wrong": "random-integer",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(random-integer 100)",
+      "correct": "random",
+      "correct_example": "(random 100)",
+      "imports": [],
+      "category": "numerics",
+      "severity": "aliased",
+      "notes": "random-integer is aliased to random in the prelude.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa core)",
+        "(jerboa prelude)",
+        "(std gambit-compat)"
+      ]
+    },
+    {
+      "id": "gambit-read-line",
+      "wrong": "(read-line port)",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(read-line (current-input-port))",
+      "correct": "read-line",
+      "correct_example": "(read-line)  ;; or (read-line port)",
+      "imports": [],
+      "category": "io",
+      "severity": "aliased",
+      "notes": "read-line is aliased as a wrapper over get-line that also works with no args (reads current-input-port).",
+      "available_via": null
+    },
+    {
+      "id": "gambit-force-output",
+      "wrong": "force-output",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(force-output)",
+      "correct": "flush-output-port",
+      "correct_example": "(flush-output-port)  ;; or with port arg",
+      "imports": [],
+      "category": "io",
+      "severity": "aliased",
+      "notes": "force-output is aliased to a flush-output-port wrapper that accepts 0 or 1 args.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa core)",
+        "(jerboa prelude)",
+        "(std gambit-compat)"
+      ]
+    },
+    {
+      "id": "racket-string-map",
+      "wrong": "string-map",
+      "wrong_source": [
+        "racket",
+        "r7rs"
+      ],
+      "wrong_example": "(string-map char-upcase \"hello\")",
+      "correct": "string-map",
+      "correct_example": "(string-map char-upcase \"hello\")",
+      "imports": [],
+      "category": "strings",
+      "severity": "aliased",
+      "notes": "string-map in the prelude is the char-level Racket/R7RS version. Chez's own string-map signature differs; prelude wraps to Racket semantics.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa core)",
+        "(jerboa prelude)",
+        "(std gambit-compat)"
+      ]
+    },
+    {
+      "id": "gerbil-symbol-lt",
+      "wrong": "symbol<?",
+      "wrong_source": [
+        "gerbil",
+        "srfi-1"
+      ],
+      "wrong_example": "(sort symbol<? '(b a c))",
+      "correct": "(lambda (a b) (string<? (symbol->string a) (symbol->string b)))",
+      "correct_example": "(sort (lambda (a b) (string<? (symbol->string a) (symbol->string b))) '(b a c))",
+      "imports": [],
+      "category": "symbols",
+      "severity": "error",
+      "notes": "No symbol<? in Jerboa/Chez. Compare via symbol->string + string<?.",
+      "available_via": []
+    },
+    {
+      "id": "racket-string-contains-predicate",
+      "wrong": "string-contains?",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(if (string-contains? s \"foo\") ...)",
+      "correct": "string-contains",
+      "correct_example": "(if (string-contains s \"foo\") ...)  ;; returns index or #f \u2014 truthy if found",
+      "imports": [],
+      "category": "strings",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (std misc string-more). Jerboa's string-contains (no ?) returns an index or #f, NOT a boolean. Both values are truthy/falsy in conditionals, so `if` works directly.",
+      "available_via": [
+        "(std misc string-more)"
+      ]
+    },
+    {
+      "id": "racket-define-struct",
+      "wrong": "define-struct",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(define-struct point (x y))",
+      "correct": "defstruct",
+      "correct_example": "(defstruct point (x y))",
+      "imports": [],
+      "category": "records",
+      "severity": "error",
+      "notes": "Generates make-point, point?, point-x, point-y, point-x-set!. For inheritance: (defstruct (circle shape) (radius)).",
+      "available_via": []
+    },
+    {
+      "id": "cl-raise-string",
+      "wrong": "(raise \"message\")",
+      "wrong_source": [
+        "common-lisp",
+        "r6rs-colloquial"
+      ],
+      "wrong_example": "(raise \"something went wrong\")",
+      "correct": "error",
+      "correct_example": "(error 'who \"something went wrong\" irritants ...)",
+      "imports": [],
+      "category": "errors",
+      "severity": "error",
+      "notes": "raise takes a condition value, not a string. Use error to signal with a message and source. Raise works if you pass a condition object, e.g. (raise (make-error)).",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-environment-bound",
+      "wrong": "environment-bound?",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(environment-bound? 'foo)",
+      "correct": "(try (eval 'foo (interaction-environment)) (catch (e) #f))",
+      "correct_example": "(try (begin (eval 'foo (interaction-environment)) #t) (catch (e) #f))",
+      "imports": [],
+      "category": "meta",
+      "severity": "error",
+      "notes": "No direct Chez equivalent. Probe via eval + catch for undefined-variable.",
+      "available_via": []
+    },
+    {
+      "id": "gambit-time-to-seconds",
+      "wrong": "time->seconds",
+      "wrong_source": [
+        "gambit",
+        "gerbil"
+      ],
+      "wrong_example": "(time->seconds (current-time))",
+      "correct": "time-second",
+      "correct_example": "(time-second (current-time))",
+      "imports": [],
+      "category": "time",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std srfi srfi-19). Use (time-second t) for epoch seconds, (time-nanosecond t) for sub-second part.",
+      "available_via": [
+        "(jerboa core)",
+        "(std gambit-compat)",
+        "(std srfi srfi-19)"
+      ]
+    },
+    {
+      "id": "gambit-thread-sleep",
+      "wrong": "thread-sleep!",
+      "wrong_source": [
+        "gambit",
+        "gerbil"
+      ],
+      "wrong_example": "(thread-sleep! 1.5)",
+      "correct": "sleep",
+      "correct_example": "(sleep (make-time 'time-duration 500000000 1))",
+      "imports": [],
+      "category": "concurrency",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std misc thread). Chez sleep takes a time-duration object: (make-time 'time-duration NANOSECONDS SECONDS). For fractional secs, use the nanosecond field.",
+      "available_via": [
+        "(jerboa core)",
+        "(std gambit-compat)",
+        "(std misc thread)"
+      ]
+    },
+    {
+      "id": "gambit-thread-yield",
+      "wrong": "thread-yield!",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(thread-yield!)",
+      "correct": "(sleep (make-time 'time-duration 0 0))",
+      "correct_example": "(sleep (make-time 'time-duration 0 0))",
+      "imports": [],
+      "category": "concurrency",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std misc thread). Chez has no thread-yield. sleep with zero duration is the closest equivalent (yields to scheduler).",
+      "available_via": [
+        "(jerboa core)",
+        "(std gambit-compat)",
+        "(std misc thread)"
+      ]
+    },
+    {
+      "id": "gerbil-path-expand-2arg",
+      "wrong": "(path-expand relative base)",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(path-expand \"foo.txt\" \"/home/user\")",
+      "correct": "path-join",
+      "correct_example": "(path-join \"/home/user\" \"foo.txt\")",
+      "imports": [],
+      "category": "filesystem",
+      "severity": "error",
+      "notes": "Gerbil's path-expand is 2-arg; Jerboa's path-expand is 1-arg (~ expansion only). Use path-join for composition.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-process-status",
+      "wrong": "process-status",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(process-status proc)",
+      "correct": "(std misc process) API",
+      "correct_example": "(import (std misc process))\n(run-process [\"ls\"])  ;; returns status+output",
+      "imports": [
+        "(std misc process)"
+      ],
+      "category": "process",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std os fd). Gerbil's process model does not map directly. Use run-process from (std misc process).",
+      "available_via": [
+        "(jerboa core)",
+        "(std gambit-compat)",
+        "(std os fd)"
+      ]
+    },
+    {
+      "id": "gerbil-user-info-home",
+      "wrong": "user-info-home",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(user-info-home)",
+      "correct": "(getenv \"HOME\")",
+      "correct_example": "(getenv \"HOME\")",
+      "imports": [],
+      "category": "environment",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat). Jerboa/Chez has no user-info record. Read $HOME directly.",
+      "available_via": [
+        "(jerboa core)",
+        "(std gambit-compat)"
+      ]
+    },
+    {
+      "id": "gerbil-the-environment",
+      "wrong": "(the-environment)",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(eval expr (the-environment))",
+      "correct": "(interaction-environment)",
+      "correct_example": "(eval expr (interaction-environment))",
+      "imports": [],
+      "category": "meta",
+      "severity": "error",
+      "notes": "Chez uses interaction-environment for the top-level dynamic environment.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-condition-report-string",
+      "wrong": "condition/report-string",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(condition/report-string c)",
+      "correct": "(with-output-to-string (lambda () (display-condition c)))",
+      "correct_example": "(with-output-to-string (lambda () (display-condition c)))",
+      "imports": [],
+      "category": "errors",
+      "severity": "error",
+      "notes": "Chez formats conditions via display-condition; capture with with-output-to-string.",
+      "available_via": []
+    },
+    {
+      "id": "gerbil-make-class-type",
+      "wrong": "make-class-type",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(make-class-type ...)",
+      "correct": "defstruct or defclass",
+      "correct_example": "(defstruct point (x y))\n(defclass shape () (name))",
+      "imports": [],
+      "category": "records",
+      "severity": "error",
+      "notes": "Gerbil's class system is lower-level. Jerboa provides defstruct (define-record-type) and defclass.",
+      "available_via": []
+    },
+    {
+      "id": "gerbil-string-subst",
+      "wrong": "string-subst",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(string-subst \"hello\" \"l\" \"L\")",
+      "correct": "string-replace",
+      "correct_example": "(string-replace \"hello\" \"l\" \"L\")",
+      "imports": [],
+      "category": "strings",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat). Use string-replace (Jerboa) or re-replace-all from the regex module for regex-based replacement.",
+      "available_via": [
+        "(jerboa core)",
+        "(std gambit-compat)"
+      ]
+    },
+    {
+      "id": "gambit-open-fd-pair",
+      "wrong": "open-fd-pair",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(open-fd-pair)",
+      "correct": "(std os fd) pipe API",
+      "correct_example": "(import (std os fd))\n(make-pipe)  ;; check actual API",
+      "imports": [
+        "(std os fd)"
+      ],
+      "category": "io",
+      "severity": "error",
+      "notes": "No direct equivalent; use pipe operations from (std os fd) or run-process with piped stdin/stdout.",
+      "available_via": []
+    },
+    {
+      "id": "r6rs-make-equal-hashtable",
+      "wrong": "make-equal-hashtable",
+      "wrong_source": [
+        "r6rs"
+      ],
+      "wrong_example": "(make-equal-hashtable)",
+      "correct": "make-hash-table",
+      "correct_example": "(make-hash-table)",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "warning",
+      "notes": "R6RS make-equal-hashtable works in Chez but prelude's make-hash-table is the Jerboa idiom. For eq-hashtables use (make-eq-hashtable) from (chezscheme).",
+      "available_via": []
+    },
+    {
+      "id": "racket-arithmetic-shift",
+      "wrong": "arithmetic-shift",
+      "wrong_source": [
+        "racket",
+        "r6rs"
+      ],
+      "wrong_example": "(arithmetic-shift n 3)",
+      "correct": "bitwise-arithmetic-shift",
+      "correct_example": "(bitwise-arithmetic-shift n 3)  ;; or (ash n 3)",
+      "imports": [],
+      "category": "bitwise",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat), (std srfi srfi-151). Chez has bitwise-arithmetic-shift and a short alias ash. arithmetic-shift is not bound.",
+      "available_via": [
+        "(jerboa core)",
+        "(std gambit-compat)",
+        "(std srfi srfi-151)"
+      ]
+    },
+    {
+      "id": "racket-pregexp-match",
+      "wrong": "pregexp-match",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(pregexp-match \"\\\\d+\" s)",
+      "correct": "re-search",
+      "correct_example": "(re-search (re \"\\\\d+\") s)",
+      "imports": [],
+      "category": "regex",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (std pregexp). Jerboa's regex uses a unified API: re to compile, re-search/re-match?/re-find-all/re-replace. In prelude.",
+      "available_via": [
+        "(std pregexp)"
+      ]
+    },
+    {
+      "id": "racket-regexp-match",
+      "wrong": "regexp-match",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(regexp-match #px\"\\\\d+\" s)",
+      "correct": "re-search",
+      "correct_example": "(re-search (re \"\\\\d+\") s)",
+      "imports": [],
+      "category": "regex",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "srfi-hash-table-ref",
+      "wrong": "(hash-table-ref ht key default-thunk)",
+      "wrong_source": [
+        "srfi-69"
+      ],
+      "wrong_example": "(hash-table-ref ht \"k\" (lambda () 0))",
+      "correct": "hash-ref",
+      "correct_example": "(hash-ref ht \"k\" 0)  ;; default is a value, not a thunk",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "error",
+      "notes": "Jerboa's hash-ref default is a value (not a thunk). Use (hash-get ht key) to get #f if missing.",
+      "available_via": null
+    },
+    {
+      "id": "arg-order-sort",
+      "wrong": "(sort lst pred)",
+      "wrong_source": [
+        "gerbil",
+        "srfi-95",
+        "common-lisp"
+      ],
+      "wrong_example": "(sort '(3 1 2) <)",
+      "correct": "(sort pred lst)",
+      "correct_example": "(sort < '(3 1 2))",
+      "imports": [],
+      "category": "arg-order",
+      "severity": "error",
+      "notes": "Chez arg order: predicate first, list second. This is the opposite of Gerbil/SRFI/Racket.",
+      "available_via": null
+    },
+    {
+      "id": "arg-order-hash-ref",
+      "wrong": "(hash-ref key ht)",
+      "wrong_source": [
+        "common-lisp-gethash"
+      ],
+      "wrong_example": "(hash-ref \"k\" ht)",
+      "correct": "(hash-ref ht key)",
+      "correct_example": "(hash-ref ht \"k\")  ;; or (hash-ref ht \"k\" default)",
+      "imports": [],
+      "category": "arg-order",
+      "severity": "error",
+      "notes": "Table first, key second. CL's gethash reverses these.",
+      "available_via": null
+    },
+    {
+      "id": "arg-order-fold-left",
+      "wrong": "(fold-left proc lst init)",
+      "wrong_source": [
+        "srfi-1-fold"
+      ],
+      "wrong_example": "(fold-left + '(1 2 3) 0)",
+      "correct": "(fold-left proc init lst)",
+      "correct_example": "(fold-left + 0 '(1 2 3))",
+      "imports": [],
+      "category": "arg-order",
+      "severity": "error",
+      "notes": "Chez R6RS order: proc, init, then list(s). SRFI-1 fold has init LAST.",
+      "available_via": null
+    },
+    {
+      "id": "arg-order-string-split-char",
+      "wrong": "(string-split \",\" str)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(string-split \",\" \"a,b,c\")",
+      "correct": "(string-split str #\\delim)",
+      "correct_example": "(string-split \"a,b,c\" #\\,)",
+      "imports": [],
+      "category": "arg-order",
+      "severity": "error",
+      "notes": "String first, delimiter second. Delimiter must be a CHAR, not a string.",
+      "available_via": null
+    },
+    {
+      "id": "arity-in-range",
+      "wrong": "(in-range start step end)",
+      "wrong_source": [
+        "hallucination"
+      ],
+      "wrong_example": "(in-range 0 2 10)  ;; intended: 0, 2, 4, 6, 8",
+      "correct": "(in-range start end step)",
+      "correct_example": "(in-range 0 10 2)  ;; 0 2 4 6 8",
+      "imports": [],
+      "category": "arity",
+      "severity": "error",
+      "notes": "Step is the LAST arg, not middle. 1-arg form: (in-range end). 2-arg: (in-range start end). 3-arg: (in-range start end step).",
+      "available_via": null
+    },
+    {
+      "id": "arity-make-rwlock",
+      "wrong": "(make-rwlock 'name)",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(make-rwlock 'my-lock)",
+      "correct": "(make-rwlock)",
+      "correct_example": "(make-rwlock)",
+      "imports": [],
+      "category": "arity",
+      "severity": "error",
+      "notes": "Gerbil's make-rwlock takes a name; Jerboa's takes 0 args.",
+      "available_via": null
+    },
+    {
+      "id": "arity-list-of-predicate",
+      "wrong": "(list-of? pred lst)",
+      "wrong_source": [
+        "hallucination"
+      ],
+      "wrong_example": "(list-of? number? '(1 2 3))",
+      "correct": "((list-of? pred) lst)",
+      "correct_example": "((list-of? number?) '(1 2 3))  ;; \u2192 #t",
+      "imports": [],
+      "category": "arity",
+      "severity": "error",
+      "notes": "list-of? RETURNS a predicate of 1 arg. It's a factory, not a direct test.",
+      "available_via": null
+    },
+    {
+      "id": "arity-maybe-predicate",
+      "wrong": "(maybe pred val)",
+      "wrong_source": [
+        "hallucination"
+      ],
+      "wrong_example": "(maybe string? #f)",
+      "correct": "((maybe pred) val)",
+      "correct_example": "((maybe string?) #f)  ;; \u2192 #t (accepts #f or string)",
+      "imports": [],
+      "category": "arity",
+      "severity": "error",
+      "notes": "maybe is a predicate combinator: (maybe pred) \u2192 \u03bbval. #f is always accepted.",
+      "available_via": null
+    },
+    {
+      "id": "racket-hash-literal",
+      "wrong": "#hash((k . v) ...)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "#hash((\"a\" . 1) (\"b\" . 2))",
+      "correct": "(list->hash-table '((k . v) ...))",
+      "correct_example": "(list->hash-table '((\"a\" . 1) (\"b\" . 2)))",
+      "imports": [],
+      "category": "reader-syntax",
+      "severity": "error",
+      "notes": "No #hash reader literal in Chez. Use (hash-table) constructor or list->hash-table.",
+      "available_via": null
+    },
+    {
+      "id": "racket-lang-header",
+      "wrong": "#lang racket",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "#lang racket\n(define x 1)",
+      "correct": "(import (jerboa prelude))",
+      "correct_example": "(import (jerboa prelude))\n(def x 1)",
+      "imports": [],
+      "category": "reader-syntax",
+      "severity": "error",
+      "notes": "Jerboa .ss files are plain scheme programs. First form is typically (import ...). Do not write #lang.",
+      "available_via": null
+    },
+    {
+      "id": "cl-defun",
+      "wrong": "defun",
+      "wrong_source": [
+        "common-lisp",
+        "emacs-lisp"
+      ],
+      "wrong_example": "(defun f (x) (* x 2))",
+      "correct": "def",
+      "correct_example": "(def (f x) (* x 2))",
+      "imports": [],
+      "category": "definitions",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "cl-defvar",
+      "wrong": "defvar",
+      "wrong_source": [
+        "common-lisp",
+        "emacs-lisp"
+      ],
+      "wrong_example": "(defvar *x* 42)",
+      "correct": "def",
+      "correct_example": "(def x 42)",
+      "imports": [],
+      "category": "definitions",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "cl-defparameter",
+      "wrong": "defparameter",
+      "wrong_source": [
+        "common-lisp"
+      ],
+      "wrong_example": "(defparameter *max* 100)",
+      "correct": "define or make-parameter",
+      "correct_example": "(define max-p (make-parameter 100))\n(max-p)  ;; 100\n(parameterize ((max-p 200)) (max-p))  ;; 200",
+      "imports": [],
+      "category": "definitions",
+      "severity": "error",
+      "notes": "For dynamic scoping, use make-parameter + parameterize, not a global var.",
+      "available_via": []
+    },
+    {
+      "id": "cl-progn",
+      "wrong": "progn",
+      "wrong_source": [
+        "common-lisp",
+        "emacs-lisp"
+      ],
+      "wrong_example": "(progn e1 e2 e3)",
+      "correct": "begin",
+      "correct_example": "(begin e1 e2 e3)",
+      "imports": [],
+      "category": "control",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "cl-setq",
+      "wrong": "setq",
+      "wrong_source": [
+        "common-lisp"
+      ],
+      "wrong_example": "(setq x 10)",
+      "correct": "set!",
+      "correct_example": "(set! x 10)",
+      "imports": [],
+      "category": "mutation",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "clojure-defn",
+      "wrong": "defn",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(defn f [x] (* x 2))",
+      "correct": "def",
+      "correct_example": "(def (f x) (* x 2))",
+      "imports": [],
+      "category": "definitions",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa clojure), (jerboa prelude), (std prelude), (std sugar). Square brackets for params ARE supported (same as parens), but the macro is def not defn.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa prelude)",
+        "(std prelude)",
+        "(std sugar)"
+      ]
+    },
+    {
+      "id": "clojure-fn",
+      "wrong": "fn",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(fn [x] (* x 2))",
+      "correct": "lambda",
+      "correct_example": "(lambda (x) (* x 2))",
+      "imports": [],
+      "category": "definitions",
+      "severity": "error",
+      "notes": "No fn in Jerboa prelude. Use lambda.",
+      "available_via": []
+    },
+    {
+      "id": "r7rs-define-record-type",
+      "wrong": "(define-record-type name (constructor field ...) pred field-accessor ...)",
+      "wrong_source": [
+        "r7rs"
+      ],
+      "wrong_example": "(define-record-type point (mk-point x y) point? (x point-x) (y point-y))",
+      "correct": "defstruct",
+      "correct_example": "(defstruct point (x y))",
+      "imports": [],
+      "category": "records",
+      "severity": "warning",
+      "notes": "R6RS define-record-type works in Chez but is verbose. defstruct is the Jerboa idiom.",
+      "available_via": null
+    },
+    {
+      "id": "racket-struct",
+      "wrong": "(struct name (field ...))",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(struct point (x y))",
+      "correct": "defstruct",
+      "correct_example": "(defstruct point (x y))",
+      "imports": [],
+      "category": "records",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "r6rs-library-form",
+      "wrong": "(library (name) (export ...) (import ...) body ...)",
+      "wrong_source": [
+        "r6rs"
+      ],
+      "wrong_example": "(library (my-lib) (export f) (import (rnrs)) (define (f x) x))",
+      "correct": "plain .ss program",
+      "correct_example": "(import (jerboa prelude))\n(def (f x) x)",
+      "imports": [],
+      "category": "modules",
+      "severity": "error",
+      "notes": "User-facing .ss files are programs, not libraries. Internal .sls files use (library ...) but you should not write those.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-module-path",
+      "wrong": ":std/sort",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(import :std/sort :std/text/json)",
+      "correct": "(std sort)",
+      "correct_example": "(import (std sort) (std text json))",
+      "imports": [],
+      "category": "modules",
+      "severity": "warning",
+      "notes": "Both forms work \u2014 the reader supports Gerbil-style :std/path as sugar for (std path). The (std ...) form is canonical and preferred.",
+      "available_via": null
+    },
+    {
+      "id": "gambit-u8vector",
+      "wrong": "make-u8vector, u8vector-ref, etc.",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(make-u8vector 10 0)",
+      "correct": "bytevector",
+      "correct_example": "(make-bytevector 10 0)",
+      "imports": [],
+      "category": "bytevectors",
+      "severity": "warning",
+      "notes": "Chez uses bytevectors (R6RS). For Gambit compat, (import (std gambit-compat)) provides u8vector aliases.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-chain",
+      "wrong": "chain",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(chain x f g h)",
+      "correct": "->",
+      "correct_example": "(-> x (f) (g) (h))",
+      "imports": [],
+      "category": "control",
+      "severity": "warning",
+      "notes": "Jerboa uses -> and ->> for threading. chain is not the Jerboa idiom but may be aliased.",
+      "available_via": [
+        "(jerboa clojure)",
+        "(jerboa prelude clean)",
+        "(jerboa prelude safe)",
+        "(jerboa prelude)",
+        "(std gambit-compat)",
+        "(std prelude)",
+        "(std sugar)"
+      ]
+    },
+    {
+      "id": "racket-for-list",
+      "wrong": "(for/list ((x lst)) body)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(for/list ((x '(1 2 3))) (* x x))",
+      "correct": "for/collect",
+      "correct_example": "(for/collect ((x '(1 2 3))) (* x x))  ;; \u2192 (1 4 9)",
+      "imports": [],
+      "category": "iterators",
+      "severity": "error",
+      "notes": "Jerboa names its collecting for-comprehension for/collect. Other Racket for/X forms (for/fold, for/or, for/and) do exist.",
+      "available_via": null
+    },
+    {
+      "id": "racket-for-vector",
+      "wrong": "(for/vector ...)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(for/vector ((x lst)) (* x x))",
+      "correct": "(list->vector (for/collect ...))",
+      "correct_example": "(list->vector (for/collect ((x '(1 2 3))) (* x x)))",
+      "imports": [],
+      "category": "iterators",
+      "severity": "error",
+      "notes": "No for/vector in Jerboa prelude. Collect to list then convert.",
+      "available_via": null
+    },
+    {
+      "id": "racket-hash",
+      "wrong": "(hash k v ...)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(hash \"a\" 1 \"b\" 2)",
+      "correct": "(list->hash-table '((k . v) ...))",
+      "correct_example": "(list->hash-table '((\"a\" . 1) (\"b\" . 2)))",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "racket-make-hash",
+      "wrong": "(make-hash)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(make-hash)",
+      "correct": "make-hash-table",
+      "correct_example": "(make-hash-table)",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "r6rs-make-eqv-hashtable",
+      "wrong": "(make-eqv-hashtable)",
+      "wrong_source": [
+        "r6rs"
+      ],
+      "wrong_example": "(make-eqv-hashtable)",
+      "correct": "(make-hashtable equal-hash equal?) or make-hash-table",
+      "correct_example": "(make-hash-table)  ;; for equal-keyed\n;; for eqv-keyed in Chez:\n(import (chezscheme))\n(make-hashtable equal-hash equal?)",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "warning",
+      "notes": "Chez supports make-eqv-hashtable as part of R6RS but Jerboa idiom is make-hash-table (equal?).",
+      "available_via": null
+    },
+    {
+      "id": "racket-displayln-newline",
+      "wrong": "(displayln x port)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(displayln \"hi\" (current-output-port))",
+      "correct": "(displayln x)",
+      "correct_example": "(displayln \"hi\")  ;; uses current-output-port",
+      "imports": [],
+      "category": "io",
+      "severity": "warning",
+      "notes": "Jerboa's displayln accepts multiple values to display on one line: (displayln \"a\" \" \" \"b\"). Port arg is NOT the same as Racket's.",
+      "available_via": null
+    },
+    {
+      "id": "racket-match-list",
+      "wrong": "(list-rest ...)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(match x ((list-rest a b) ...))",
+      "correct": "(cons a b) in match",
+      "correct_example": "(match x ((cons a b) ...))  ;; b is rest",
+      "imports": [],
+      "category": "pattern-matching",
+      "severity": "error",
+      "notes": "Use (list a b ...) for fixed-length, (cons a rest) for head+tail.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-with-exception-handler",
+      "wrong": "with-exception-catcher",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(with-exception-catcher handler thunk)",
+      "correct": "try/catch",
+      "correct_example": "(try (thunk-body) (catch (e) (handler e)))",
+      "imports": [],
+      "category": "errors",
+      "severity": "compat",
+      "notes": "AVAILABLE in Jerboa via: (jerboa core), (std gambit-compat). Jerboa's try/catch is the idiomatic form. guard and with-exception-handler (R6RS) also work.",
+      "available_via": [
+        "(jerboa core)",
+        "(std gambit-compat)"
+      ]
+    },
+    {
+      "id": "r7rs-error-object",
+      "wrong": "error-object?",
+      "wrong_source": [
+        "r7rs"
+      ],
+      "wrong_example": "(error-object? e)",
+      "correct": "condition?",
+      "correct_example": "(condition? e)",
+      "imports": [],
+      "category": "errors",
+      "severity": "error",
+      "notes": "Chez uses the R6RS condition system. condition?, message-condition?, irritants-condition?, etc.",
+      "available_via": []
+    },
+    {
+      "id": "cl-when-let-multi",
+      "wrong": "(when-let* ((x e1) (y e2)) body)",
+      "wrong_source": [
+        "racket",
+        "clojure"
+      ],
+      "wrong_example": "(when-let* ((x (find)) (y (lookup x))) (use y))",
+      "correct": "nested when-let",
+      "correct_example": "(when-let (x (find))\n  (when-let (y (lookup x))\n    (use y)))",
+      "imports": [],
+      "category": "binding",
+      "severity": "warning",
+      "notes": "Jerboa's when-let is single-binding. For multiple, nest them or use cond-let pattern.",
+      "available_via": null
+    },
+    {
+      "id": "racket-lambda-rest",
+      "wrong": "(lambda args body)  ;; args as single symbol",
+      "wrong_source": [
+        "scheme-standard"
+      ],
+      "wrong_example": "(lambda args (length args))  ;; works but unusual",
+      "correct": "(lambda args body) OR (lambda (x . rest) body)",
+      "correct_example": "(lambda args (length args))  ;; variadic\n(lambda (first . rest) body)  ;; one required + rest",
+      "imports": [],
+      "category": "definitions",
+      "severity": "warning",
+      "notes": "Both forms are valid standard Scheme. Mentioning for completeness; LLMs sometimes mix them up.",
+      "available_via": null
+    },
+    {
+      "id": "racket-parameterize",
+      "wrong": "parameterize works as in Racket",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(parameterize ([p v]) body)",
+      "correct": "parameterize with parens",
+      "correct_example": "(parameterize ((p v)) body)  ;; both parens/brackets ok",
+      "imports": [],
+      "category": "parameters",
+      "severity": "warning",
+      "notes": "parameterize works in Chez. Brackets and parens are interchangeable.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-let-values-star",
+      "wrong": "let*-values",
+      "wrong_source": [
+        "r6rs",
+        "r7rs"
+      ],
+      "wrong_example": "(let*-values (((a b) (f))) ...)",
+      "correct": "let*-values (works)",
+      "correct_example": "(let*-values (((a b) (f)) ((c) (g a))) ...)",
+      "imports": [],
+      "category": "binding",
+      "severity": "warning",
+      "notes": "This actually works in Chez/R6RS. Included because LLMs sometimes second-guess whether it exists.",
+      "available_via": []
+    },
+    {
+      "id": "gambit-table",
+      "wrong": "make-table, table-set!, table-ref",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(make-table) ; (table-set! t k v)",
+      "correct": "make-hash-table + hash-put!/hash-ref",
+      "correct_example": "(def t (make-hash-table))\n(hash-put! t k v)\n(hash-ref t k)",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "error",
+      "notes": "Gambit calls hash tables 'tables'. Use the hash-* family in Jerboa.",
+      "available_via": null
+    },
+    {
+      "id": "srfi-hash-table-walk",
+      "wrong": "hash-table-walk",
+      "wrong_source": [
+        "srfi-69"
+      ],
+      "wrong_example": "(hash-table-walk ht (lambda (k v) ...))",
+      "correct": "hash-for-each",
+      "correct_example": "(hash-for-each (lambda (k v) ...) ht)",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "error",
+      "notes": "Argument order: proc first, table second \u2014 opposite of SRFI-69.",
+      "available_via": []
+    },
+    {
+      "id": "srfi-hash-table-keys",
+      "wrong": "hash-table-keys",
+      "wrong_source": [
+        "srfi-69"
+      ],
+      "wrong_example": "(hash-table-keys ht)",
+      "correct": "hash-keys",
+      "correct_example": "(hash-keys ht)",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "compat",
+      "available_via": [
+        "(std srfi srfi-125)"
+      ],
+      "notes": "AVAILABLE in Jerboa via: (std srfi srfi-125)."
+    },
+    {
+      "id": "clojure-get",
+      "wrong": "(get coll k)",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(get ht \"k\")",
+      "correct": "hash-get",
+      "correct_example": "(hash-get ht \"k\")  ;; #f if missing, no error",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "error",
+      "notes": "hash-get returns #f if missing (like Clojure's get with no default). hash-ref raises.",
+      "available_via": null
+    },
+    {
+      "id": "clojure-assoc",
+      "wrong": "(assoc coll k v)",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(assoc ht \"k\" v)",
+      "correct": "hash-put! (mutates)",
+      "correct_example": "(hash-put! ht \"k\" v)",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "error",
+      "notes": "Jerboa hash tables are mutable. Clojure's functional assoc returns a new map; no direct equivalent without copy.",
+      "available_via": null
+    },
+    {
+      "id": "clojure-count",
+      "wrong": "count",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(count lst)",
+      "correct": "length",
+      "correct_example": "(length lst)  ;; for lists\n(vector-length v) ;; vectors\n(string-length s) ;; strings\n(hash-table-size ht) ;; hash tables",
+      "imports": [],
+      "category": "collections",
+      "severity": "compat",
+      "available_via": [
+        "(jerboa clojure)",
+        "(std clojure)",
+        "(std srfi srfi-1)"
+      ],
+      "notes": "AVAILABLE in Jerboa via: (jerboa clojure), (std clojure), (std srfi srfi-1)."
+    },
+    {
+      "id": "clojure-first-rest",
+      "wrong": "(first lst), (rest lst)",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(first '(1 2 3))",
+      "correct": "car / cdr",
+      "correct_example": "(car '(1 2 3))  ;; 1\n(cdr '(1 2 3))  ;; (2 3)",
+      "imports": [],
+      "category": "lists",
+      "severity": "error",
+      "notes": "Classic Lisp car/cdr. first/second/third exist in SRFI-1 (std misc list) but car/cdr is preferred.",
+      "available_via": null
+    },
+    {
+      "id": "clojure-map-into",
+      "wrong": "(into {} pairs)",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(into {} '((\"a\" 1) (\"b\" 2)))",
+      "correct": "list->hash-table",
+      "correct_example": "(list->hash-table '((\"a\" . 1) (\"b\" . 2)))",
+      "imports": [],
+      "category": "hash-tables",
+      "severity": "error",
+      "notes": "Note dotted pair syntax for alists.",
+      "available_via": null
+    },
+    {
+      "id": "clojure-nil",
+      "wrong": "nil",
+      "wrong_source": [
+        "clojure",
+        "common-lisp"
+      ],
+      "wrong_example": "(if (= x nil) ...)",
+      "correct": "#f or '()",
+      "correct_example": "(if (not x) ...)  ;; #f-tested\n(if (null? lst) ...)  ;; empty-list-tested",
+      "imports": [],
+      "category": "values",
+      "severity": "error",
+      "notes": "Scheme distinguishes #f (false) from '() (empty list). There is no unified nil.",
+      "available_via": []
+    },
+    {
+      "id": "clojure-true-false",
+      "wrong": "true, false",
+      "wrong_source": [
+        "clojure",
+        "javascript"
+      ],
+      "wrong_example": "(if flag true false)",
+      "correct": "#t / #f",
+      "correct_example": "(if flag #t #f)",
+      "imports": [],
+      "category": "values",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "clojure-let-destructure",
+      "wrong": "(let [[a b] pair] ...)",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(let [[a b] '(1 2)] (+ a b))",
+      "correct": "(match ...)  or (apply (lambda (a b) ...) lst)",
+      "correct_example": "(match '(1 2) ((list a b) (+ a b)))",
+      "imports": [],
+      "category": "binding",
+      "severity": "error",
+      "notes": "let doesn't destructure in Scheme. Use match or explicit car/cadr.",
+      "available_via": null
+    },
+    {
+      "id": "hallucinated-when-not",
+      "wrong": "when-not",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(when-not x body)",
+      "correct": "unless",
+      "correct_example": "(unless x body)",
+      "imports": [],
+      "category": "control",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "racket-provide",
+      "wrong": "(provide name ...)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(provide foo bar)",
+      "correct": "N/A for .ss programs",
+      "correct_example": "; .ss programs don't export. For a library, edit the .sls in lib/.",
+      "imports": [],
+      "category": "modules",
+      "severity": "error",
+      "notes": "User .ss files are programs. Libraries live in .sls files (internal).",
+      "available_via": null
+    },
+    {
+      "id": "racket-require",
+      "wrong": "(require module)",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(require racket/list)",
+      "correct": "import",
+      "correct_example": "(import (std misc list))",
+      "imports": [],
+      "category": "modules",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "r7rs-import-only-except",
+      "wrong": "import renaming works as R7RS",
+      "wrong_source": [
+        "r7rs"
+      ],
+      "wrong_example": "(import (rename (foo) (old new)))",
+      "correct": "(rename (only (mod) x) (x y))",
+      "correct_example": "(import (only (chezscheme) getenv) (rename (only (chezscheme) getenv) (getenv %chez-getenv)))",
+      "imports": [],
+      "category": "modules",
+      "severity": "warning",
+      "notes": "R6RS-style only/except/rename/prefix all work in Chez.",
+      "available_via": null
+    },
+    {
+      "id": "gambit-pp",
+      "wrong": "(pp obj port)",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(pp form (current-output-port))",
+      "correct": "pp (1-arg)",
+      "correct_example": "(pp form)  ;; writes to current-output-port",
+      "imports": [],
+      "category": "io",
+      "severity": "warning",
+      "notes": "Chez's pp takes 1 arg. Use (pp-to-string form) for string form.",
+      "available_via": null
+    },
+    {
+      "id": "sicp-newline-paren",
+      "wrong": "(newline)",
+      "wrong_source": [
+        "scheme-standard"
+      ],
+      "wrong_example": "(display \"x\") (newline)",
+      "correct": "displayln",
+      "correct_example": "(displayln \"x\")",
+      "imports": [],
+      "category": "io",
+      "severity": "warning",
+      "notes": "(newline) works; displayln is the Jerboa idiom and accepts multiple values.",
+      "available_via": null
+    },
+    {
+      "id": "srfi-1-null",
+      "wrong": "(null? x) for general 'empty'",
+      "wrong_source": [
+        "scheme-standard"
+      ],
+      "wrong_example": "(null? \"\")  ;; #f, not the emptiness test for strings",
+      "correct": "null? only for '()",
+      "correct_example": "(null? '())      ;; #t\n(string-empty? \"\")  ;; #t\n(= 0 (vector-length v))  ;; empty vector",
+      "imports": [],
+      "category": "predicates",
+      "severity": "warning",
+      "notes": "null? tests for the empty list only. Use type-specific predicates.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-defmethod-signature",
+      "wrong": "(defmethod {method obj} body)",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(defmethod {area shape} (* 3 3))",
+      "correct": "(defmethod (method (self type)) body)",
+      "correct_example": "(defmethod (area (self circle)) (* 3.14 (circle-radius self) (circle-radius self)))",
+      "imports": [],
+      "category": "methods",
+      "severity": "error",
+      "notes": "Jerboa defmethod uses typed-arg form. Call with {method obj args} or (~ obj 'method args).",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-slot-ref",
+      "wrong": "&slot-ref, slot-ref",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(slot-ref obj 'x)",
+      "correct": "accessor functions",
+      "correct_example": "(point-x p)  ;; generated by defstruct\n;; or using dot-access:\n(using (p point : point?) p.x)",
+      "imports": [],
+      "category": "records",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "emacs-lisp-let-binding",
+      "wrong": "(let ((x 1)) body)  ;; comma patterns etc.",
+      "wrong_source": [
+        "emacs-lisp"
+      ],
+      "wrong_example": "(let ((x 1) (y 2)) ,x)",
+      "correct": "standard scheme let",
+      "correct_example": "(let ((x 1) (y 2)) (+ x y))",
+      "imports": [],
+      "category": "binding",
+      "severity": "warning",
+      "notes": "No quasiquote unquoting in body. LLMs occasionally emit comma.",
+      "available_via": null
+    },
+    {
+      "id": "srfi-string-search",
+      "wrong": "string-search, string-search-forward",
+      "wrong_source": [
+        "srfi-13"
+      ],
+      "wrong_example": "(string-search sub str)",
+      "correct": "string-contains",
+      "correct_example": "(string-contains str sub)  ;; index or #f",
+      "imports": [],
+      "category": "strings",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "gambit-host",
+      "wrong": "##prefixed internals",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(##fx+ 1 2)",
+      "correct": "public operator",
+      "correct_example": "(+ 1 2)  ;; or (fx+ 1 2) if importing (chezscheme) fixnum ops",
+      "imports": [],
+      "category": "internals",
+      "severity": "error",
+      "notes": "## is Gambit's namespace for unsafe/internal ops. Chez uses fx+/fx-/fx* via (chezscheme) for fixnum specifics.",
+      "available_via": null
+    },
+    {
+      "id": "r6rs-bytevector-copy-3arg",
+      "wrong": "(bytevector-copy bv start end)",
+      "wrong_source": [
+        "r6rs"
+      ],
+      "wrong_example": "(bytevector-copy bv 0 10)",
+      "correct": "(subbytes bv start end) or slice",
+      "correct_example": "(bytevector-copy bv)  ;; full copy\n;; for range:\n(define sub (make-bytevector (- end start)))\n(bytevector-copy! bv start sub 0 (- end start))",
+      "imports": [],
+      "category": "bytevectors",
+      "severity": "error",
+      "notes": "R6RS bytevector-copy is 1-arg. For subrange, use the 5-arg bytevector-copy! with a fresh destination.",
+      "available_via": null
+    },
+    {
+      "id": "r7rs-read-string",
+      "wrong": "(read-string k port)",
+      "wrong_source": [
+        "r7rs"
+      ],
+      "wrong_example": "(read-string 100 port)",
+      "correct": "get-string-n",
+      "correct_example": "(get-string-n port 100)  ;; R6RS: port first, count second",
+      "imports": [],
+      "category": "io",
+      "severity": "error",
+      "notes": "Chez/R6RS uses get-string-n with port first.",
+      "available_via": null
+    },
+    {
+      "id": "r7rs-write-string",
+      "wrong": "(write-string s port)",
+      "wrong_source": [
+        "r7rs"
+      ],
+      "wrong_example": "(write-string \"hi\" port)",
+      "correct": "put-string",
+      "correct_example": "(put-string port \"hi\")  ;; R6RS: port first",
+      "imports": [],
+      "category": "io",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "gambit-make-vector-init",
+      "wrong": "(make-vector n) initialized to specific default",
+      "wrong_source": [
+        "scheme-standard"
+      ],
+      "wrong_example": "(make-vector 10)  ;; contents unspecified",
+      "correct": "(make-vector n fill)",
+      "correct_example": "(make-vector 10 0)",
+      "imports": [],
+      "category": "vectors",
+      "severity": "warning",
+      "notes": "Without fill arg, initial contents are unspecified in standard Scheme. Always provide a fill if you care.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-syntax-case-colon",
+      "wrong": "(:: binding ...)",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(: foo : Number)",
+      "correct": "(: expr pred?)",
+      "correct_example": "(: value number?)  ;; checked cast, raises if pred fails",
+      "imports": [],
+      "category": "typing",
+      "severity": "warning",
+      "notes": "Jerboa's : is a runtime checked cast with a predicate, not a type annotation.",
+      "available_via": null
+    },
+    {
+      "id": "racket-match-app",
+      "wrong": "(app fn pat)",
+      "wrong_source": [
+        "racket-match"
+      ],
+      "wrong_example": "(match x ((app car 1) ...))",
+      "correct": "(=> fn var)",
+      "correct_example": "(match x ((=> string->number n) (use n)))",
+      "imports": [],
+      "category": "pattern-matching",
+      "severity": "error",
+      "notes": "Jerboa match uses => for view patterns instead of app.",
+      "available_via": null
+    },
+    {
+      "id": "r7rs-error-irritants-accessor",
+      "wrong": "error-object-irritants",
+      "wrong_source": [
+        "r7rs"
+      ],
+      "wrong_example": "(error-object-irritants e)",
+      "correct": "condition-irritants",
+      "correct_example": "(condition-irritants e)  ;; or &irritants",
+      "imports": [],
+      "category": "errors",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "r7rs-error-message-accessor",
+      "wrong": "error-object-message",
+      "wrong_source": [
+        "r7rs"
+      ],
+      "wrong_example": "(error-object-message e)",
+      "correct": "condition-message",
+      "correct_example": "(condition-message e)",
+      "imports": [],
+      "category": "errors",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "gerbil-with-semaphore",
+      "wrong": "with-semaphore",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(with-semaphore sem body)",
+      "correct": "(std misc thread) primitives",
+      "correct_example": "(import (std misc thread))\n(with-lock lock body)",
+      "imports": [
+        "(std misc thread)"
+      ],
+      "category": "concurrency",
+      "severity": "warning",
+      "notes": "Check (std misc thread) for current lock primitives.",
+      "available_via": []
+    },
+    {
+      "id": "gambit-spawn",
+      "wrong": "(spawn thunk)",
+      "wrong_source": [
+        "gambit"
+      ],
+      "wrong_example": "(spawn (lambda () ...))",
+      "correct": "make-thread + thread-start!",
+      "correct_example": "(import (std misc thread))\n(thread-start! (make-thread (lambda () ...)))",
+      "imports": [
+        "(std misc thread)"
+      ],
+      "category": "concurrency",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-channel",
+      "wrong": "make-channel, channel-put, channel-get",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(def ch (make-channel))",
+      "correct": "(std concur) or (std csp)",
+      "correct_example": "(import (std concur))\n;; check std concur for current channel API",
+      "imports": [
+        "(std concur)"
+      ],
+      "category": "concurrency",
+      "severity": "warning",
+      "notes": "Jerboa has (std concur), (std csp), (std actor) \u2014 pick based on your model.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-logger",
+      "wrong": "log-debug, log-info via (gerbil/std/logger)",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(log-info \"starting\")",
+      "correct": "(std logger) in Jerboa",
+      "correct_example": "(import (std logger))\n;; check (std logger) for current API",
+      "imports": [
+        "(std logger)"
+      ],
+      "category": "logging",
+      "severity": "warning",
+      "available_via": null
+    },
+    {
+      "id": "racket-format-tilde",
+      "wrong": "(format \"~v\" x)  ;; Racket-specific directives",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(format \"~v is ~s\" x y)",
+      "correct": "~a ~s ~d ~%",
+      "correct_example": "(format \"~a is ~s\" x y)  ;; ~a=display ~s=write ~%=newline",
+      "imports": [],
+      "category": "formatting",
+      "severity": "error",
+      "notes": "Chez format uses Common Lisp directives: ~a, ~s, ~d, ~x, ~%, ~~. No ~v. ",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-printf-newline",
+      "wrong": "(printf \"...~n\" ...)",
+      "wrong_source": [
+        "gerbil",
+        "racket"
+      ],
+      "wrong_example": "(printf \"hi~n\")",
+      "correct": "(printf \"...~%\" ...)",
+      "correct_example": "(printf \"hi~%\")",
+      "imports": [],
+      "category": "formatting",
+      "severity": "error",
+      "notes": "Chez uses ~% for newline. ~n is Racket/Gerbil.",
+      "available_via": null
+    },
+    {
+      "id": "r6rs-bitwise",
+      "wrong": "bitwise-and, bitwise-or, bitwise-xor",
+      "wrong_source": [
+        "r6rs"
+      ],
+      "wrong_example": "(bitwise-and 0xff x)",
+      "correct": "these work",
+      "correct_example": "(bitwise-and #xff x)  ;; Chez uses #x not 0x for hex",
+      "imports": [],
+      "category": "bitwise",
+      "severity": "warning",
+      "notes": "Functions exist. Watch for #x vs 0x hex literal syntax (Chez uses #x).",
+      "available_via": null
+    },
+    {
+      "id": "js-0x-hex",
+      "wrong": "0xff hex literal",
+      "wrong_source": [
+        "c",
+        "javascript"
+      ],
+      "wrong_example": "(* 0xff 2)",
+      "correct": "#xff",
+      "correct_example": "(* #xff 2)  ;; 510",
+      "imports": [],
+      "category": "literals",
+      "severity": "error",
+      "notes": "Scheme hex literals use #x prefix. Also #b for binary, #o for octal.",
+      "available_via": null
+    },
+    {
+      "id": "gerbil-with-destination",
+      "wrong": "with-destination, with-input-from-string defaults",
+      "wrong_source": [
+        "gerbil"
+      ],
+      "wrong_example": "(with-destination #f body)",
+      "correct": "with-output-to-string",
+      "correct_example": "(with-output-to-string (lambda () body))",
+      "imports": [],
+      "category": "io",
+      "severity": "warning",
+      "notes": "Jerboa uses with-output-to-string / with-input-from-string from the prelude.",
+      "available_via": null
+    },
+    {
+      "id": "ruby-string-interpolation",
+      "wrong": "\"#{x}\"",
+      "wrong_source": [
+        "ruby",
+        "python-fstring"
+      ],
+      "wrong_example": "\"hello #{name}\"",
+      "correct": "(str ...) or format",
+      "correct_example": "(str \"hello \" name)  ;; auto-coerce to string\n(format \"hello ~a\" name)",
+      "imports": [],
+      "category": "strings",
+      "severity": "error",
+      "notes": "No string interpolation. Use the str auto-coerce helper or format.",
+      "available_via": null
+    },
+    {
+      "id": "python-len",
+      "wrong": "len",
+      "wrong_source": [
+        "python"
+      ],
+      "wrong_example": "(len lst)",
+      "correct": "length / string-length / vector-length",
+      "correct_example": "(length lst)",
+      "imports": [],
+      "category": "collections",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "hallucinated-string-starts-with",
+      "wrong": "string-starts-with?",
+      "wrong_source": [
+        "hallucination",
+        "racket-string"
+      ],
+      "wrong_example": "(string-starts-with? \"hello\" \"he\")",
+      "correct": "string-prefix?",
+      "correct_example": "(string-prefix? \"he\" \"hello\")  ;; NOTE arg order: prefix first",
+      "imports": [],
+      "category": "strings",
+      "severity": "error",
+      "notes": "Note arg order is (string-prefix? PREFIX STRING). Opposite of some Racket naming.",
+      "available_via": []
+    },
+    {
+      "id": "hallucinated-string-ends-with",
+      "wrong": "string-ends-with?",
+      "wrong_source": [
+        "hallucination"
+      ],
+      "wrong_example": "(string-ends-with? \"hello\" \"lo\")",
+      "correct": "string-suffix?",
+      "correct_example": "(string-suffix? \"lo\" \"hello\")  ;; suffix first, string second",
+      "imports": [],
+      "category": "strings",
+      "severity": "error",
+      "available_via": []
+    },
+    {
+      "id": "gerbil-string-index",
+      "wrong": "(string-index str char)",
+      "wrong_source": [
+        "gerbil",
+        "srfi-13"
+      ],
+      "wrong_example": "(string-index \"hello\" #\\l)",
+      "correct": "string-contains with char-as-string",
+      "correct_example": "(string-contains \"hello\" \"l\")  ;; returns 2",
+      "imports": [],
+      "category": "strings",
+      "severity": "warning",
+      "notes": "No string-index in prelude. For a single char, use string-contains with 1-char string.",
+      "available_via": null
+    },
+    {
+      "id": "clojure-subs",
+      "wrong": "(subs s start end)",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(subs \"hello\" 1 3)",
+      "correct": "substring",
+      "correct_example": "(substring \"hello\" 1 3)  ;; \"el\"",
+      "imports": [],
+      "category": "strings",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "clojure-str-concat",
+      "wrong": "(str a b c)  ;; Clojure stringifies each arg",
+      "wrong_source": [
+        "clojure"
+      ],
+      "wrong_example": "(str \"age \" 42)",
+      "correct": "str (works, auto-coerce)",
+      "correct_example": "(str \"age \" 42)  ;; \u2192 \"age 42\"",
+      "imports": [],
+      "category": "strings",
+      "severity": "warning",
+      "notes": "Jerboa's str auto-coerces non-strings (same as Clojure). This is a correct usage.",
+      "available_via": null
+    },
+    {
+      "id": "racket-number-string",
+      "wrong": "number->string with radix as keyword",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(number->string 255 #:base 16)",
+      "correct": "(number->string n radix)",
+      "correct_example": "(number->string 255 16)  ;; \"ff\"",
+      "imports": [],
+      "category": "numerics",
+      "severity": "error",
+      "notes": "Chez uses positional radix arg (2/8/10/16).",
+      "available_via": null
+    },
+    {
+      "id": "python-true-false-caps",
+      "wrong": "True, False",
+      "wrong_source": [
+        "python"
+      ],
+      "wrong_example": "(if x True False)",
+      "correct": "#t / #f",
+      "correct_example": "(if x #t #f)",
+      "imports": [],
+      "category": "values",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "python-none",
+      "wrong": "None, Null",
+      "wrong_source": [
+        "python",
+        "sql"
+      ],
+      "wrong_example": "(if (= x None) ...)",
+      "correct": "#f or void",
+      "correct_example": "(if (not x) ...)  ;; #f-test\n(if (eq? x (void)) ...)  ;; void-test",
+      "imports": [],
+      "category": "values",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "hallucinated-print",
+      "wrong": "(print x)",
+      "wrong_source": [
+        "python",
+        "ruby"
+      ],
+      "wrong_example": "(print \"hello\")",
+      "correct": "display / displayln",
+      "correct_example": "(displayln \"hello\")",
+      "imports": [],
+      "category": "io",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "hallucinated-println",
+      "wrong": "(println x)",
+      "wrong_source": [
+        "java",
+        "clojure",
+        "rust"
+      ],
+      "wrong_example": "(println \"hello\")",
+      "correct": "displayln",
+      "correct_example": "(displayln \"hello\")",
+      "imports": [],
+      "category": "io",
+      "severity": "error",
+      "available_via": null
+    },
+    {
+      "id": "racket-format-shadowed",
+      "wrong": "format returns to stdout",
+      "wrong_source": [
+        "racket"
+      ],
+      "wrong_example": "(format \"hi ~a\" name)  ;; expected to print",
+      "correct": "format returns a string",
+      "correct_example": "(displayln (format \"hi ~a\" name))",
+      "imports": [],
+      "category": "formatting",
+      "severity": "error",
+      "notes": "format RETURNS a string. Wrap in displayln/display/printf to output.",
+      "available_via": null
+    },
+    {
+      "id": "r6rs-make-custom-binary-port",
+      "wrong": "make-custom-binary-input-port (R6RS)",
+      "wrong_source": [
+        "r6rs"
+      ],
+      "wrong_example": "(make-custom-binary-input-port ...)",
+      "correct": "this works in Chez",
+      "correct_example": "(make-custom-binary-input-port id read! get-position set-position! close)",
+      "imports": [],
+      "category": "io",
+      "severity": "warning",
+      "notes": "R6RS custom ports work in Chez. Included as reassurance.",
+      "available_via": null
+    }
+  ]
+}

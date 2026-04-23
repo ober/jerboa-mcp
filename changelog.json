@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "description": "Machine-readable changelog of Jerboa API drift. Consumers (LLM tooling, lints, jerboa_verify) use this to invalidate stale recommendations and to suggest migrations when a symbol is renamed or relocated.",
+  "schema": {
+    "entry_fields": {
+      "date":          "ISO date (YYYY-MM-DD) the change landed",
+      "version":       "Optional Jerboa release tag if cut",
+      "added":         "Array of newly-exported symbol names",
+      "removed":       "Array of no-longer-exported symbol names",
+      "renamed":       "Array of {from, to, reason} objects",
+      "moved":         "Array of {symbol, from_module, to_module, reason} for symbols whose primary export module changed",
+      "tier_changes":  "Array of {symbol_or_module, from, to} where from/to are core/stable/compat/unstable",
+      "notes":         "Free-form human-readable summary"
+    }
+  },
+  "entries": [
+    {
+      "date": "2026-04-22",
+      "version": null,
+      "added": [],
+      "removed": [],
+      "renamed": [],
+      "moved": [],
+      "tier_changes": [],
+      "notes": "Baseline snapshot: 626 modules, 12,393 symbols, 18,925 exports. Tiers: 18 core, 489 stable, 43 compat, 76 unstable. Prior changelog entries were not captured machine-readably; this file starts here and `scripts/diff-api-signatures.py` appends new entries going forward."
+    }
+  ]
+}
