@@ -3496,7 +3496,9 @@
       "(jerboa prelude)"
     ],
     "code": ";; The (jerboa prelude) shadows Chez's make-time with a datetime constructor.\n;; Capture the original BEFORE the prelude can shadow it, using a local import.\n\n(def chez:make-time\n  (let () (import (only (chezscheme) make-time)) make-time))\n\n(def (thread-sleep! secs)\n  \"Sleep for SECS seconds (real number). Works in standalone Jerboa prelude scripts.\"\n  (let* ((diff (max 0 secs))\n         (s  (exact (floor diff)))\n         (ns (exact (floor (* (- diff s) 1000000000)))))\n    (sleep (chez:make-time 'time-duration ns s))))\n\n;; Usage:\n(thread-sleep! 0.5)   ;; sleep 500ms\n(thread-sleep! 2)     ;; sleep 2 seconds",
-    "notes": "The (jerboa prelude) re-exports `make-time` as a datetime constructor, shadowing the Chez `make-time` that `sleep` requires. The `(let () (import (only (chezscheme) make-time)) make-time)` trick captures the original binding before shadowing occurs — the same technique used in `chez-srfis/srfi/srfi-18.sls`. Note: arg order to `make-time` is `(make-time type nanoseconds seconds)`. Without this workaround, `(sleep (make-time 'time-duration 0 1))` fails because prelude's `make-time` expects a year/month/day signature."
+    "notes": "The (jerboa prelude) re-exports `make-time` as a datetime constructor, shadowing the Chez `make-time` that `sleep` requires. The `(let () (import (only (chezscheme) make-time)) make-time)` trick captures the original binding before shadowing occurs — the same technique used in `chez-srfis/srfi/srfi-18.sls`. Note: arg order to `make-time` is `(make-time type nanoseconds seconds)`. Without this workaround, `(sleep (make-time 'time-duration 0 1))` fails because prelude's `make-time` expects a year/month/day signature.",
+    "deprecated": true,
+    "superseded_by": "sleep-ms-prelude"
   },
   {
     "id": "scintilla-terminal-256color-style-alloc",
@@ -5781,5 +5783,71 @@
     ],
     "code": ";; (std multi) exports derive/ancestors/isa? (§35) but defmulti's\n;; dispatch does NOT consult a hierarchy automatically — it matches\n;; the dispatch value exactly, then falls through to 'default. To get\n;; Clojure-style isa?-aware dispatch, resolve the most specific\n;; ancestor with a registered method inside the dispatch function.\n\n(def events-h (make-hierarchy))\n(derive events-h 'order/new-member-order 'order/any)\n(derive events-h 'order/returning-order  'order/any)\n(derive events-h 'order/any              'event/any)\n\n(defmulti handle-event\n  (lambda (evt)\n    (let ([t (cdr (assq 'type evt))])\n      (or (find (lambda (tag) (get-method handle-event tag))\n                (cons t (ancestors events-h t)))\n          t))))\n\n(defmethod handle-event 'order/new-member-order (e)\n  (str \"welcome-discount for \" (cdr (assq 'id e))))\n(defmethod handle-event 'order/any (e)\n  (str \"logged order \"   (cdr (assq 'id e))))\n(defmethod handle-event 'event/any (e)\n  (str \"generic audit: \" (cdr (assq 'type e))))\n\n(handle-event '((type . order/returning-order) (id . 1002)))\n;; => \"logged order 1002\" — dispatched via derive chain",
     "notes": "Without this pattern, `(handle-event '((type . order/returning-order) ...))` raises \"no method for dispatch value\" because only the exact tag is looked up. `get-method` plus `ancestors` gives you walk-up-the-chain dispatch. The prelude's own `defmethod` shadows `std/multi`'s, so the `except` import on prelude is mandatory.</notes>\n</invoke>"
+  },
+  {
+    "id": "sleep-ms-prelude",
+    "title": "Sleep for N milliseconds with sleep-ms (prelude)",
+    "tags": [
+      "sleep",
+      "sleep-ms",
+      "milliseconds",
+      "delay",
+      "timer",
+      "prelude"
+    ],
+    "imports": [
+      "(jerboa prelude)"
+    ],
+    "code": ";; sleep-ms is re-exported from both (jerboa prelude) and (std prelude).\n;; No need to import Chez's make-time (which is shadowed by the prelude\n;; with a date-style constructor).\n(import (jerboa prelude))\n\n(displayln \"sleeping 150ms ...\")\n(sleep-ms 150)\n(displayln \"done\")\n\n;; Zero ms is a valid no-op.\n(sleep-ms 0)\n\n;; Non-negative integer only; negative or non-integer args raise.\n(guard (_ [else (displayln \"rejected as expected\")])\n  (sleep-ms -1))\n",
+    "notes": "Prefer sleep-ms over `(sleep (make-time 'time-duration ns sec))`. The prelude shadows Chez's make-time with a date-style `(make-time h m s)` constructor, so reaching for the low-level time-duration form requires renaming the import — sleep-ms encapsulates that dance. Supersedes the older thread-sleep-prelude-script recipe.",
+    "related": [
+      "gerbil-migration-sleep"
+    ]
+  },
+  {
+    "id": "defmulti-hierarchy-keyword",
+    "title": "defmulti with custom :hierarchy for isolated derive tables",
+    "tags": [
+      "defmulti",
+      "multi",
+      "hierarchy",
+      "derive",
+      "isa",
+      "multimethod",
+      "prefer-method"
+    ],
+    "imports": [
+      "(except (jerboa prelude) defmethod)",
+      "(std multi)"
+    ],
+    "code": ";; (defmulti name dispatch-fn :hierarchy H) uses H (from make-hierarchy)\n;; for ancestor-walk dispatch instead of the shared global-hierarchy.\n;; This keeps tests and libraries from leaking `derive` calls into a\n;; shared table.\n\n(def events-h (make-hierarchy))\n(derive events-h 'order/new-member-order 'order/any)\n(derive events-h 'order/returning-order  'order/any)\n(derive events-h 'order/any              'event/any)\n(derive events-h 'user/signup            'event/any)\n\n(defmulti handle-event\n  (lambda (evt) (cdr (assq 'type evt)))\n  :hierarchy events-h)\n\n(defmethod handle-event 'order/new-member-order (e)\n  (str \"welcome-discount for order \" (cdr (assq 'id e))))\n(defmethod handle-event 'order/any (e)\n  (str \"logged order \" (cdr (assq 'id e))))\n(defmethod handle-event 'event/any (e)\n  (str \"generic audit for \" (cdr (assq 'type e))))\n\n;; When both 'order/any and 'event/any match a value like\n;; 'order/new-member-order (both are ancestors), dispatch raises\n;; an ambiguity error unless you express preference:\n(prefer-method handle-event 'order/any 'event/any)\n\n(displayln (handle-event '((type . order/new-member-order) (id . 1001))))\n(displayln (handle-event '((type . order/returning-order)  (id . 1002))))\n(displayln (handle-event '((type . user/signup)            (id . 42))))\n",
+    "notes": "Without :hierarchy, defmulti uses global-hierarchy — fine for demos, but `derive` mutations leak across tests. Pass an isolated hierarchy when you want clean state. Ambiguity (multiple ancestor methods apply) raises unless resolved with `prefer-method`. Implementation note: `:hierarchy` is an auxiliary keyword exported from (std multi); importing the library brings it into scope for the syntax-rules literal match.",
+    "related": [
+      "defmulti-basic",
+      "prefer-method"
+    ]
+  },
+  {
+    "id": "s-defn-script-safe-spec",
+    "title": "s-defn: speced define that works in --script programs",
+    "tags": [
+      "s-defn",
+      "spec",
+      "s-valid",
+      "s-instrument",
+      "script",
+      "validation",
+      "s-fdef"
+    ],
+    "imports": [
+      "(jerboa prelude)",
+      "(std spec)"
+    ],
+    "code": ";; s-instrument rewrites a name's top-level binding via\n;; set-top-level-value!. In a --script program, earlier top-level\n;; forms may have already captured the unwrapped closure — so the\n;; instrumented wrapper never fires. s-defn solves this by baking\n;; arg/ret validation into the function body at expansion time.\n\n(s-def ::isbn   (s-and string? (s-pred (lambda (s) (> (string-length s) 10)))))\n(s-def ::qty    (s-and integer? (s-pred positive?)))\n(s-def ::order  (s-cat ':isbn '::isbn ':qty '::qty))\n(s-def ::result (s-cat ':tag symbol? ':isbn '::isbn ':qty '::qty))\n\n;; Full form: :args and :ret (order doesn't matter).\n(s-defn place-order (isbn qty)\n  :args '::order\n  :ret  '::result\n  (list 'order isbn qty))\n\n(displayln (place-order \"978-0553560732\" 2))  ;; → (order 978... 2)\n\n(guard (_ [else (displayln \"rejected\")])\n  (place-order \"short\" -1))\n\n;; Only :args — validate inputs, pass-through return.\n(s-defn upcase-str (s)\n  :args (s-cat ':s string?)\n  (string-upcase s))\n\n;; Only :ret — validate return, pass-through args.\n(s-defn as-sym (s) :ret symbol? (string->symbol s))\n\n;; No specs — degenerates to (def ...).\n(s-defn plain-add (a b) (+ a b))\n\n;; s-check-fn still works because s-defn registers an s-fdef.\n(displayln (s-check-fn 'place-order place-order '(\"978-0553560732\" 7)))\n",
+    "notes": "Prefer s-defn over (def ...) + s-instrument for code that runs via --script. Keywords :args and :ret may appear in any order; both, either, or neither may be omitted. s-defn registers an s-fdef so s-check-fn and introspection tools see the specs. Validation error messages include the spec explain-str for the offending value.",
+    "related": [
+      "s-fdef-instrument",
+      "spec-basic"
+    ]
   }
 ]
