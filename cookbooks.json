@@ -5748,5 +5748,38 @@
     ],
     "code": ";; STM transactions may retry. Any side effect inside a transaction\n;; body would be replayed — logs would double-print, network calls\n;; would fire repeatedly. io! guards a body so it raises if called\n;; inside a dosync/atomically, and runs unguarded elsewhere.\n\n(define balance (make-ref 100))\n\n(define (deposit! r amount)\n  (dosync (alter r + amount)))\n\n(define (audit-deposit! r amount)\n  (dosync\n    (alter r + amount)\n    ;; Logging is a side effect — MUST NOT happen inside the txn.\n    (io! (printf \"deposited ~s~%\" amount))))   ;; raises at runtime\n\n(deposit! balance 50)\n(ref-deref balance)                ;; => 150\n\n(guard (_ [else 'caught-io])\n  (audit-deposit! balance 25))     ;; => 'caught-io (txn rolled back)\n\n(ref-deref balance)                ;; => 150  (unchanged)\n\n;; Correct pattern: do the mutation in dosync, then the I/O outside.\n(define (safe-deposit! r amount)\n  (let ([new (dosync (alter r + amount))])\n    (io! (printf \"deposited ~s (now ~s)~%\" amount new))\n    new))\n\n(safe-deposit! balance 25)         ;; prints; balance => 175\n",
     "notes": "io! is a macro that checks the *current-tx* parameter at runtime. Outside a transaction it's a pass-through. Nested dosync also triggers the raise."
+  },
+  {
+    "id": "spec-validation-in-script-context",
+    "title": "Validate function args with std/spec in --script context (s-instrument workaround)",
+    "tags": [
+      "spec",
+      "s-instrument",
+      "s-valid",
+      "script",
+      "validation"
+    ],
+    "imports": [
+      "(std spec)"
+    ],
+    "code": ";; `(s-instrument 'name)` uses set-top-level-value! to rebind a procedure.\n;; In a `scheme --script file.ss` run, `def` creates a lexical binding\n;; in the program body — set-top-level-value! cannot rewrite it, so\n;; s-instrument silently no-ops and callers run the uninstrumented\n;; function. Workaround: wrap the function body with an explicit\n;; s-valid? / s-explain-str guard that works in any execution mode.\n\n(s-def ::isbn  (s-and string? (s-pred (lambda (s) (> (string-length s) 10)))))\n(s-def ::qty   (s-and integer? (s-pred positive?)))\n;; Note: s-cat takes alternating tag+spec pairs, not a bare list of specs.\n(s-def ::order (s-cat ':isbn '::isbn ':qty '::qty))\n\n(def (place-order isbn qty)\n  (unless (s-valid? '::order (list isbn qty))\n    (error 'place-order \"args do not conform\"\n           (s-explain-str '::order (list isbn qty))))\n  (list 'order isbn qty))\n\n(place-order \"978-0553560732\" 2)       ;; => (order \"978-...\" 2)\n;; (place-order \"short\" -1)           ;; raises with a readable explanation",
+    "notes": "Two gotchas in one recipe: (1) s-instrument is effectively a REPL-only feature — plain Chez top-level-value is not the lexical env of a --script program, so the wrapper is installed on a name nobody calls. (2) s-cat's signature is `(s-cat :tag1 spec1 :tag2 spec2 ...)`, not `(s-cat spec1 spec2)`. The error message when you flatten the pairs reports the second argument as the validator for the first position, which is confusing. Always interleave.</notes>\n</invoke>"
+  },
+  {
+    "id": "multi-hierarchy-aware-dispatch",
+    "title": "Make (std multi) defmulti respect a derive hierarchy",
+    "tags": [
+      "multi",
+      "defmulti",
+      "hierarchy",
+      "derive",
+      "isa"
+    ],
+    "imports": [
+      "(except (jerboa prelude) defmethod)",
+      "(std multi)"
+    ],
+    "code": ";; (std multi) exports derive/ancestors/isa? (§35) but defmulti's\n;; dispatch does NOT consult a hierarchy automatically — it matches\n;; the dispatch value exactly, then falls through to 'default. To get\n;; Clojure-style isa?-aware dispatch, resolve the most specific\n;; ancestor with a registered method inside the dispatch function.\n\n(def events-h (make-hierarchy))\n(derive events-h 'order/new-member-order 'order/any)\n(derive events-h 'order/returning-order  'order/any)\n(derive events-h 'order/any              'event/any)\n\n(defmulti handle-event\n  (lambda (evt)\n    (let ([t (cdr (assq 'type evt))])\n      (or (find (lambda (tag) (get-method handle-event tag))\n                (cons t (ancestors events-h t)))\n          t))))\n\n(defmethod handle-event 'order/new-member-order (e)\n  (str \"welcome-discount for \" (cdr (assq 'id e))))\n(defmethod handle-event 'order/any (e)\n  (str \"logged order \"   (cdr (assq 'id e))))\n(defmethod handle-event 'event/any (e)\n  (str \"generic audit: \" (cdr (assq 'type e))))\n\n(handle-event '((type . order/returning-order) (id . 1002)))\n;; => \"logged order 1002\" — dispatched via derive chain",
+    "notes": "Without this pattern, `(handle-event '((type . order/returning-order) ...))` raises \"no method for dispatch value\" because only the exact tag is looked up. `get-method` plus `ancestors` gives you walk-up-the-chain dispatch. The prelude's own `defmethod` shadows `std/multi`'s, so the `except` import on prelude is mandatory.</notes>\n</invoke>"
   }
 ]
