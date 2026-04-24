@@ -5573,9 +5573,180 @@
   {
     "id": "injest-smart-threading",
     "title": "Transducer-Fusing Smart Threading with (std injest)",
-    "tags": ["injest", "transducer", "threading", "pipeline", "fusion", "=>", "x>>"],
-    "imports": ["(jerboa prelude)", "(std injest)"],
+    "tags": [
+      "injest",
+      "transducer",
+      "threading",
+      "pipeline",
+      "fusion",
+      "=>",
+      "x>>"
+    ],
+    "imports": [
+      "(jerboa prelude)",
+      "(std injest)"
+    ],
     "code": "(import (jerboa prelude))\n(import (std injest))\n\n;; => is smart thread-last: fuses adjacent recognised steps into a\n;; single transducer pipeline, falls back to plain ->> for others.\n;; Recognised heads: map filter remove take drop mapcat append-map\n;;   take-while drop-while filter-map dedupe deduplicate\n;;   indexing enumerate indexed\n\n;; Two consecutive recognised steps → fused (no intermediate list)\n(=> '(1 2 3 4 5 6 7 8 9)\n    (filter odd?)\n    (map (lambda (x) (* x x))))\n;; => (1 9 25 49 81)\n\n;; Mix recognised + unrecognised: unrecognised steps are plain thread-last\n(=> '(1 2 3 4 5)\n    (filter odd?)     ;; recognised — fused into transducer run\n    (map 1+)          ;; recognised — fused into same run\n    length)           ;; unrecognised — emitted as (length <prev>)\n;; => 3\n\n;; Single recognised step: emitted as native call (no transducer overhead)\n(=> '(1 2 3 4 5) (filter odd?))  ;; expands to (filter odd? '(1 2 3 4 5))\n;; => (1 3 5)\n\n;; x>> is strict: ALL steps must be transducer-convertible (compile-time error otherwise)\n(x>> '(1 2 3 4 5 6)\n     (filter even?)\n     (map (lambda (x) (* x 10)))\n     (take 3))\n;; => (20 40 60)\n\n;; x>> with a non-transducer step causes a syntax error at expand time:\n;; (x>> '(1 2 3) (filter odd?) length)  ;; ERROR: 'length' not recognised\n\n;; With (enumerate/indexing), pairs each element with its index:\n(=> '(a b c) (enumerate))\n;; => ((0 . a) (1 . b) (2 . c))",
     "notes": "CRITICAL GOTCHA: (std injest) does (import (except (chezscheme) =>)) internally, which means importing it shadows Chez Scheme's cond => arrow form. You cannot use (cond [test => proc]) if (std injest) is imported in the same module.\n\n=> is NOT in (jerboa prelude) — it requires (import (std injest)).\n\nFusion only kicks in for runs of 2+ recognised steps. A single recognised step is emitted as a plain call to avoid transducer allocation overhead.\n\nDepends on (std transducer) — imported automatically by (std injest), no separate import needed.\n\nLanded: 2026-04-21."
+  },
+  {
+    "id": "pmap-as-hashtable-key",
+    "title": "Use persistent maps/sets/vectors as hashtable keys",
+    "tags": [
+      "pmap",
+      "pvec",
+      "pset",
+      "equal-hashtable",
+      "key",
+      "structural-equality",
+      "equal-hash"
+    ],
+    "imports": [
+      "(chezscheme)",
+      "(std pmap)",
+      "(std pvec)",
+      "(std pset)"
+    ],
+    "code": ";; pmap / pvec / pset participate in Chez's equal? / equal-hash\n;; protocols via record-type-equal-procedure and\n;; record-type-hash-procedure — so two structurally-equal persistent\n;; collections compare equal? and hash to the same bucket. That makes\n;; them usable as keys in (make-hashtable equal-hash equal?) without\n;; any wrapping or manual hashing.\n;;\n;; An eq-hashtable still works but keys by identity (pointer compare)\n;; — two pmaps with the same entries would live in different buckets.\n;; Use equal-hashtable when you want value-semantics.\n\n(define ht (make-hashtable equal-hash equal?))\n\n;; Insert with a persistent-map key.\n(hashtable-set! ht (make-persistent-map 'a 1 'b 2) 'first)\n\n;; A freshly-constructed structurally-equal map hits the same bucket.\n(hashtable-ref ht (make-persistent-map 'b 2 'a 1) #f)\n;; => first   (key order didn't matter; pmap=? ignores iteration order)\n\n;; Same pattern for pvec and pset:\n(define seen (make-hashtable equal-hash equal?))\n(hashtable-set! seen (persistent-vector 1 2 3) 'row-a)\n(hashtable-ref seen (persistent-vector 1 2 3) #f)\n;; => row-a\n\n(define tag-groups (make-hashtable equal-hash equal?))\n(hashtable-set! tag-groups (make-persistent-set 'red 'blue) '(item-1 item-5))\n(hashtable-ref tag-groups (make-persistent-set 'blue 'red) #f)\n;; => (item-1 item-5)\n\n;; Hash function note: for large pmaps the equal-hash computation\n;; walks every entry. If keys are hot, wrap the pmap in a struct\n;; that caches its hash on first compute.",
+    "notes": "Enabled in Jerboa by Round 4 Phase 25 (2026-04-23) — record-type-equal-procedure / record-type-hash-procedure wiring on pmap/pvec/pset. Before that, persistent collections hashed by identity, so two structurally-equal maps would live in different hashtable buckets. Use eq-hashtable when you want identity-keyed, equal-hashtable when you want value-keyed.",
+    "related": [
+      "jerboa-pmap-transients",
+      "pmap-structural-equality-hash-iter",
+      "jerboa-persistent-sets"
+    ]
+  },
+  {
+    "id": "match-destructure-persistent",
+    "title": "Destructure persistent maps/vectors/sets in match patterns",
+    "tags": [
+      "match",
+      "pattern",
+      "destructure",
+      "pmap",
+      "pvec",
+      "pset",
+      "imap",
+      "ivec"
+    ],
+    "imports": [
+      "(std match2)",
+      "(std pmap)",
+      "(std pvec)",
+      "(std pset)"
+    ],
+    "code": ";; (std match2) has pattern arms for all three persistent collection\n;; types — alternating key/value for pmap, positional for pvec, and\n;; membership-only for pset.  Aliases: pmap/persistent-map/imap,\n;; pvec/persistent-vector/ivec, pset/persistent-set.\n;;\n;; Non-matching values (wrong type, missing key, wrong length) fall\n;; through to the next clause — no exception — so these patterns\n;; compose freely with `_` and other match arms.\n\n;; --- pmap: alternating key pat key pat ... ---\n(match (make-persistent-map 'name \"alice\" 'age 30)\n  [(pmap 'name n 'age a) (list n a)]\n  [_ 'no-match])\n;; => (\"alice\" 30)\n\n;; Keys are evaluated as expressions (usually quoted). A missing key\n;; falls through; the map can have extra keys not listed in the pattern.\n(match (make-persistent-map 'a 1 'b 2 'c 3)\n  [(pmap 'missing x) x]   ;; falls through — 'missing not in map\n  [(pmap 'a v)        v]) ;; matches\n;; => 1\n\n;; --- pvec: exact positional match ---\n(match (persistent-vector 10 20 30)\n  [(pvec a b c) (+ a b c)]\n  [_ 'wrong-shape])\n;; => 60\n\n;; Length must be exact (rest-pattern not yet supported).\n(match (persistent-vector 1 2 3)\n  [(pvec a b) 'two]\n  [(pvec a b c) 'three])\n;; => three\n\n;; --- pset: membership check, superset allowed ---\n(match (make-persistent-set 'red 'blue 'green)\n  [(pset 'red 'blue) 'has-both]\n  [_ 'not-both])\n;; => has-both\n\n;; --- Nesting — the patterns compose with each other and with\n;;     standard match constructs like and, or, guards, predicates. ---\n(match (make-persistent-map 'user (make-persistent-map 'id 42 'name \"bob\"))\n  [(pmap 'user (pmap 'id (and (? number?) uid) 'name n))\n   (list uid n)])\n;; => (42 \"bob\")\n\n;; Guards work as usual with (where …).\n(match (make-persistent-map 'age 30)\n  [(pmap 'age a) (where (>= a 18)) 'adult]\n  [(pmap 'age a) 'minor])\n;; => adult",
+    "notes": "Added in Jerboa by Round 4 Phase 27 (2026-04-23). Before that, match had no direct support for persistent collections — users had to manually predicate-check and ref. Each arm emits a persistent-*? type-guard around the whole has?/ref chain so non-matching values fall through cleanly (a list won't crash against a pmap pattern, for example). Predicate subpattern note: prefer (and (? pred?) name) over (? pred? -> name); the latter binds the bool result of (pred? v), not v itself.",
+    "related": [
+      "match-basics",
+      "pmap-structural-equality-hash-iter",
+      "jerboa-persistent-sets"
+    ]
+  },
+  {
+    "id": "for-iter-persistent-collections",
+    "title": "Iterate persistent maps/vectors/sets with for / for/collect / for/fold",
+    "tags": [
+      "for",
+      "iter",
+      "in-pmap",
+      "in-pvec",
+      "in-pset",
+      "loop",
+      "pmap",
+      "pvec",
+      "pset"
+    ],
+    "imports": [
+      "(std iter)",
+      "(std pmap)",
+      "(std pvec)",
+      "(std pset)"
+    ],
+    "code": ";; (std iter) has fused for / for/collect / for/fold arms for six\n;; persistent-collection iterators:\n;;\n;;   in-pvec         → elements in index order\n;;   in-pmap         → (cons k v) pairs  (alias of in-pmap-pairs)\n;;   in-pmap-pairs   → (cons k v) pairs\n;;   in-pmap-keys    → keys only\n;;   in-pmap-values  → values only\n;;   in-pset         → elements\n;;\n;; The fused arms iterate the HAMT / trie directly — no intermediate\n;; list is materialised.  Before Phase 28 these went through a\n;; fallback that consed an entire list up front.\n;;\n;; Iteration order for pmap / pset is hash-layout-dependent, not\n;; insertion-order.  pvec iterates in index order.\n\n;; --- pvec: index-loop fusion, O(1) allocation ---\n(for ((x (in-pvec (persistent-vector 10 20 30))))\n  (displayln x))\n;; prints 10 20 30\n\n(for/collect ((x (in-pvec (persistent-vector 1 2 3 4 5))))\n  (* x x))\n;; => (1 4 9 16 25)\n\n(for/fold ((sum 0))\n          ((x (in-pvec (persistent-vector 1 2 3 4 5))))\n  (+ sum x))\n;; => 15\n\n;; --- pmap: iterate pairs, walk HAMT directly ---\n(for/fold ((s 0))\n          ((kv (in-pmap (make-persistent-map 'a 1 'b 2 'c 3))))\n  (+ s (cdr kv)))\n;; => 6\n\n;; When you only need keys or values, use the specialised iterator —\n;; it avoids allocating the pair cons cell.\n(for/collect ((k (in-pmap-keys (make-persistent-map 'x 1 'y 2))))\n  k)\n;; => some permutation of (x y)  — hash order, not insertion order\n\n(for/fold ((s 0))\n          ((v (in-pmap-values (make-persistent-map 'a 10 'b 20 'c 30))))\n  (+ s v))\n;; => 60\n\n;; --- pset: iterate elements ---\n(for/collect ((x (in-pset (make-persistent-set 1 2 3)))) x)\n;; => some permutation of (1 2 3)\n\n;; --- Works with the clause keywords too ---\n(for/collect ((kv (in-pmap (make-persistent-map 'a 1 'b 2 'c 3 'd 4)))\n              when: (even? (cdr kv)))\n  (car kv))\n;; => keys whose values are even, in hash-iteration order",
+    "notes": "Fused arms added in Jerboa by Round 4 Phase 28 (2026-04-23). Before that, (for [x (in-pmap m)] ...) first materialised the entire map into a list of pairs, then walked the list — expensive for large maps. Now the macro expands into a direct persistent-map-for-each call. When you need insertion-ordered iteration over a pmap/pset, this is not what you want — pmap/pset are HAMT-backed and iterate in hash-bucket order. Use a pvec or ordered-map if ordering matters.",
+    "related": [
+      "jerboa-pmap-transients",
+      "pmap-structural-equality-hash-iter",
+      "for-collect"
+    ]
+  },
+  {
+    "id": "atom-set-validator-prechecks",
+    "title": "Install atom validators with pre-check semantics",
+    "tags": [
+      "atom",
+      "validator",
+      "set-validator",
+      "clojure",
+      "precheck",
+      "thread-safe"
+    ],
+    "imports": [
+      "(std misc atom)"
+    ],
+    "code": ";; set-validator! re-runs the validator against the CURRENT atom value\n;; at install time. If the validator rejects or throws, installation\n;; fails and the atom retains its old validator. This mirrors Clojure's\n;; guarantee that a live atom never holds a value its validator rejects.\n(define a (atom 1))\n(set-validator! a (lambda (n) (and (integer? n) (positive? n))))\n\n;; The validator runs inside the lock for swap!/update!/CAS (the new\n;; value must validate before the store is committed) and OUTSIDE the\n;; lock for reset! (reset! assigns under the lock but validates before\n;; taking it — avoids re-entrance if the validator touches the atom).\n\n;; Installing a stricter validator that doesn't hold on the current\n;; value raises immediately — atoms never transition into an invalid\n;; resting state:\n(guard (_ [else (displayln \"pre-check rejected\")])\n  (set-validator! a (lambda (n) (> n 100))))\n\n;; Use get-validator to inspect; pass #f to set-validator! to remove.\n(get-validator a)              ;; => the currently-installed procedure\n(set-validator! a #f)          ;; => removes any validator\n",
+    "notes": "The atom's validator lives inline in the record (not via an external registry). Pre-check semantics mean installation can fail — always wrap with `guard` when installing after construction. Validator exceptions are treated as rejections."
+  },
+  {
+    "id": "multi-hierarchy-prefer-method",
+    "title": "Multimethod hierarchies with derive + prefer-method",
+    "tags": [
+      "multi",
+      "defmulti",
+      "hierarchy",
+      "derive",
+      "prefer-method",
+      "isa",
+      "clojure",
+      "polymorphism"
+    ],
+    "imports": [
+      "(except (jerboa prelude) defmethod)",
+      "(std multi)"
+    ],
+    "code": ";; Hierarchies let dispatch fall back through an isa? graph when no exact\n;; method matches. Two API shapes: bare (mutates `global-hierarchy`) or\n;; explicit (takes a hierarchy record from `make-hierarchy`).\n\n;; 1. Bare form: uses the shared global-hierarchy.\n(derive 'corgi 'dog)\n(derive 'dog 'mammal)\n\n(defmulti legs (lambda (animal) animal))\n(defmethod legs 'mammal (_) 4)\n(defmethod legs 'bird   (_) 2)\n\n(legs 'corgi)    ;; => 4  (corgi -> dog -> mammal)\n\n;; 2. Isolated form: each test fixture gets its own hierarchy.\n(define h (make-hierarchy))\n(derive h 'puppy 'dog)\n(ancestors h 'puppy)           ;; => (dog)\n(descendants h 'dog)           ;; => (puppy)\n(isa? h 'puppy 'dog)           ;; => #t\n\n;; Cycle detection: self-derives and indirect cycles raise.\n(guard (_ [else 'cycle-rejected])\n  (derive h 'a 'a))\n\n;; Ambiguity: a dispatch value isa? multiple methods. prefer-method\n;; breaks the tie.\n(defmulti describe (lambda (x) x))\n(defmethod describe 'swimmer (_) \"swims\")\n(defmethod describe 'flyer   (_) \"flies\")\n(derive 'duck 'swimmer)\n(derive 'duck 'flyer)\n\n(guard (_ [else 'ambiguous]) (describe 'duck))   ;; => 'ambiguous\n(prefer-method describe 'swimmer 'flyer)\n(describe 'duck)                                 ;; => \"swims\"\n\n(preferred-methods describe)    ;; => ((swimmer . flyer))\n",
+    "notes": "Exact dispatch wins over hierarchy. If ambiguity cannot be resolved by prefer-method, dispatch raises. Preferences live on the multimethod record, not the hierarchy — each defmulti has its own preference list.",
+    "related": [
+      "clojure-style-defmulti-defmethod"
+    ]
+  },
+  {
+    "id": "agent-error-mode-await-for",
+    "title": "Agent error modes, handlers, and timed await",
+    "tags": [
+      "agent",
+      "error-mode",
+      "error-handler",
+      "await-for",
+      "clojure",
+      "continue",
+      "fail"
+    ],
+    "imports": [
+      "(std agent)"
+    ],
+    "code": "(def a (agent 0))\n\n;; By default, agents latch the first error: subsequent sends raise\n;; until restart-agent clears the error state ('fail mode).\n(agent-error-mode a)           ;; => 'fail\n\n;; 'continue mode swallows action errors so the worker keeps draining\n;; its queue. Pair with set-error-handler! to keep observability.\n(set-error-mode! a 'continue)\n(set-error-handler! a\n  (lambda (ag exn)\n    (printf \"agent ~s failed: ~a~%\"\n      ag (if (message-condition? exn) (condition-message exn) exn))))\n\n(send a + 1)                                 ;; -> 1\n(send a (lambda (_) (error 'boom \"nope\")))   ;; swallowed, handler runs\n(send a + 10)                                ;; -> 11\n(await a)\n(agent-value a)                              ;; => 11\n(agent-error a)                              ;; => #f  (not latched)\n\n;; Timed await — returns #t if the queue drained in time, #f on timeout.\n(send a (lambda (v)\n          (sleep (make-time 'time-duration 0 1))  ;; 1 second\n          (+ v 1)))\n(await-for 50 a)                             ;; => #f  (50ms too short)\n(await-for 2000 a)                           ;; => #t\n\n;; Handler exceptions are swallowed — a broken handler can't crash\n;; the agent worker.\n(set-error-handler! a #f)                    ;; clear handler\n(shutdown-agent! a)\n",
+    "notes": "await-for polls for a marker action in 5ms ticks. Works in both fiber and OS-thread modes. set-error-mode! accepts only 'fail or 'continue; set-error-handler! accepts a procedure or #f.",
+    "related": [
+      "clojure-style-agents"
+    ]
+  },
+  {
+    "id": "stm-io-bang",
+    "title": "Guard side-effecting code with io! inside dosync",
+    "tags": [
+      "stm",
+      "dosync",
+      "io!",
+      "clojure",
+      "transaction",
+      "side-effect",
+      "retry-safe"
+    ],
+    "imports": [
+      "(std stm)"
+    ],
+    "code": ";; STM transactions may retry. Any side effect inside a transaction\n;; body would be replayed — logs would double-print, network calls\n;; would fire repeatedly. io! guards a body so it raises if called\n;; inside a dosync/atomically, and runs unguarded elsewhere.\n\n(define balance (make-ref 100))\n\n(define (deposit! r amount)\n  (dosync (alter r + amount)))\n\n(define (audit-deposit! r amount)\n  (dosync\n    (alter r + amount)\n    ;; Logging is a side effect — MUST NOT happen inside the txn.\n    (io! (printf \"deposited ~s~%\" amount))))   ;; raises at runtime\n\n(deposit! balance 50)\n(ref-deref balance)                ;; => 150\n\n(guard (_ [else 'caught-io])\n  (audit-deposit! balance 25))     ;; => 'caught-io (txn rolled back)\n\n(ref-deref balance)                ;; => 150  (unchanged)\n\n;; Correct pattern: do the mutation in dosync, then the I/O outside.\n(define (safe-deposit! r amount)\n  (let ([new (dosync (alter r + amount))])\n    (io! (printf \"deposited ~s (now ~s)~%\" amount new))\n    new))\n\n(safe-deposit! balance 25)         ;; prints; balance => 175\n",
+    "notes": "io! is a macro that checks the *current-tx* parameter at runtime. Outside a transaction it's a pass-through. Nested dosync also triggers the raise."
   }
 ]
