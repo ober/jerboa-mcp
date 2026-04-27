@@ -5849,5 +5849,51 @@
       "s-fdef-instrument",
       "spec-basic"
     ]
+  },
+  {
+    "id": "test-check-clojure-quickcheck",
+    "title": "Clojure test.check-flavor generative testing (quick-check, defspec)",
+    "tags": [
+      "test.check",
+      "quick-check",
+      "defspec",
+      "prop/for-all",
+      "generators",
+      "shrinking",
+      "property",
+      "clojure"
+    ],
+    "imports": [
+      "(std test check)"
+    ],
+    "code": "(import (jerboa prelude))\n(import (std test check))\n\n;; (std test check) re-exports everything under both flavors:\n;;   gen:integer / gen:string / for-all / check-property         (jerboa-style)\n;;   gen/int     / gen/string / prop/for-all / quick-check       (Clojure-style)\n;; Pick whichever you prefer; they share one engine + rose-tree shrinker.\n\n;; --- write properties with prop/for-all (note: gen/int is a *value*, gen/list-of is a fn) ---\n\n(define commutative-+\n  (prop/for-all ([x gen/int] [y gen/int])\n    (= (+ x y) (+ y x))))\n\n(define reverse-involutive\n  (prop/for-all ([xs (gen/list-of gen/int)])\n    (equal? xs (reverse (reverse xs)))))\n\n;; --- run a property: returns a hashtable result map ---\n\n(define result (quick-check 100 commutative-+))\n\n(hash-ref result 'result)        ;; => #t on success, #f on failure\n(hash-ref result 'pass?)         ;; => same as 'result\n(hash-ref result 'num-tests)     ;; => 100\n\n;; On failure, you also get:\n;;   'fail          — first failing input list\n;;   'failing-size  — index where failure happened\n;;   'shrunk        — alist with 'smallest (minimal failing input) and 'depth\n\n;; --- defspec gives you a thunk you can call from mat / your test runner ---\n\n(defspec spec/+commutes 50\n  (prop/for-all ([x gen/int] [y gen/int])\n    (= (+ x y) (+ y x))))\n\n(spec/+commutes)   ;; => result map\n\n;; --- built-in generators ---\n;;   gen/boolean   gen/byte   gen/int   gen/nat   gen/pos-int   gen/neg-int\n;;   gen/large-integer\n;;   gen/char   gen/char-alphanumeric\n;;   gen/string   gen/string-alphanumeric   gen/string-ascii\n;;   gen/keyword   gen/symbol   gen/uuid\n;;   gen/list-of   gen/vector-of   gen/hash-set-of   gen/hash-map-of\n\n;; --- combinators ---\n;;   gen/return v\n;;   gen/fmap f g            ;; map output through f\n;;   gen/bind g (lambda (v) g')  ;; monadic bind\n;;   gen/choose lo hi        ;; uniform integer\n;;   gen/elements coll       ;; pick one of\n;;   gen/one-of (list g ...) ;; pick generator, then sample\n;;   gen/such-that pred g    ;; reject + retry\n;;   gen/frequency '((w . g) ...)\n;;   gen/tuple g ...\n;;   gen/sized (lambda (n) g)\n;;   gen/no-shrink g\n\n;; --- inspect what a generator produces ---\n(gen/sample gen/int 10)          ;; => list of 10 ints\n(gen/sample gen/string-alphanumeric 5)",
+    "notes": "Round 13 (2026-04-27) added a Clojure test.check-style API on top of the existing rose-tree shrinker. Both flavors coexist: the colon names (gen:integer, for-all, check-property) are the original jerboa API; the slash names (gen/int, prop/for-all, quick-check, defspec) match clojure.test.check.\n\nquick-check returns a regular hashtable (jerboa hash-ref works directly). On failure, the `shrunk` entry contains the smallest input the shrinker could find — the rose tree halves integers toward 0, removes elements from lists/vectors, and lifts shrinks through gen/fmap and gen/bind.\n\nNote: gen/uuid produces v4-shaped hex strings but is *not* RFC-4122 cryptographically random; it's fine for property testing.\n\nSeed reproducibility is not yet wired in — Chez `random` is process-global. Pass `max-size:` as a third arg to quick-check if you want to cap the size growth (default 200).",
+    "related": [
+      "test-check-property-based",
+      "jerboa-test-suite"
+    ]
+  },
+  {
+    "id": "clojure-defprotocol",
+    "title": "Clojure-style defprotocol / extend-type / extend-protocol",
+    "tags": [
+      "defprotocol",
+      "extend-type",
+      "extend-protocol",
+      "satisfies?",
+      "protocol",
+      "clojure",
+      "polymorphism",
+      "dispatch"
+    ],
+    "imports": [
+      "(std clojure protocol)"
+    ],
+    "code": "(import (jerboa prelude))\n(import (std clojure protocol))\n\n;; ----------------------------------------------------------------\n;; Define a protocol — a set of methods that dispatch on the type\n;; of their first argument.  Each method becomes a regular procedure.\n;; ----------------------------------------------------------------\n\n(defprotocol Greetable\n  (greet [this])\n  (farewell [this name]))\n\n;; ----------------------------------------------------------------\n;; Extend the protocol for a type using a one-argument predicate.\n;; ----------------------------------------------------------------\n\n(extend-type String? Greetable\n  (greet [this] (string-append \"Hello, \" this))\n  (farewell [this name] (string-append \"Bye \" name \" from \" this)))\n\n(extend-type Number? Greetable\n  (greet [this] (str \"Hello, number \" this))\n  (farewell [this name] (str \"Bye \" name \" from \" this)))\n\n(greet \"world\")        ;; => \"Hello, world\"\n(greet 42)             ;; => \"Hello, number 42\"\n(farewell \"Earth\" \"Alice\")  ;; => \"Bye Alice from Earth\"\n\n;; ----------------------------------------------------------------\n;; Multi-type extend-protocol form (predicates must be identifiers).\n;; ----------------------------------------------------------------\n\n(defprotocol Sizeable\n  (sz [this]))\n\n(extend-protocol Sizeable\n  String? (sz [this] (string-length this))\n  Vector? (sz [this] (vector-length this))\n  List?   (sz [this] (length this))\n  Hash?   (sz [this] (hashtable-size this)))\n\n(sz \"hello\")           ;; => 5\n(sz (vector 1 2 3))    ;; => 3\n(sz '(a b c d))        ;; => 4\n\n;; ----------------------------------------------------------------\n;; Extend a defrecord — use the auto-generated `<name>?` predicate.\n;; ----------------------------------------------------------------\n\n(defrecord person (name age))\n\n(extend-type person? Greetable\n  (greet [this] (str \"Hi, I'm \" (person-name this)))\n  (farewell [this who] (str who \", from \" (person-name this))))\n\n(greet (make-person \"Alice\" 30))   ;; => \"Hi, I'm Alice\"\n\n;; ----------------------------------------------------------------\n;; Introspection\n;; ----------------------------------------------------------------\n\n(satisfies? Greetable \"world\")   ;; => #t\n(satisfies? Greetable #t)        ;; => #f (no Boolean? extension)\n(extends? Greetable Number?)     ;; => #t\n(protocol-name Greetable)        ;; => Greetable\n(protocol-methods Greetable)     ;; => (greet farewell)\n\n;; ----------------------------------------------------------------\n;; Built-in predicate aliases (Clojure-style names)\n;; ----------------------------------------------------------------\n;;   Number?  String?  Vector?  List?  Pair?  Null?\n;;   Keyword? Symbol?  Char?    Boolean? Hash? Bytevector?\n;;\n;; Use these when you want extend-protocol to read like Clojure;\n;; you can also pass any one-argument predicate (e.g. (extend-type\n;; (lambda (x) (and (number? x) (positive? x))) Greetable ...)\n;; via extend-type — multi-type extend-protocol requires identifiers).",
+    "notes": "Round 14 (2026-04-27) closes the last common Clojure-idiomatic gap: a general-purpose value-dispatch protocol mechanism. Note the existing (std actor protocol) defprotocol is actor-specific (ask/tell/reply); this one is for ordinary polymorphism, modeled on clojure.core.\n\nDispatch is a linear walk over (predicate . method-alist) entries. First matching predicate wins. Re-extending a type replaces the previous registration for that predicate (idempotent).\n\nLimitation: extend-protocol's multi-type form requires predicate identifiers (not lambda expressions) so the macro can distinguish them from method forms. For expression-valued predicates, use separate extend-type calls.\n\ndefmulti remains the better choice when dispatch needs a custom selector (multi-arg, value-based, hierarchical). defprotocol is just sugar for \"dispatch on the type of arg 1\".",
+    "related": [
+      "multimethod-defmulti",
+      "defrecord-basics"
+    ]
   }
 ]
