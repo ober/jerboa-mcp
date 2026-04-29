@@ -269,3 +269,11 @@ Tools are grouped in `src/index.ts` registrations by category:
 - Security (security-scan, security-pattern-add, ...)
 - FFI tools (ffi-inspect, ffi-scaffold, ffi-type-check, ...)
 - Project tools (project-info, project-map, project-health-check, ...)
+
+## Act First, Read Less
+
+When making changes, read only what you need to make the edit, then make it.
+Do not read more than 3 files before acting. Do not re-read files you already
+read. Do not verify things you already know. If you have enough context to make
+a change, make it. The user will interrupt you if you are wrong.
+
