@@ -5895,5 +5895,60 @@
       "multimethod-defmulti",
       "defrecord-basics"
     ]
+  },
+  {
+    "id": "sleep-in-fork-thread-watchdog",
+    "title": "Sleeping inside fork-thread without silently killing the thread",
+    "tags": [
+      "sleep",
+      "thread-sleep",
+      "fork-thread",
+      "watchdog",
+      "make-time",
+      "prelude-shadow",
+      "silent-failure"
+    ],
+    "imports": [
+      ":std/misc/thread"
+    ],
+    "code": ";; In a Jerboa file that imports (jerboa prelude) (or :jerboa/core, which\n;; re-exports prelude bindings), make-time is SHADOWED by a date-style\n;; constructor. So this looks correct but raises silently:\n;;\n;;   (fork-thread\n;;     (lambda ()\n;;       (let loop ()\n;;         (sleep (make-time 'time-duration 0 5))   ;; <- raises\n;;         ...)))\n;;\n;; The exception kills the thread before the first iteration. No\n;; output. Any logic that depended on the timer never fires (watchdogs\n;; that should close hung connections; escape-key watchers; retry loops).\n;;\n;; Two correct alternatives:\n\n;; 1. thread-sleep! from :std/misc/thread (or via :jerboa/core).\n;;    Accepts fractional seconds.\n(import :std/misc/thread)\n(fork-thread\n  (lambda ()\n    (guard (e [#t (log-error logger \"watchdog-died\" `((err . ,(err->string e))))])\n      (let loop ()\n        (thread-sleep! 5)        ;; 5 seconds\n        ;; (thread-sleep! 0.020) ;; 20 ms\n        (when (still-running?) (loop))))))\n\n;; 2. sleep-ms from (jerboa prelude) — only available when you import\n;;    (jerboa prelude) directly, not via :jerboa/core.\n;; (sleep-ms 5000)  ;; 5000 ms\n",
+    "notes": "CRITICAL PATTERN: ALWAYS wrap a fork-thread body in (guard (e [#t ...]) ...) when it contains a long-running loop you cannot afford to lose. A silent exception in any iteration -- not just sleep -- will terminate the thread without logging. We hit this in jerboa-code with a stream watchdog that should have closed hung TLS connections after 90s; the watchdog died on its first sleep call and the connection sat in CLOSE_WAIT for 500+ seconds. The shadowed make-time was the trigger but the unguarded loop was what made it a silent hang instead of a visible error.",
+    "related": [
+      "gerbil-migration-sleep",
+      "sleep-ms-prelude"
+    ]
+  },
+  {
+    "id": "char-ready-eof-spin-trap",
+    "title": "char-ready? returns #t at EOF — always check (eof-object? c) when polling",
+    "tags": [
+      "char-ready",
+      "eof",
+      "stdin",
+      "poll",
+      "spin",
+      "cbreak"
+    ],
+    "imports": [],
+    "code": ";; WRONG -- pegs a CPU at 100% the moment the input port hits EOF.\n;; (char-ready? port) reports #t at EOF in Chez, and (read-char port)\n;; then returns the eof-object without consuming anything, so the\n;; loop never sleeps and never terminates.\n(def (drain-stdin!)\n  (let loop ()\n    (when (char-ready? (current-input-port))\n      (read-char (current-input-port))   ;; returns eof-object at EOF\n      (loop))))                          ;; loops forever, no sleep\n\n;; RIGHT -- bind the result and break out on EOF.\n(def (drain-stdin!)\n  (guard (e [#t (void)])\n    (let loop ()\n      (when (char-ready? (current-input-port))\n        (let ((c (read-char (current-input-port))))\n          (unless (eof-object? c)\n            (loop)))))))\n\n;; Same trap in a watcher thread that polls for a key in cbreak mode:\n(def (start-escape-watcher!)\n  (spawn\n    (lambda ()\n      (guard (e [#t (void)])\n        (let loop ()\n          (if (char-ready? (current-input-port))\n            (let ((c (read-char (current-input-port))))\n              (cond\n                ((eof-object? c) (void))   ;; stdin closed -- exit thread\n                ((and (char? c) (= (char->integer c) 27))\n                 (signal-abort!))\n                (else (loop))))\n            (begin (thread-sleep! 0.020) (loop))))))))",
+    "notes": "Triggered in jcode when stdin was piped (echo \"hi\" | jcode --no-tui): the streaming response printed fine, then drain-stdin! and the escape-watcher thread both spun at 100% CPU because (char-ready? port) returns #t at EOF.\n\nInteractive TTY use never showed the bug because read-char blocks instead of returning eof on a TTY with no pending input; piped/redirected stdin hits EOF and the polling loops never break out.\n\nRule: any loop that uses (char-ready? port) as its sentinel MUST also bind the (read-char port) result and check (eof-object? c). The else branch (no char ready) needs an explicit (thread-sleep! ...) before recursing too, otherwise a busy port still pegs a CPU.\n\nFix landed as commit dd22a54 in jerboa-code: src/jcode/ui/cli.ss drain-stdin! + start-escape-watcher!.",
+    "related": [
+      "pty-master-nonblock-required"
+    ]
+  },
+  {
+    "id": "collect-safe-blocking-ffi",
+    "title": "Use __collect_safe for any blocking foreign-procedure (recv, accept, lock, sleep)",
+    "tags": [
+      "__collect_safe",
+      "foreign-procedure",
+      "ffi",
+      "blocking",
+      "tc-mutex",
+      "thread"
+    ],
+    "imports": [],
+    "code": ";; A plain (foreign-procedure ...) holds the Chez thread-context (TC)\n;; mutex for the ENTIRE duration of the C call. While the C side blocks\n;; on a syscall (recv, poll, accept, lock acquire, long compute), no\n;; other Scheme thread runs -- not the GC, not a watchdog, not a\n;; mailbox drain. Declaring it __collect_safe releases TC so other\n;; Scheme threads can be scheduled while the C call is in flight.\n\n;; WRONG -- silently freezes every other thread for the duration of\n;; the recv(). If the peer goes silent, the streaming watchdog spawned\n;; by fork-thread never gets CPU and can never fire its timeout.\n(def jerboa-tls-read\n  (foreign-procedure \"jerboa_tls_read\"\n    (unsigned-64 u8* unsigned-64) int))\n\n;; RIGHT -- TC is released for the duration of the recv(), so a\n;; watchdog or sibling thread can run and (e.g.) close the fd to\n;; unblock us.\n(def jcode-tls-read\n  (foreign-procedure __collect_safe \"jerboa_tls_read\"\n    (unsigned-64 u8* unsigned-64) int))\n\n;; Pattern: when the upstream binding (here in :std/net/tls-rustls)\n;; is NOT __collect_safe and you cannot edit it, declare a private\n;; foreign-procedure to the SAME C symbol with __collect_safe and\n;; use that locally. The symbol is already loaded once the upstream\n;; library has been imported.\n(import (std net tls-rustls))   ;; loads libjerboa_native.{so,dylib}\n\n(def jcode-tls-read\n  (foreign-procedure __collect_safe \"jerboa_tls_read\"\n    (unsigned-64 u8* unsigned-64) int))\n\n(def (rustls-read-safe conn buf len)\n  (jcode-tls-read conn buf len))",
+    "notes": "Caused a real, hard-to-diagnose hang in jcode: deepseek's SSE stream stalled mid-round-2, the main thread blocked in tls-read-line -> rustls-read -> jerboa_tls_read and held TC indefinitely. The 90s read-timeout watchdog spawned via fork-thread never got CPU, so it never fired. Symptoms looked like \"fork-thread silently fails\" or \"thread-sleep! never returns\", but the real cause was the blocking FFI not yielding TC.\n\nThe Jerboa stdlib (as of 2026-04) declares networking FFI bindings without __collect_safe -- (std net tls-rustls), (std net tcp), (std os signal), etc. Don't trust them to be TC-safe; inspect the source. If you can't modify upstream, shadow the binding locally with __collect_safe.\n\nRule of thumb: any C call that may block on I/O, a lock, or a long computation MUST be declared __collect_safe. Pure CPU-fast calls (strlen, getpid, math) don't need it.\n\nLive example: src/jcode/provider/provider.ss declares jcode-tls-read locally and uses it in place of rustls-read; src/jcode/ui/tui-ffi.ss does the same for the termbox poll. Fix landed in jerboa-code at commit 9160039.</notes>\n<parameter name=\"related\">[\"spawn-thread\", \"tui-event-loop-mailbox-drain\"]"
   }
 ]

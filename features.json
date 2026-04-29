@@ -315,5 +315,22 @@
     "example_scenario": "Working on jerboa-db transport tests: calling jerboa_run_tests with file_path=\"tests/test-transport.ss\" immediately fails with \"library (jerboa-db core) not found\". Had to use jerboa_make with target=\"test-transport\" for every run, losing the ability to filter by test name or set per-test timeouts. If jerboa_run_tests accepted project_path=\"/home/jafourni/mine/jerboa-db\" it could read the Makefile's LIBDIRS variable and pass --libdirs \"lib:/home/jafourni/mine/jerboa/lib\" automatically.",
     "estimated_token_reduction": "~100 tokens per test run (eliminates the fallback round-trip; more importantly, restores filter/timeout capabilities that jerboa_make doesn't expose)",
     "votes": 0
+  },
+  {
+    "id": "detect-blocking-ffi-missing-collect-safe",
+    "title": "Lint blocking foreign-procedure declarations missing __collect_safe",
+    "description": "Add a static analysis pass that flags `(foreign-procedure \"name\" ...)` declarations where the C symbol's name matches a known-blocking-syscall pattern (regexes like `_read$`, `_recv$`, `_accept$`, `_poll$`, `_wait$`, `_sleep$`, `_lock$`, plus exact matches for recv, accept, poll, ppoll, select, pselect, sleep, nanosleep, etc.) but the declaration lacks the `__collect_safe` keyword. A plain foreign-procedure pins the Chez TC mutex for the duration of the C call, so any blocking syscall freezes every other Scheme thread — the GC, watchdogs, mailbox drains, fiber schedulers — until the call returns. The scanner should report file, line, symbol name, the suspected blocking nature, and recommend declaring it `(foreign-procedure __collect_safe \"name\" ...)` or shadowing the upstream binding locally with __collect_safe.",
+    "impact": "high",
+    "tags": [
+      "ffi",
+      "collect-safe",
+      "foreign-procedure",
+      "blocking",
+      "lint"
+    ],
+    "use_case": "Any Jerboa project that uses fork-thread / spawn for watchdogs, fibers, mailbox drains, or any work concurrent with blocking I/O. Since the Jerboa stdlib (as of 2026-04) declares networking FFI without __collect_safe, callers downstream silently inherit the bug and only discover it under failure modes (peer goes silent, lock contention, etc.) where the watchdog is supposed to fire but cannot.",
+    "example_scenario": "jcode hung mid-stream on a deepseek SSE response. The streaming watchdog spawned via fork-thread had a 90s read-timeout — it never fired. Cause: `:std/net/tls-rustls` declares `jerboa_tls_read` as a plain foreign-procedure. While the main thread blocked in recv() for jerboa_tls_read it held TC, so no other Scheme thread (including the watchdog's thread-sleep! return path) could re-enter Scheme. The 90s timer never advanced. Took ~1 hour and several debug instrumentation rounds to diagnose; a linter would have flagged jerboa_tls_read at the first scan and saved the entire investigation. Fix: a private `(foreign-procedure __collect_safe \"jerboa_tls_read\" ...)` shadow in src/jcode/provider/provider.ss.",
+    "estimated_token_reduction": "~4000 tokens per occurrence — a TC-mutex hang investigation typically requires a fork-thread test harness, sample-based stack inspection, and reading the FFI source. Catching it at lint time eliminates the entire diagnostic round.",
+    "votes": 0
   }
 ]

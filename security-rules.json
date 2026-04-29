@@ -717,5 +717,23 @@
       "silent-failure",
       "fork-thread"
     ]
+  },
+  {
+    "id": "read-char-discarded-cpu-spin",
+    "title": "read-char return value discarded — char-ready? polling spins on EOF",
+    "severity": "medium",
+    "scope": "scheme",
+    "pattern": "^[[:space:]]*\\(read-char\\b",
+    "message": "A standalone (read-char ...) call discards the return value. When this form sits inside a (char-ready? port)-guarded loop, the loop pegs a CPU at 100% the moment the port hits EOF: char-ready? returns #t at EOF in Chez, read-char then returns the eof-object (without consuming anything), and with the result thrown away the loop has no way to detect EOF and break out. Manifests as a hang only with piped/redirected stdin (interactive TTYs block in read-char instead of returning eof).",
+    "remediation": "Bind the read-char result and check (eof-object? c) before recursing:\n\n(let ((c (read-char port)))\n  (unless (eof-object? c)\n    (loop)))\n\nIf the discard is intentional (e.g. skipping a sentinel byte after explicit length), suppress with: ; jerboa-security: suppress read-char-discarded-cpu-spin",
+    "related_recipe": "char-ready-eof-spin-trap",
+    "tags": [
+      "read-char",
+      "char-ready",
+      "eof",
+      "spin",
+      "stdin",
+      "cpu"
+    ]
   }
 ]
