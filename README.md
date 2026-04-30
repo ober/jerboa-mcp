@@ -38,6 +38,41 @@ Add to your Claude Code `settings.json`:
 }
 ```
 
+### Codex
+
+Codex can manage MCP servers with the `codex mcp` command. From this repository:
+
+```bash
+npm install
+npm run build
+codex mcp add jerboa -- node "$(pwd)/dist/index.js"
+```
+
+To verify the configuration:
+
+```bash
+codex mcp list
+codex mcp get jerboa
+```
+
+This writes a global entry to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.jerboa]
+command = "node"
+args = ["/absolute/path/to/jerboa-mcp/dist/index.js"]
+```
+
+Restart Codex after adding the server so the `jerboa_*` tools are available in
+new sessions.
+
+The repository update task also installs the Codex MCP entry:
+
+```bash
+make build
+make update
+```
+
 ### OpenCode
 
 OpenCode reads MCP configuration from `opencode.json` files. Configuration is merged from multiple sources in priority order:

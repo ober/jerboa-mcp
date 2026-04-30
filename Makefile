@@ -1,4 +1,4 @@
-.PHONY: build start test clean update update-opencode update-claude \
+.PHONY: build start test clean update update-opencode update-claude update-codex \
         regen-api regen-strict-prelude regen-docs regen-changelog regen-all
 
 build: node_modules
@@ -48,7 +48,7 @@ test:
 clean:
 	rm -rf dist
 
-update: update-opencode update-claude
+update: update-opencode update-claude update-codex
 	cp CLAUDE.md.jerboa-example AGENTS.md
 	cp copilot-instructions.md.jerboa-example ~/.copilot-instructions.md
 	mkdir -p ~/.claude/skills/save-discoveries
@@ -57,6 +57,7 @@ update: update-opencode update-claude
 CLAUDE_CONFIG := $(HOME)/.claude/settings.json
 OPENCODE_CONFIG := $(HOME)/.config/opencode/opencode.json
 JERBOA_MCP_CMD := ["node", "$(CURDIR)/dist/index.js"]
+CODEX_MCP_NAME := jerboa
 
 update-claude:
 	@mkdir -p ~/.claude
@@ -108,3 +109,13 @@ update-opencode:
 	@echo "Installing to jerboa-mcp project directory..."
 	@cp CLAUDE.md.jerboa-example AGENTS.md
 	@echo "Copied AGENTS.md to $(CURDIR)/AGENTS.md"
+
+update-codex:
+	@if ! command -v codex >/dev/null 2>&1; then \
+		echo "WARNING: codex CLI not found; skipping Codex MCP configuration."; \
+	elif codex mcp get "$(CODEX_MCP_NAME)" >/dev/null 2>&1; then \
+		echo "jerboa MCP entry already present in Codex config, skipping."; \
+	else \
+		codex mcp add "$(CODEX_MCP_NAME)" -- node "$(CURDIR)/dist/index.js"; \
+		echo "Added jerboa MCP entry to Codex config"; \
+	fi
