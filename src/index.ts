@@ -123,6 +123,16 @@ import { registerStdlibSearchTool } from './tools/stdlib-search.js';
 import { registerSreValidateTool } from './tools/sre-validate.js';
 import { registerAiScaffoldTool } from './tools/ai-scaffold.js';
 import { registerSemanticSearchTool } from './tools/semantic-search.js';
+import { registerModuleExistsTool } from './tools/module-exists.js';
+import { registerBatchSymbolExistsTool } from './tools/batch-symbol-exists.js';
+import { registerDocVerifyTool } from './tools/doc-verify.js';
+import { registerBlockingFfiCheckTool } from './tools/blocking-ffi-check.js';
+import { registerStaticLsoGuardAuditTool } from './tools/static-lso-guard-audit.js';
+import { registerWorkerMutationCheckTool } from './tools/worker-mutation-check.js';
+import { registerForkInFiberCheckTool } from './tools/fork-in-fiber-check.js';
+import { registerJerbuildTokenCheckTool } from './tools/jerbuild-token-check.js';
+import { registerJerbuildConflictRulesTool } from './tools/jerbuild-conflict-rules.js';
+import { registerDocStatusAuditTool } from './tools/doc-status-audit.js';
 // REMOVED: command-trace — IPC REPL tool for jerboa-emacs, not a Scheme language server tool
 // REMOVED: patch-file-validator — build script patching tool for jerboa-emacs
 // REMOVED: batch-command-scaffold — editor command scaffolding for jerboa-emacs
@@ -337,6 +347,25 @@ Jerboa is a Chez Scheme-based dialect. Your training data for Jerboa is extremel
 - jerboa_cross_repo_compare: Compare two module or file implementations side-by-side. Takes two file paths or Jerboa module paths, returns: exports unique to each, shared exports, definition counts, import lists, and a summary verdict. Useful for evaluating two libraries or auditing API parity.
 - jerboa_batch_audit: Run balance + lint + security_scan + import-conflict-detection in parallel for a project. Returns combined report with section headers, per-check issue counts, and overall health score. More comprehensive than jerboa_verify; complementary to jerboa_project_health_check.
 - jerboa_stdlib_search: Intent-based search over Jerboa's stdlib modules and cookbook recipes. Answers "what module/recipe do I use for X?" — e.g. "parse JSON", "safe file read", "concurrent threads", "sort list". Returns ranked module paths with key exports and matching cookbook entries.
+- jerboa_module_exists: Cheap filesystem-only check for whether a list of module specs (e.g. (std sort), :app/feature) resolves to an actual library file under JERBOA_HOME/lib. No subprocess, no compile — use as a fast pre-flight before threading code through the normal compile/eval tools.
+- jerboa_batch_symbol_exists: Single-subprocess lookup that resolves many symbol names against the standard probe modules (jerboa prelude + std srfi/misc/sort/iter/sugar/result/datetime/text/os) and reports the first defining module, kind, and arity-mask per symbol. Use when triaging "is this name available, and where".
+
+## Concurrency and FFI Safety Lints
+
+- jerboa_blocking_ffi_check: Scan for foreign-procedure declarations whose C symbol matches a known-blocking syscall (read, recv, accept, poll, sleep, lock, tls_*) but is missing the __collect_safe convention keyword. Such declarations pin the Chez TC mutex during the syscall and freeze every other Scheme thread. Run after writing FFI bindings, before integrating with concurrent code.
+- jerboa_static_lso_guard_audit: Scan for top-level (or otherwise unguarded) load-shared-object / foreign-procedure forms. In a static (musl) build these crash at boot if the .so is absent — wrap them in (unless (getenv "JEMACS_STATIC") ...). Run before launching a Docker static build to catch unguarded FFI in seconds rather than after a 30-min container build that fails at runtime.
+- jerboa_worker_mutation_check: Flag mutating ops (hash-put!, set-car!, vector-set!, set!, ...) inside (spawn ...) / (thread-fork ...) bodies whose target is captured from outer scope rather than bound locally — the canonical race-condition setup. Recommends the mailbox pattern (thread-send + thread-receive). Heuristic; overreports rather than underreports.
+- jerboa_fork_in_fiber_check: Flag calls to forking ops (system, system*, open-process-ports, run-safe-eval, exec) inside fiber/handler contexts (httpd-route, transduce, with-fiber, channel-listen). Forking from a fiber inherits the parent's event-loop state and fd table — typical outcome is deadlock or double-close at exit.
+
+## Documentation Verification
+
+- jerboa_doc_verify: Extract fenced scheme/jerboa/chez code blocks from a markdown file, run each through the Jerboa compiler, and report per-block status with line numbers. Optionally evaluate each block (execute: true) instead of just compile-checking. Per-block imports via "<!-- jerboa-imports: (std sort) -->" comment lines. Catches drift between docs and the actual API as soon as a function is renamed or removed.
+- jerboa_doc_status_audit: Parse a markdown file for "Done", "Complete", "Implemented", ✓, [x] status markers and verify that the file paths and module specs claimed in those passages still exist on disk. Status markers in headings cause every reference inside the section to be checked. Catches the common drift where a roadmap or design doc claims a module is shipped but the file has since been renamed or never landed.
+
+## jerbuild Compatibility
+
+- jerboa_jerbuild_token_check: Scan .ss/.sls files for legacy reader tokens that csv10 rejects (#\\escape → #\\esc, #!void → (void), #!eof → (eof-object), #\\rubout → #\\delete). String literals and comments are skipped. Run before bumping the Chez Scheme version to surface the "works on csv9, fails on csv10" class of build error in seconds.
+- jerboa_jerbuild_conflict_rules: Given a list of imports in priority order (lowest first), resolve their export conflicts via library-exports and emit a ready-to-paste (import (except A x y) B C) block. Each module is resolved in its own subprocess so a conflict in the user list does not abort the whole query. Use this when adding a new dependency that overlaps with (jerboa core) or another widely-imported module.
 
 ## Feature Tracking
 
@@ -672,6 +701,24 @@ registerSreValidateTool(server);
 // AI/ML scaffold and semantic search
 registerAiScaffoldTool(server);
 registerSemanticSearchTool(server);
+
+// Module / symbol existence (cheap pre-flight checks without runChez per query)
+registerModuleExistsTool(server);
+registerBatchSymbolExistsTool(server);
+
+// Documentation verification & cross-checks
+registerDocVerifyTool(server);
+registerDocStatusAuditTool(server);
+
+// Concurrency / FFI safety lints
+registerBlockingFfiCheckTool(server);
+registerStaticLsoGuardAuditTool(server);
+registerWorkerMutationCheckTool(server);
+registerForkInFiberCheckTool(server);
+
+// jerbuild compatibility tools
+registerJerbuildTokenCheckTool(server);
+registerJerbuildConflictRulesTool(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

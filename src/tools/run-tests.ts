@@ -1,9 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { execFile } from 'node:child_process';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { findScheme, getLibdirs } from '../chez.js';
+import { findScheme, getLibdirs, getJerboaHome } from '../chez.js';
 import { injectHallucinationHints } from './shared-hallucinations.js';
 
 interface TestDiagnostic {
@@ -136,18 +136,27 @@ export function registerRunTestsTool(server: McpServer): void {
     {
       title: 'Run Jerboa Tests',
       description:
-        'Run Jerboa test files. Pass file_path for a single file or directory for all *-test.ss files. ' +
-        'Tests are run with scheme --libdirs <jerboa-lib> --script <file>.',
+        'Run Jerboa test files. Pass file_path for a single file, directory for all *-test.ss files, ' +
+        'or project_path to discover tests AND read the project Makefile\'s LIBDIRS so project-local ' +
+        'libraries are visible. Tests are run with scheme --libdirs <libdirs> --script <file>.',
       annotations: { readOnlyHint: false, idempotentHint: false },
       inputSchema: {
         file_path: z.string().optional().describe('Path to a single test file'),
         directory: z.string().optional().describe('Directory to search for *-test.ss files'),
+        project_path: z
+          .string()
+          .optional()
+          .describe(
+            'Project root. The Makefile in this directory is parsed for LIBDIRS so project-local ' +
+              'libraries are visible during the test run, and the scheme subprocess runs with this ' +
+              'as its cwd. If provided without file_path/directory, tests are searched here.',
+          ),
         filter: z.string().optional().describe('Filter test names containing this string'),
         jerboa_home: z.string().optional(),
         timeout: z.coerce.number().optional().describe('Timeout per test file in ms (default: 120000)'),
       },
     },
-    async ({ file_path, directory, filter, jerboa_home, timeout }) => {
+    async ({ file_path, directory, project_path, filter, jerboa_home, timeout }) => {
       const testFiles: string[] = [];
 
       if (file_path) {
@@ -159,8 +168,15 @@ export function registerRunTestsTool(server: McpServer): void {
         } catch {
           return { content: [{ type: 'text' as const, text: `Cannot read directory: ${directory}` }], isError: true };
         }
+      } else if (project_path) {
+        try {
+          const collected = await collectTestFiles(project_path);
+          testFiles.push(...collected);
+        } catch {
+          return { content: [{ type: 'text' as const, text: `Cannot read project: ${project_path}` }], isError: true };
+        }
       } else {
-        return { content: [{ type: 'text' as const, text: 'Provide file_path or directory.' }], isError: true };
+        return { content: [{ type: 'text' as const, text: 'Provide file_path, directory, or project_path.' }], isError: true };
       }
 
       const filtered = filter
@@ -172,13 +188,18 @@ export function registerRunTestsTool(server: McpServer): void {
       }
 
       const scheme = await findScheme();
-      const libdirs = getLibdirs(jerboa_home);
+      const home = getJerboaHome(jerboa_home);
+      let libdirs = getLibdirs(jerboa_home);
+      if (project_path) {
+        const fromMake = await readProjectLibdirs(project_path, home);
+        libdirs = fromMake ?? join(project_path, 'lib') + ':' + libdirs;
+      }
       const testTimeout = timeout ?? 120_000;
 
       const results: Array<{ file: string; output: string; ok: boolean }> = [];
 
       for (const tf of filtered) {
-        const runResult = await runSchemeScript(scheme, libdirs, tf, testTimeout);
+        const runResult = await runSchemeScript(scheme, libdirs, tf, testTimeout, project_path);
         results.push({ file: tf, output: runResult.output.trim(), ok: runResult.ok });
       }
 
@@ -261,16 +282,78 @@ function runSchemeScript(
   libdirs: string,
   scriptPath: string,
   timeout: number,
+  cwd?: string,
 ): Promise<{ output: string; ok: boolean }> {
   return new Promise((resolve) => {
     execFile(
       scheme,
       ['--libdirs', libdirs, '--script', scriptPath],
-      { timeout, maxBuffer: 1024 * 1024 },
+      { timeout, maxBuffer: 1024 * 1024, cwd },
       (err, stdout, stderr) => {
         const output = [stdout ?? '', stderr ?? ''].filter(Boolean).join('\n');
         resolve({ output, ok: !err });
       },
     );
+  });
+}
+
+/**
+ * Read the project's Makefile (or GNUmakefile) and extract its LIBDIRS
+ * value. Performs lightweight expansion of $(JERBOA_HOME) and $(HOME).
+ * Returns null if no Makefile or no LIBDIRS variable was found.
+ */
+async function readProjectLibdirs(
+  projectPath: string,
+  jerboaHome: string,
+): Promise<string | null> {
+  const candidates = ['Makefile', 'GNUmakefile', 'makefile'];
+  let content: string | null = null;
+  for (const name of candidates) {
+    try {
+      content = await readFile(join(projectPath, name), 'utf-8');
+      break;
+    } catch {
+      // try next
+    }
+  }
+  if (content === null) return null;
+
+  const value = readMakefileVar(content, 'LIBDIRS');
+  if (value === null) return null;
+
+  return expandMakefileVars(value, {
+    JERBOA_HOME: jerboaHome,
+    HOME: process.env.HOME ?? '',
+  });
+}
+
+/**
+ * Walk a Makefile's lines and resolve a single variable. Honors `=`, `:=`,
+ * `?=`, `+=` semantics in the order they appear. Strips trailing comments.
+ * Does not implement multi-line continuations or function calls — the
+ * common LIBDIRS = lib:$(JERBOA_HOME)/lib pattern is handled.
+ */
+function readMakefileVar(content: string, name: string): string | null {
+  const lines = content.split('\n');
+  const re = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*([?+:]?)=\\s*(.*?)\\s*$`);
+  let value: string | null = null;
+  for (const line of lines) {
+    const m = line.match(re);
+    if (!m) continue;
+    const op = m[1];
+    const v = m[2].replace(/\s+#.*$/, '').trim();
+    if (op === '?' && value !== null) continue;
+    if (op === '+' && value !== null) {
+      value = value + ' ' + v;
+    } else {
+      value = v;
+    }
+  }
+  return value;
+}
+
+function expandMakefileVars(value: string, env: Record<string, string>): string {
+  return value.replace(/\$[({]([A-Z_][A-Z0-9_]*)[)}]/g, (full, name) => {
+    return env[name] ?? full;
   });
 }

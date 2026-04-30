@@ -161,6 +161,30 @@ export async function runMake(
   });
 }
 
+// ── Shebang stripping ──────────────────────────────────────────────
+
+/**
+ * If the source begins with a Unix shebang (#!/...), strip the entire
+ * first line and replace it with a blank line so subsequent line numbers
+ * reported by Chez still match the original file.
+ *
+ * The Chez/Jerboa reader does not understand `#!/usr/bin/env -S scheme
+ * --script`; chez itself strips the shebang at file open, but our
+ * verify/compile-check tools read the source ourselves, so we must do
+ * the same. The `#!chezscheme` and `#!r6rs` directives have a different
+ * shape (no slash) and are valid reader directives — leave those alone.
+ */
+export function stripShebang(source: string): string {
+  if (!source.startsWith('#!')) return source;
+  // Only strip Unix shebangs (the second char after #! is /), not Chez
+  // reader directives like #!chezscheme, #!r6rs, #!fold-case.
+  if (source.length < 3 || source[2] !== '/') return source;
+  const nlIdx = source.indexOf('\n');
+  if (nlIdx === -1) return ''; // entire file is a shebang
+  // Replace the shebang with an empty first line so line numbers match.
+  return '\n' + source.slice(nlIdx + 1);
+}
+
 // ── String escaping ────────────────────────────────────────────────
 
 /**

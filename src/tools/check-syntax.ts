@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { runChez, buildSyntaxCheckScript, ERROR_MARKER, VALID_MARKER } from '../chez.js';
+import { runChez, buildSyntaxCheckScript, stripShebang, ERROR_MARKER, VALID_MARKER } from '../chez.js';
 
 export function registerCheckSyntaxTool(server: McpServer): void {
   server.registerTool(
@@ -19,7 +19,7 @@ export function registerCheckSyntaxTool(server: McpServer): void {
       },
     },
     async ({ code, imports, jerboa_home }) => {
-      const script = buildSyntaxCheckScript(code, imports);
+      const script = buildSyntaxCheckScript(stripShebang(code), imports);
 
       const result = await runChez(script, { jerboaHome: jerboa_home });
 

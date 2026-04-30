@@ -4,6 +4,7 @@ import {
   runChez,
   buildSyntaxCheckScript,
   buildIsolatedCompileCheckScript,
+  stripShebang,
   ERROR_MARKER,
   VALID_MARKER,
 } from '../chez.js';
@@ -72,6 +73,8 @@ export function registerCompileCheckTool(server: McpServer): void {
       if (!source) {
         return { content: [{ type: 'text' as const, text: 'Provide file_path or code.' }], isError: true };
       }
+
+      source = stripShebang(source);
 
       // Determine compilation strategy
       const useChezReader = force_chez_reader || shouldUseChezReader(source, file_path);

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { runChez, buildSyntaxCheckScript, ERROR_MARKER, VALID_MARKER } from '../chez.js';
+import { runChez, buildSyntaxCheckScript, stripShebang, ERROR_MARKER, VALID_MARKER } from '../chez.js';
 import { readFile } from 'node:fs/promises';
 import {
   injectHallucinationHints,
@@ -43,6 +43,8 @@ export function registerVerifyTool(server: McpServer): void {
       if (!source) {
         return { content: [{ type: 'text' as const, text: 'Provide file_path or code.' }], isError: true };
       }
+
+      source = stripShebang(source);
 
       const label = file_path ?? 'code';
 

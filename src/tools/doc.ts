@@ -1,8 +1,77 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runChez, buildPreamble, escapeSchemeString, ERROR_MARKER } from '../chez.js';
+import { loadCookbook, REPO_COOKBOOK_PATH, RECIPES, type Recipe } from './howto.js';
 
 const INFO_MARKER = 'JERBOA-MCP-INFO:';
+
+const MAX_EXAMPLE_LINES = 12;
+
+/**
+ * Score recipes for a given symbol/module pair. Higher is better.
+ * Heuristics:
+ *   - exact tag match: +5
+ *   - module path appears in recipe.imports: +3
+ *   - bare symbol appears in recipe.code as its own token: +2
+ *   - title contains symbol: +1
+ */
+function scoreRecipeForSymbol(
+  recipe: Recipe,
+  symbol: string,
+  modulePath: string | undefined,
+): number {
+  let score = 0;
+  const lowerSym = symbol.toLowerCase();
+
+  for (const tag of recipe.tags) {
+    if (tag.toLowerCase() === lowerSym) score += 5;
+    else if (tag.toLowerCase().includes(lowerSym)) score += 1;
+  }
+
+  if (modulePath) {
+    for (const imp of recipe.imports) {
+      if (imp === modulePath || imp.includes(modulePath)) score += 3;
+    }
+  }
+
+  // Token boundary check on the code body
+  const tokenRe = new RegExp(`(^|[\\s(\\[{])${escapeForRegex(symbol)}([\\s)\\]}]|$)`);
+  if (tokenRe.test(recipe.code)) score += 2;
+
+  if (recipe.title.toLowerCase().includes(lowerSym)) score += 1;
+
+  if (recipe.deprecated) score = Math.round(score * 0.2);
+
+  return score;
+}
+
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Find a single best-matching recipe whose code demonstrates `symbol`. Returns
+ * undefined if nothing scores above zero.
+ */
+function findUsageExample(symbol: string, modulePath?: string): Recipe | undefined {
+  const all: Recipe[] = [...RECIPES, ...loadCookbook(REPO_COOKBOOK_PATH)];
+  let best: Recipe | undefined;
+  let bestScore = 0;
+  for (const r of all) {
+    const s = scoreRecipeForSymbol(r, symbol, modulePath);
+    if (s > bestScore) {
+      bestScore = s;
+      best = r;
+    }
+  }
+  return bestScore > 0 ? best : undefined;
+}
+
+function trimExampleCode(code: string): string {
+  const lines = code.split('\n');
+  if (lines.length <= MAX_EXAMPLE_LINES) return code;
+  return lines.slice(0, MAX_EXAMPLE_LINES).join('\n') + '\n;; … (truncated)';
+}
 
 export function registerDocTool(server: McpServer): void {
   server.registerTool(
@@ -104,6 +173,15 @@ export function registerDocTool(server: McpServer): void {
       if (info['fields']) sections.push(`Fields: ${info['fields']}`);
       if (info['value']) sections.push(`Value: ${info['value']}`);
       if (module_path) sections.push(`Module: ${module_path}`);
+
+      const example = findUsageExample(symbol, module_path);
+      if (example) {
+        sections.push('');
+        sections.push(`Usage example (cookbook: ${example.id}):`);
+        sections.push('```scheme');
+        sections.push(trimExampleCode(example.code));
+        sections.push('```');
+      }
 
       return { content: [{ type: 'text' as const, text: sections.join('\n') }] };
     },
